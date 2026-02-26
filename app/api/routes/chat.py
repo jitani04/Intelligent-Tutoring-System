@@ -1,0 +1,73 @@
+import asyncio
+import json
+from collections.abc import AsyncIterator
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_user_id
+from app.core.config import get_settings
+from app.db.session import get_db_session
+from app.schemas.chat import ChatRequest
+from app.services.chat_service import SseEvent, stream_chat
+from app.services.conversation_service import get_conversation_for_user
+from app.services.errors import ConversationNotFoundError
+from app.services.llm_service import LLMService
+
+router = APIRouter(prefix="/chat", tags=["chat"])
+settings = get_settings()
+
+
+def _format_sse_event(event: SseEvent) -> str:
+    payload = json.dumps(event.data, ensure_ascii=True)
+    return f"event: {event.event}\ndata: {payload}\n\n"
+
+
+async def _with_keepalive(source: AsyncIterator[SseEvent], keepalive_seconds: int) -> AsyncIterator[str]:
+    iterator = source.__aiter__()
+    while True:
+        try:
+            event = await asyncio.wait_for(anext(iterator), timeout=keepalive_seconds)
+            yield _format_sse_event(event)
+        except TimeoutError:
+            yield ": keep-alive\n\n"
+        except StopAsyncIteration:
+            return
+
+
+@router.post("/{conversation_id}")
+async def stream_chat_endpoint(
+    conversation_id: int,
+    request: ChatRequest,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> StreamingResponse:
+    try:
+        await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)
+    except ConversationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found.") from exc
+
+    llm_service = LLMService(
+        api_key=settings.openai_api_key,
+        model=settings.openai_model,
+        timeout_seconds=settings.openai_timeout_seconds,
+    )
+
+    async def event_stream() -> AsyncIterator[str]:
+        try:
+            source = stream_chat(
+                session=session,
+                llm_service=llm_service,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                user_message=request.message,
+                system_prompt=settings.system_prompt,
+            )
+            async for payload in _with_keepalive(source, settings.keepalive_seconds):
+                yield payload
+        except Exception as exc:  # noqa: BLE001
+            yield _format_sse_event(SseEvent(event="error", data={"error": str(exc)}))
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

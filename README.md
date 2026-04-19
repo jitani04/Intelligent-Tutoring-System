@@ -4,11 +4,18 @@ Production-style async backend for chatbot streaming with PostgreSQL persistence
 
 ## Features
 - FastAPI + async SQLAlchemy 2.0 + PostgreSQL
-- OpenAI Responses API streaming
+- LangChain chat model integration with Gemini
 - Server-Sent Events (`text/event-stream`)
 - Strict conversation ownership via `X-User-Id`
 - Alembic migrations
 - RAG-ready retriever interface placeholder
+
+## Current Status
+- Backend API is running with FastAPI and PostgreSQL persistence.
+- Frontend lives in `frontend/` as a separate React + TypeScript app.
+- Gemini is wired through LangChain's `ChatGoogleGenerativeAI`.
+- The current schema covers users, conversations, and messages only.
+- Retrieval is still a placeholder and tutoring-specific domain tables are not implemented yet.
 
 ## Project Structure
 ```text
@@ -23,6 +30,9 @@ app/
 alembic/
 ```
 
+## Database Schema
+See the schema reference and ER diagram in [DATABASE_SCHEMA.md](/Users/jennaitani/Downloads/Intelligent%20Tutoring%20System/DATABASE_SCHEMA.md).
+
 ## Setup
 1. Create and activate Python 3.11+ virtual environment.
 2. Install dependencies:
@@ -33,27 +43,73 @@ alembic/
    ```bash
    cp .env.example .env
    ```
-4. Create PostgreSQL database (example):
+4. Add your Gemini API key in `.env`.
+5. Create PostgreSQL database (example):
    ```sql
    CREATE DATABASE chatbot_db;
    ```
-5. Run migrations:
+6. Run migrations:
    ```bash
    alembic upgrade head
    ```
-6. Seed a user for testing (`X-User-Id` depends on existing user rows):
+7. Seed a user for testing (`X-User-Id` depends on existing user rows):
    ```sql
    INSERT INTO users (email) VALUES ('demo@example.com');
    ```
-7. Run server:
+8. Run server:
    ```bash
    uvicorn app.main:app --reload
    ```
 
+## Full Stack Run
+Backend:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Default local URLs:
+
+- backend: `http://127.0.0.1:8000`
+- frontend: `http://127.0.0.1:5173`
+
 ## API
+- `GET /conversations`
 - `POST /conversations`
 - `GET /conversations/{id}`
 - `POST /chat/{conversation_id}` (SSE streaming)
+
+## Tests
+Run the test suite with:
+
+```bash
+pytest -q
+```
+
+## Frontend
+The repo now includes a separate React + TypeScript frontend in `frontend/`.
+
+Run it with:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+By default the frontend targets `http://localhost:8000`. You can override that with:
+
+```bash
+VITE_API_BASE_URL=http://localhost:8000
+```
 
 ## Curl Examples
 Create conversation:
@@ -81,3 +137,4 @@ curl -N -X POST http://localhost:8000/chat/1 \
 - Ownership violations return `404` to avoid leaking conversation existence.
 - Retriever currently returns empty context list by design.
 - This milestone intentionally excludes auth/JWT and RAG storage.
+- The default LLM configuration targets Gemini through LangChain's `ChatGoogleGenerativeAI`.

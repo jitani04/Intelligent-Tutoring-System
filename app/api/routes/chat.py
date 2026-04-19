@@ -50,9 +50,9 @@ async def stream_chat_endpoint(
         raise HTTPException(status_code=404, detail="Conversation not found.") from exc
 
     llm_service = LLMService(
-        api_key=settings.openai_api_key,
-        model=settings.openai_model,
-        timeout_seconds=settings.openai_timeout_seconds,
+        api_key=settings.llm_api_key,
+        model=settings.llm_model,
+        timeout_seconds=settings.llm_timeout_seconds,
     )
 
     async def event_stream() -> AsyncIterator[str]:

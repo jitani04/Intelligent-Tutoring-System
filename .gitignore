@@ -1,12 +1,30 @@
+# Python
 __pycache__/
 *.py[cod]
 *.so
 .Python
 .venv/
 venv/
+env/
+
+# Environment files
 .env
+.env.*
+!.env.example
+
+# Python tooling
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.coverage
 coverage.xml
 htmlcov/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# OS / editor noise
 .DS_Store

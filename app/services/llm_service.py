@@ -2,7 +2,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from openai import AsyncOpenAI
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 
 @dataclass(slots=True)
@@ -14,16 +15,46 @@ class LLMStreamEvent:
 
 class LLMService:
     def __init__(self, *, api_key: str, model: str, timeout_seconds: float) -> None:
-        self._model = model
-        self._client = AsyncOpenAI(api_key=api_key, timeout=timeout_seconds)
+        self._llm = ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=api_key,
+            timeout=timeout_seconds,
+            convert_system_message_to_human=True,
+        )
+
+    @staticmethod
+    def _to_langchain_messages(input_messages: list[dict[str, Any]]) -> list[BaseMessage]:
+        messages: list[BaseMessage] = []
+        for message in input_messages:
+            role = message["role"]
+            content = message["content"]
+
+            if role == "system":
+                messages.append(SystemMessage(content=content))
+            elif role == "user":
+                messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                messages.append(AIMessage(content=content))
+            else:
+                raise ValueError(f"Unsupported message role: {role}")
+
+        return messages
 
     async def stream_response(self, *, input_messages: list[dict[str, Any]]) -> AsyncIterator[LLMStreamEvent]:
-        async with self._client.responses.stream(model=self._model, input=input_messages) as stream:
-            async for event in stream:
-                if event.type == "response.output_text.delta" and getattr(event, "delta", None):
-                    yield LLMStreamEvent(type="token", delta=event.delta)
+        messages = self._to_langchain_messages(input_messages)
+        usage_dict: dict[str, Any] | None = None
+        async for chunk in self._llm.astream(messages):
+            if isinstance(chunk.content, str) and chunk.content:
+                yield LLMStreamEvent(type="token", delta=chunk.content)
+            elif isinstance(chunk.content, list):
+                for part in chunk.content:
+                    if isinstance(part, str) and part:
+                        yield LLMStreamEvent(type="token", delta=part)
+                    elif isinstance(part, dict) and part.get("type") == "text" and part.get("text"):
+                        yield LLMStreamEvent(type="token", delta=part["text"])
 
-            final_response = await stream.get_final_response()
-            usage = getattr(final_response, "usage", None)
-            usage_dict = usage.model_dump() if usage is not None and hasattr(usage, "model_dump") else None
-            yield LLMStreamEvent(type="completed", usage=usage_dict)
+            chunk_usage = getattr(chunk, "usage_metadata", None)
+            if chunk_usage is not None:
+                usage_dict = dict(chunk_usage)
+
+        yield LLMStreamEvent(type="completed", usage=usage_dict)

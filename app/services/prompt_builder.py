@@ -28,12 +28,7 @@ def build_responses_input(
     messages: list[dict[str, Any]] = [
         {
             "role": "system",
-            "content": [
-                {
-                    "type": "input_text",
-                    "text": "\n\n".join(section for section in system_sections if section),
-                }
-            ],
+            "content": "\n\n".join(section for section in system_sections if section),
         }
     ]
 
@@ -41,14 +36,14 @@ def build_responses_input(
         messages.append(
             {
                 "role": turn["role"],
-                "content": [{"type": "input_text", "text": turn["content"]}],
+                "content": turn["content"],
             }
         )
 
     messages.append(
         {
             "role": "user",
-            "content": [{"type": "input_text", "text": user_query}],
+            "content": user_query,
         }
     )
     return messages

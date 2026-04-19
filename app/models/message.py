@@ -22,7 +22,14 @@ class Message(Base):
         index=True,
         nullable=False,
     )
-    role: Mapped[MessageRole] = mapped_column(SqlEnum(MessageRole, name="message_role"), nullable=False)
+    role: Mapped[MessageRole] = mapped_column(
+        SqlEnum(
+            MessageRole,
+            name="message_role",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

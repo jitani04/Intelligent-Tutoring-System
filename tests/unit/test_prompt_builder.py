@@ -10,9 +10,9 @@ def test_prompt_builder_includes_system_and_user_message() -> None:
     )
 
     assert messages[0]["role"] == "system"
-    assert "System instruction" in messages[0]["content"][0]["text"]
+    assert "System instruction" in messages[0]["content"]
     assert messages[-1]["role"] == "user"
-    assert messages[-1]["content"][0]["text"] == "How are you?"
+    assert messages[-1]["content"] == "How are you?"
 
 
 def test_prompt_builder_includes_context_when_provided() -> None:
@@ -23,7 +23,7 @@ def test_prompt_builder_includes_context_when_provided() -> None:
         retrieved_context=["Context A", "Context B"],
     )
 
-    system_text = messages[0]["content"][0]["text"]
+    system_text = messages[0]["content"]
     assert "Relevant context:" in system_text
     assert "Context A" in system_text
     assert "Context B" in system_text

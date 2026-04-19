@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,14 +13,23 @@ class Settings(BaseSettings):
 
     database_url: str = Field(alias="DATABASE_URL")
 
-    openai_api_key: str = Field(alias="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-4.1-mini", alias="OPENAI_MODEL")
-    openai_timeout_seconds: float = Field(default=60.0, alias="OPENAI_TIMEOUT_SECONDS")
+    llm_api_key: str = Field(validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"))
+    llm_model: str = Field(
+        default="gemini-2.5-flash",
+        validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"),
+    )
+    llm_timeout_seconds: float = Field(
+        default=60.0,
+        validation_alias=AliasChoices("LLM_TIMEOUT_SECONDS", "OPENAI_TIMEOUT_SECONDS"),
+    )
 
     system_prompt: str = Field(default="You are a helpful assistant.", alias="SYSTEM_PROMPT")
     keepalive_seconds: int = Field(default=15, alias="KEEPALIVE_SECONDS")
 
-    cors_allow_origins_raw: str = Field(default="http://localhost:3000", alias="CORS_ALLOW_ORIGINS")
+    cors_allow_origins_raw: str = Field(
+        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
+        alias="CORS_ALLOW_ORIGINS",
+    )
 
     @property
     def cors_allow_origins(self) -> list[str]:

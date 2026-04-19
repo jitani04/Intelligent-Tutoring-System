@@ -10,8 +10,17 @@ async def create_conversation(*, session: AsyncSession, user_id: int) -> Convers
     conversation = Conversation(user_id=user_id)
     session.add(conversation)
     await session.commit()
-    await session.refresh(conversation)
-    return conversation
+    return await get_conversation_for_user(session=session, conversation_id=conversation.id, user_id=user_id)
+
+
+async def list_conversations_for_user(*, session: AsyncSession, user_id: int) -> list[Conversation]:
+    result = await session.execute(
+        select(Conversation)
+        .where(Conversation.user_id == user_id)
+        .options(selectinload(Conversation.messages))
+        .order_by(Conversation.created_at.desc(), Conversation.id.desc())
+    )
+    return list(result.scalars())
 
 
 async def get_conversation_for_user(*, session: AsyncSession, conversation_id: int, user_id: int) -> Conversation:

@@ -8,10 +8,19 @@ from app.api.deps import get_user_id
 from app.db.session import get_db_session
 from app.models.user import User
 from app.schemas.conversation import ConversationRead
-from app.services.conversation_service import create_conversation, get_conversation_for_user
+from app.services.conversation_service import create_conversation, get_conversation_for_user, list_conversations_for_user
 from app.services.errors import ConversationNotFoundError
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
+
+
+@router.get("", response_model=list[ConversationRead])
+async def list_conversations_endpoint(
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[ConversationRead]:
+    conversations = await list_conversations_for_user(session=session, user_id=user_id)
+    return [ConversationRead.model_validate(conversation) for conversation in conversations]
 
 
 @router.post("", response_model=ConversationRead, status_code=status.HTTP_201_CREATED)

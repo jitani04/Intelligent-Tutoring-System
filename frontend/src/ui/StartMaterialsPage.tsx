@@ -1,12 +1,15 @@
 import { ChangeEvent, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
-import { addMaterials, getPendingStudyContext } from "../studyState";
+import { uploadMaterial } from "../api";
+import { getPendingStudyContext, getStoredUserId } from "../studyState";
 
 export function StartMaterialsPage() {
   const navigate = useNavigate();
   const pendingContext = getPendingStudyContext();
-  const [fileNames, setFileNames] = useState<string[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const subtitle = useMemo(() => {
     if (!pendingContext) {
@@ -21,20 +24,33 @@ export function StartMaterialsPage() {
   }
 
   function handleFilesChange(event: ChangeEvent<HTMLInputElement>) {
-    const nextFiles = Array.from(event.target.files ?? []).map((file) => file.name);
-    setFileNames(nextFiles);
+    setSelectedFiles(Array.from(event.target.files ?? []));
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     if (!pendingContext) {
       return;
     }
 
-    if (fileNames.length > 0) {
-      addMaterials(fileNames, pendingContext.subject, "onboarding");
-    }
+    const userId = Number(getStoredUserId());
+    setError(null);
+    setIsSubmitting(true);
 
-    navigate("/start/method");
+    try {
+      if (selectedFiles.length > 0) {
+        if (!Number.isInteger(userId) || userId <= 0) {
+          throw new Error("Set a valid user id in the app before uploading materials.");
+        }
+
+        await Promise.all(selectedFiles.map((file) => uploadMaterial(userId, file, pendingContext.subject)));
+      }
+
+      navigate("/start/method");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to upload materials.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -43,32 +59,35 @@ export function StartMaterialsPage() {
         <div className="flow-step">Step 2 of 3</div>
         <h1>Upload course material</h1>
         <p className="flow-copy">
-          Optional, but this is how the product becomes course-grounded instead of generic.
+          Optional, but recommended. Adding course material helps the tutor stay aligned with your
+          class, notes, and terminology.
         </p>
         <p className="flow-subcopy">{subtitle}</p>
 
         <label className="upload-dropzone">
           <span>Drop PDFs, lecture notes, or syllabi here</span>
-          <small>The backend ingestion pipeline is not wired yet, so this stores file metadata locally.</small>
+          <small>Supported formats: PDF, TXT, and MD.</small>
           <input multiple onChange={handleFilesChange} type="file" />
         </label>
 
-        {fileNames.length > 0 ? (
+        {selectedFiles.length > 0 ? (
           <div className="selection-list">
-            {fileNames.map((name) => (
-              <div className="selection-item" key={name}>
-                {name}
+            {selectedFiles.map((file) => (
+              <div className="selection-item" key={`${file.name}-${file.size}`}>
+                {file.name}
               </div>
             ))}
           </div>
         ) : null}
 
+        {error ? <p className="error-text">{error}</p> : null}
+
         <div className="flow-actions">
           <Link className="button button-secondary" to="/start/topic">
             Back
           </Link>
-          <button className="button button-primary" onClick={handleContinue} type="button">
-            Continue
+          <button className="button button-primary" disabled={isSubmitting} onClick={() => void handleContinue()} type="button">
+            {isSubmitting ? "Uploading…" : "Continue"}
           </button>
         </div>
       </div>

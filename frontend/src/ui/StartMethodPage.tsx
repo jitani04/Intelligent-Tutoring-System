@@ -14,10 +14,10 @@ export function StartMethodPage() {
     <div className="flow-page">
       <div className="flow-card">
         <div className="flow-step">Step 3 of 3</div>
-        <h1>This tutor is supposed to push the learning back onto you.</h1>
+        <h1>How this tutor will work</h1>
         <p className="flow-copy">
-          It should ask first, probe your thinking, correct misconceptions, and only explain more
-          directly after real effort. That is the product behavior the PRD is asking for.
+          You should expect a guided conversation: questions first, hints when needed, and fuller
+          explanations only after the system understands where you are getting stuck.
         </p>
 
         <div className="method-principles">

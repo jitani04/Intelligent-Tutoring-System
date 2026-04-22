@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatStreamEvent, Conversation } from "./types";
+import type { ChatRequest, ChatStreamEvent, Conversation, Material } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -62,6 +62,43 @@ export async function getConversation(userId: number, conversationId: number): P
     headers: buildHeaders(userId),
   });
   return parseJson(response);
+}
+
+export async function listMaterials(userId: number): Promise<Material[]> {
+  const response = await fetch(`${API_BASE_URL}/materials`, {
+    headers: buildHeaders(userId),
+  });
+  return parseJson(response);
+}
+
+export async function uploadMaterial(
+  userId: number,
+  file: File,
+  subject?: string,
+): Promise<Material> {
+  const formData = new FormData();
+  formData.set("file", file);
+  if (subject?.trim()) {
+    formData.set("subject", subject.trim());
+  }
+
+  const response = await fetch(`${API_BASE_URL}/materials`, {
+    method: "POST",
+    headers: buildHeaders(userId),
+    body: formData,
+  });
+  return parseJson(response);
+}
+
+export async function deleteMaterial(userId: number, materialId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/materials/${materialId}`, {
+    method: "DELETE",
+    headers: buildHeaders(userId),
+  });
+
+  if (!response.ok) {
+    await parseJson(response);
+  }
 }
 
 function parseEventBlock(block: string): ChatStreamEvent | null {

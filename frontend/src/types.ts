@@ -19,6 +19,30 @@ export interface ChatRequest {
   message: string;
 }
 
+export type MaterialStatus = "processing" | "ready" | "failed";
+
+export interface Material {
+  id: number;
+  user_id: number;
+  filename: string;
+  mime_type: string;
+  subject: string | null;
+  status: MaterialStatus;
+  error_message: string | null;
+  created_at: string;
+  processed_at: string | null;
+}
+
+export interface RetrievedSource {
+  chunk_id: number;
+  material_id: number;
+  material_filename: string;
+  subject: string | null;
+  page_number: number | null;
+  snippet: string;
+  similarity_score: number;
+}
+
 export interface ChatStartEvent {
   event: "start";
   data: {
@@ -31,6 +55,13 @@ export interface ChatTokenEvent {
   event: "token";
   data: {
     delta: string;
+  };
+}
+
+export interface ChatSourcesEvent {
+  event: "sources";
+  data: {
+    sources: RetrievedSource[];
   };
 }
 
@@ -49,4 +80,4 @@ export interface ChatErrorEvent {
   };
 }
 
-export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatEndEvent | ChatErrorEvent;
+export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent;

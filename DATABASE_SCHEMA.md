@@ -1,19 +1,23 @@
 # Database Schema
 
-This project currently has three application tables:
+This project now has five application tables:
 
 - `users`
 - `conversations`
 - `messages`
+- `materials`
+- `material_chunks`
 
-The schema is created by the initial Alembic migration in [20250225_000001_initial_schema.py](/Users/jennaitani/Downloads/Intelligent%20Tutoring%20System/alembic/versions/20250225_000001_initial_schema.py) and mirrored by the SQLAlchemy models in [user.py](/Users/jennaitani/Downloads/Intelligent%20Tutoring%20System/app/models/user.py), [conversation.py](/Users/jennaitani/Downloads/Intelligent%20Tutoring%20System/app/models/conversation.py), and [message.py](/Users/jennaitani/Downloads/Intelligent%20Tutoring%20System/app/models/message.py).
+The base schema is created by [20250225_000001_initial_schema.py](/Users/jennaitani/Downloads/Intelligent%20Tutoring%20System/alembic/versions/20250225_000001_initial_schema.py), and the RAG tables are added by [20260420_000002_add_material_rag_schema.py](/Users/jennaitani/Downloads/Intelligent%20Tutoring%20System/alembic/versions/20260420_000002_add_material_rag_schema.py).
 
 ## ER Diagram
 
 ```mermaid
 erDiagram
     USERS ||--o{ CONVERSATIONS : owns
+    USERS ||--o{ MATERIALS : uploads
     CONVERSATIONS ||--o{ MESSAGES : contains
+    MATERIALS ||--o{ MATERIAL_CHUNKS : splits_into
 
     USERS {
         int id PK
@@ -34,87 +38,106 @@ erDiagram
         text content
         timestamptz created_at
     }
+
+    MATERIALS {
+        int id PK
+        int user_id FK
+        string filename
+        text storage_path
+        string mime_type
+        string subject
+        enum status
+        text error_message
+        timestamptz created_at
+        timestamptz processed_at
+    }
+
+    MATERIAL_CHUNKS {
+        int id PK
+        int material_id FK
+        int chunk_index
+        text content
+        vector embedding
+        int char_start
+        int char_end
+        int page_number
+        timestamptz created_at
+    }
 ```
 
 ## Table Details
 
 ### `users`
-
-Purpose:
-Stores the account record used to own conversations. The current app uses `X-User-Id` rather than full auth, so this table is the owner anchor for all conversation data.
+Stores the account record used to own conversations and uploaded materials.
 
 Columns:
-
 - `id`: primary key
 - `email`: unique user email, indexed
 - `created_at`: timestamp with time zone, defaults to `now()`
 
-Indexes and constraints:
-
-- primary key on `id`
-- unique index on `email`
-
 ### `conversations`
-
-Purpose:
 Represents a chat session owned by a single user.
 
 Columns:
-
 - `id`: primary key
 - `user_id`: foreign key to `users.id`
 - `created_at`: timestamp with time zone, defaults to `now()`
 
-Indexes and constraints:
-
-- primary key on `id`
-- index on `user_id`
-- foreign key `user_id -> users.id`
-- `ON DELETE CASCADE` from user to conversations
-
 ### `messages`
-
-Purpose:
-Stores each turn in a conversation, including both user and assistant messages.
+Stores each turn in a conversation.
 
 Columns:
-
 - `id`: primary key
 - `conversation_id`: foreign key to `conversations.id`
 - `role`: enum `message_role`
 - `content`: text body of the message
 - `created_at`: timestamp with time zone, defaults to `now()`
 
-Enum values:
+### `materials`
+Stores uploaded study materials and ingestion state.
 
-- `user`
-- `assistant`
-- `system`
+Columns:
+- `id`: primary key
+- `user_id`: foreign key to `users.id`
+- `filename`: original file name used for display
+- `storage_path`: local path to the stored upload
+- `mime_type`: uploaded MIME type
+- `subject`: optional subject tag from the UI
+- `status`: enum `material_status` with `processing`, `ready`, `failed`
+- `error_message`: short ingestion failure detail when status is `failed`
+- `created_at`: upload timestamp
+- `processed_at`: ingestion completion or failure timestamp
 
-Indexes and constraints:
+### `material_chunks`
+Stores semantic-retrieval chunks for a material.
 
-- primary key on `id`
-- index on `conversation_id`
-- index on `created_at`
-- foreign key `conversation_id -> conversations.id`
-- `ON DELETE CASCADE` from conversation to messages
+Columns:
+- `id`: primary key
+- `material_id`: foreign key to `materials.id`
+- `chunk_index`: stable order within the material
+- `content`: chunk text used for retrieval and prompt context
+- `embedding`: `pgvector` embedding column
+- `char_start`: chunk start offset inside the extracted block
+- `char_end`: chunk end offset inside the extracted block
+- `page_number`: optional PDF page number for citations
+- `created_at`: insert timestamp
 
 ## Relationship Summary
 
 - One `user` can have many `conversations`.
+- One `user` can have many `materials`.
 - One `conversation` belongs to exactly one `user`.
 - One `conversation` can have many `messages`.
-- One `message` belongs to exactly one `conversation`.
+- One `material` belongs to exactly one `user`.
+- One `material` can have many `material_chunks`.
 
 ## Current Limits
 
-This schema is still Milestone 1 level. It does not yet model:
+This schema still does not model:
 
 - authentication credentials or sessions
-- subjects or courses
-- tutoring goals or learner profiles
-- retrieval documents or embeddings
+- subjects or courses as first-class entities
+- learner profiles or mastery tracking
 - tool calls, tool outputs, or agent traces
-- grading, mastery tracking, or progress analytics
-
-Those would likely arrive in future migrations once the tutoring-specific domain model is introduced.
+- cloud object storage metadata
+- document annotations or citation anchors

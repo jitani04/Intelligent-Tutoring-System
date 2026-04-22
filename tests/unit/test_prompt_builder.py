@@ -1,4 +1,5 @@
 from app.services.prompt_builder import build_responses_input
+from app.services.retriever import RetrievedChunk
 
 
 def test_prompt_builder_includes_system_and_user_message() -> None:
@@ -20,10 +21,30 @@ def test_prompt_builder_includes_context_when_provided() -> None:
         system_prompt="System instruction",
         history=[],
         user_query="Question",
-        retrieved_context=["Context A", "Context B"],
+        retrieved_context=[
+            RetrievedChunk(
+                chunk_id=1,
+                material_id=10,
+                material_filename="notes.pdf",
+                subject="Biology",
+                content="Context A",
+                page_number=2,
+                similarity_score=0.92,
+            ),
+            RetrievedChunk(
+                chunk_id=2,
+                material_id=10,
+                material_filename="notes.pdf",
+                subject="Biology",
+                content="Context B",
+                page_number=None,
+                similarity_score=0.88,
+            ),
+        ],
     )
 
     system_text = messages[0]["content"]
-    assert "Relevant context:" in system_text
+    assert "Relevant study material context:" in system_text
+    assert "notes.pdf, page 2" in system_text
     assert "Context A" in system_text
     assert "Context B" in system_text

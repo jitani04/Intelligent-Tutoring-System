@@ -28,3 +28,6 @@ frontend/.vite/
 
 # OS / editor noise
 .DS_Store
+
+# Local material uploads
+storage/uploads/

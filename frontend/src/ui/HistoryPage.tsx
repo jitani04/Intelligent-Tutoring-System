@@ -61,8 +61,8 @@ export function HistoryPage() {
           <p className="page-kicker">History</p>
           <h1>Session history</h1>
           <p className="resource-copy">
-            This page maps to the PRD’s history view: resume past sessions, scan topics, and get a
-            lightweight subject summary.
+            Pick up where you left off, revisit earlier explanations, and scan your recent study
+            work by subject.
           </p>
         </div>
 
@@ -79,7 +79,7 @@ export function HistoryPage() {
           <Link className="button button-secondary" to="/materials">
             Materials
           </Link>
-          <Link className="button button-primary" to="/start/topic">
+          <Link className="button button-primary" to="/sessions/new">
             New session
           </Link>
         </div>

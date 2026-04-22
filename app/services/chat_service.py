@@ -42,7 +42,12 @@ async def stream_chat(
     )
     history_messages = list(history_result.scalars())
 
-    retrieved_context = await retriever.retrieve_context(user_message)
+    retrieved_context = await retriever.retrieve_context(
+        session=session,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        query=user_message,
+    )
 
     history_turns: list[ChatTurn] = [
         {"role": msg.role.value, "content": msg.content}
@@ -58,6 +63,23 @@ async def stream_chat(
     )
 
     yield SseEvent(event="start", data={"conversation_id": conversation_id, "message_id": None})
+    yield SseEvent(
+        event="sources",
+        data={
+            "sources": [
+                {
+                    "chunk_id": chunk.chunk_id,
+                    "material_id": chunk.material_id,
+                    "material_filename": chunk.material_filename,
+                    "subject": chunk.subject,
+                    "page_number": chunk.page_number,
+                    "snippet": chunk.snippet,
+                    "similarity_score": round(chunk.similarity_score, 4),
+                }
+                for chunk in retrieved_context
+            ]
+        },
+    )
 
     assistant_parts: list[str] = []
     usage: dict[str, Any] | None = None

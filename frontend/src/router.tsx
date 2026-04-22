@@ -21,7 +21,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/start",
-    element: <Navigate replace to="/start/topic" />,
+    element: <Navigate replace to="/sessions/new" />,
   },
   {
     path: "/start/topic",

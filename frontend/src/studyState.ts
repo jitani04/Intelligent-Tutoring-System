@@ -8,18 +8,8 @@ export interface SessionMetadata extends StudyContext {
   conversationId: number;
 }
 
-export interface MaterialRecord {
-  id: string;
-  name: string;
-  subject: string;
-  status: "ready" | "processing";
-  source: "onboarding" | "library";
-  addedAt: string;
-}
-
 const PENDING_CONTEXT_KEY = "its-pending-study-context";
 const SESSION_METADATA_KEY = "its-session-metadata";
-const MATERIALS_KEY = "its-materials";
 const DEFAULT_USER_ID = "1";
 
 function hasWindow(): boolean {
@@ -49,14 +39,6 @@ function writeJson<T>(key: string, value: T): void {
   }
 
   window.localStorage.setItem(key, JSON.stringify(value));
-}
-
-function buildId(prefix: string): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export function getStoredUserId(): string {
@@ -96,35 +78,4 @@ export function attachContextToConversation(conversationId: number, context: Stu
   const nextEntry: SessionMetadata = { conversationId, ...context };
   writeJson(SESSION_METADATA_KEY, [nextEntry, ...existing]);
   return nextEntry;
-}
-
-export function getMaterials(): MaterialRecord[] {
-  return readJson<MaterialRecord[]>(MATERIALS_KEY, []);
-}
-
-export function addMaterials(
-  names: string[],
-  subject: string,
-  source: MaterialRecord["source"],
-): MaterialRecord[] {
-  const timestamp = new Date().toISOString();
-  const trimmedSubject = subject.trim() || "General";
-  const nextMaterials = names.map((name) => ({
-    id: buildId("material"),
-    name,
-    subject: trimmedSubject,
-    status: "ready" as const,
-    source,
-    addedAt: timestamp,
-  }));
-
-  const merged = [...nextMaterials, ...getMaterials()];
-  writeJson(MATERIALS_KEY, merged);
-  return merged;
-}
-
-export function deleteMaterial(materialId: string): MaterialRecord[] {
-  const nextMaterials = getMaterials().filter((material) => material.id !== materialId);
-  writeJson(MATERIALS_KEY, nextMaterials);
-  return nextMaterials;
 }

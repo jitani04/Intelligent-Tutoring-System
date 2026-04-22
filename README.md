@@ -132,7 +132,8 @@ curl -N -X POST http://localhost:8000/chat/1 \
   -H "X-User-Id: 1" \
   -d '{"message":"Hello"}'
 ```
-
+## Colorway 
+cobalt sky
 ## Notes
 - Ownership violations return `404` to avoid leaking conversation existence.
 - Retriever currently returns empty context list by design.

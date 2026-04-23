@@ -45,9 +45,13 @@ async def stream_chat_endpoint(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> StreamingResponse:
     try:
-        await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)
+        conversation = await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Conversation not found.") from exc
+
+    system_prompt = settings.system_prompt
+    if conversation.subject:
+        system_prompt = f"The student is studying: {conversation.subject}.\n\n{system_prompt}"
 
     llm_service = LLMService(
         api_key=settings.llm_api_key,
@@ -63,7 +67,7 @@ async def stream_chat_endpoint(
                 conversation_id=conversation_id,
                 user_id=user_id,
                 user_message=request.message,
-                system_prompt=settings.system_prompt,
+                system_prompt=system_prompt,
             )
             async for payload in _with_keepalive(source, settings.keepalive_seconds):
                 yield payload

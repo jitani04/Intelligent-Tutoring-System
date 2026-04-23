@@ -1,13 +1,20 @@
 from typing import Annotated
 
-from fastapi import Header, HTTPException, status
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from app.core.security import decode_access_token
+
+_bearer = HTTPBearer()
 
 
-async def get_user_id(x_user_id: Annotated[int | None, Header(alias="X-User-Id")] = None) -> int:
-    if x_user_id is None or x_user_id <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A valid X-User-Id header is required.",
-        )
-    return x_user_id
-
+async def get_user_id(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
+) -> int:
+    try:
+        return decode_access_token(credentials.credentials)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")

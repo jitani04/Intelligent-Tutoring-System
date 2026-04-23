@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_user_id
 from app.db.session import get_db_session
 from app.models.user import User
-from app.schemas.conversation import ConversationRead
+from app.schemas.conversation import ConversationCreate, ConversationRead
 from app.services.conversation_service import create_conversation, get_conversation_for_user, list_conversations_for_user
 from app.services.errors import ConversationNotFoundError
 
@@ -27,12 +27,13 @@ async def list_conversations_endpoint(
 async def create_conversation_endpoint(
     user_id: Annotated[int, Depends(get_user_id)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    body: ConversationCreate = ConversationCreate(),
 ) -> ConversationRead:
     result = await session.execute(select(User.id).where(User.id == user_id))
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    conversation = await create_conversation(session=session, user_id=user_id)
+    conversation = await create_conversation(session=session, user_id=user_id, subject=body.subject)
     return ConversationRead.model_validate(conversation)
 
 

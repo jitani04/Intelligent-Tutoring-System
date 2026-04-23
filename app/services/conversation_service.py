@@ -6,8 +6,8 @@ from app.models.conversation import Conversation
 from app.services.errors import ConversationNotFoundError
 
 
-async def create_conversation(*, session: AsyncSession, user_id: int) -> Conversation:
-    conversation = Conversation(user_id=user_id)
+async def create_conversation(*, session: AsyncSession, user_id: int, subject: str | None = None) -> Conversation:
+    conversation = Conversation(user_id=user_id, subject=subject)
     session.add(conversation)
     await session.commit()
     return await get_conversation_for_user(session=session, conversation_id=conversation.id, user_id=user_id)

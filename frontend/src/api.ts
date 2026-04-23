@@ -1,4 +1,5 @@
-import type { ChatRequest, ChatStreamEvent, Conversation, Material } from "./types";
+import { getToken } from "./auth";
+import type { AttemptResult, ChatRequest, ChatStreamEvent, Conversation, Material, ProjectProfile, QuizRead } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -12,9 +13,12 @@ function resolveDefaultApiBaseUrl(): string {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? resolveDefaultApiBaseUrl();
 
-function buildHeaders(userId: number, extraHeaders?: HeadersInit): Headers {
+function buildHeaders(extraHeaders?: HeadersInit): Headers {
   const headers = new Headers(extraHeaders);
-  headers.set("X-User-Id", String(userId));
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
   return headers;
 }
 
@@ -42,40 +46,57 @@ export async function getHealth(): Promise<{ status: string }> {
   return parseJson(response);
 }
 
-export async function listConversations(userId: number): Promise<Conversation[]> {
+export async function register(email: string, password: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await parseJson<{ access_token: string }>(response);
+  return data.access_token;
+}
+
+export async function login(email: string, password: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await parseJson<{ access_token: string }>(response);
+  return data.access_token;
+}
+
+export async function listConversations(): Promise<Conversation[]> {
   const response = await fetch(`${API_BASE_URL}/conversations`, {
-    headers: buildHeaders(userId),
+    headers: buildHeaders(),
   });
   return parseJson(response);
 }
 
-export async function createConversation(userId: number): Promise<Conversation> {
+export async function createConversation(subject?: string): Promise<Conversation> {
   const response = await fetch(`${API_BASE_URL}/conversations`, {
     method: "POST",
-    headers: buildHeaders(userId),
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ subject: subject ?? null }),
   });
   return parseJson(response);
 }
 
-export async function getConversation(userId: number, conversationId: number): Promise<Conversation> {
+export async function getConversation(conversationId: number): Promise<Conversation> {
   const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
-    headers: buildHeaders(userId),
+    headers: buildHeaders(),
   });
   return parseJson(response);
 }
 
-export async function listMaterials(userId: number): Promise<Material[]> {
+export async function listMaterials(): Promise<Material[]> {
   const response = await fetch(`${API_BASE_URL}/materials`, {
-    headers: buildHeaders(userId),
+    headers: buildHeaders(),
   });
   return parseJson(response);
 }
 
-export async function uploadMaterial(
-  userId: number,
-  file: File,
-  subject?: string,
-): Promise<Material> {
+export async function uploadMaterial(file: File, subject?: string): Promise<Material> {
   const formData = new FormData();
   formData.set("file", file);
   if (subject?.trim()) {
@@ -84,16 +105,56 @@ export async function uploadMaterial(
 
   const response = await fetch(`${API_BASE_URL}/materials`, {
     method: "POST",
-    headers: buildHeaders(userId),
+    headers: buildHeaders(),
     body: formData,
   });
   return parseJson(response);
 }
 
-export async function deleteMaterial(userId: number, materialId: number): Promise<void> {
+export async function getProjectProfile(subject: string): Promise<ProjectProfile> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function setupProject(subject: string, level: string | null, goals: string | null): Promise<ProjectProfile> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/setup`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ subject, level, goals }),
+  });
+  return parseJson(response);
+}
+
+export async function generateMindMap(subject: string): Promise<ProjectProfile> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/mindmap`, {
+    method: "POST",
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function getConversationQuizzes(conversationId: number): Promise<QuizRead[]> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/quizzes`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function submitQuizAttempt(quizId: number, answer: string): Promise<AttemptResult> {
+  const response = await fetch(`${API_BASE_URL}/quizzes/${quizId}/attempt`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ answer }),
+  });
+  return parseJson(response);
+}
+
+export async function deleteMaterial(materialId: number): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/materials/${materialId}`, {
     method: "DELETE",
-    headers: buildHeaders(userId),
+    headers: buildHeaders(),
   });
 
   if (!response.ok) {
@@ -133,14 +194,13 @@ function parseEventBlock(block: string): ChatStreamEvent | null {
 }
 
 export async function streamChat(
-  userId: number,
   conversationId: number,
   request: ChatRequest,
   onEvent: (event: ChatStreamEvent) => void,
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/chat/${conversationId}`, {
     method: "POST",
-    headers: buildHeaders(userId, {
+    headers: buildHeaders({
       "Content-Type": "application/json",
       Accept: "text/event-stream",
     }),

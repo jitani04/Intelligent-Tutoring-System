@@ -3,10 +3,12 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
+from langchain_core.messages import ToolMessage as LCToolMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message import Message, MessageRole
+from app.models.quiz import Quiz
 from app.services import retriever
 from app.services.conversation_service import get_conversation_for_user
 from app.services.llm_service import LLMService
@@ -14,11 +16,76 @@ from app.services.prompt_builder import ChatTurn, build_responses_input
 
 logger = logging.getLogger(__name__)
 
+QUIZ_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_quiz",
+            "description": (
+                "Generate a structured quiz question to formally assess student understanding. "
+                "Use this when you want a tracked knowledge check, not just a conversational question. "
+                "Prefer multiple_choice for concept checks; short_answer for applied or open-ended questions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The quiz question.",
+                    },
+                    "quiz_type": {
+                        "type": "string",
+                        "enum": ["multiple_choice", "short_answer"],
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "3-4 choices for multiple_choice. Omit for short_answer.",
+                    },
+                    "correct_answer": {
+                        "type": "string",
+                        "description": "The correct answer. For multiple_choice, must match one option exactly.",
+                    },
+                    "explanation": {
+                        "type": "string",
+                        "description": "Explanation shown to the student after they answer.",
+                    },
+                },
+                "required": ["question", "quiz_type", "correct_answer", "explanation"],
+            },
+        },
+    }
+]
+
 
 @dataclass(slots=True)
 class SseEvent:
     event: str
     data: dict[str, Any]
+
+
+async def _save_quiz(
+    *,
+    session: AsyncSession,
+    conversation_id: int,
+    question: str,
+    quiz_type: str,
+    correct_answer: str,
+    explanation: str,
+    options: list[str] | None = None,
+) -> Quiz:
+    quiz = Quiz(
+        conversation_id=conversation_id,
+        question=question,
+        quiz_type=quiz_type,
+        options=options,
+        correct_answer=correct_answer,
+        explanation=explanation,
+    )
+    session.add(quiz)
+    await session.commit()
+    await session.refresh(quiz)
+    return quiz
 
 
 async def stream_chat(
@@ -38,7 +105,9 @@ async def stream_chat(
     await session.refresh(user_msg)
 
     history_result = await session.execute(
-        select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at.asc(), Message.id.asc())
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
     )
     history_messages = list(history_result.scalars())
 
@@ -68,33 +137,79 @@ async def stream_chat(
         data={
             "sources": [
                 {
-                    "chunk_id": chunk.chunk_id,
-                    "material_id": chunk.material_id,
-                    "material_filename": chunk.material_filename,
-                    "subject": chunk.subject,
-                    "page_number": chunk.page_number,
-                    "snippet": chunk.snippet,
-                    "similarity_score": round(chunk.similarity_score, 4),
+                    "chunk_id": c.chunk_id,
+                    "material_id": c.material_id,
+                    "material_filename": c.material_filename,
+                    "subject": c.subject,
+                    "page_number": c.page_number,
+                    "snippet": c.snippet,
+                    "similarity_score": round(c.similarity_score, 4),
                 }
-                for chunk in retrieved_context
+                for c in retrieved_context
             ]
         },
     )
 
     assistant_parts: list[str] = []
     usage: dict[str, Any] | None = None
+    ai_message_chunk = None
+    tool_calls_data: list[dict[str, Any]] = []
 
     try:
-        async for event in llm_service.stream_response(input_messages=input_messages):
+        async for event in llm_service.stream_with_tools(input_messages=input_messages, tools=QUIZ_TOOLS):
             if event.type == "token" and event.delta:
                 assistant_parts.append(event.delta)
                 yield SseEvent(event="token", data={"delta": event.delta})
+            elif event.type == "tool_call_ready":
+                tool_calls_data = event.tool_calls or []
+                ai_message_chunk = event.ai_message
             elif event.type == "completed":
                 usage = event.usage
 
-        assistant_content = "".join(assistant_parts).strip()
-        if not assistant_content:
-            assistant_content = "(No response content)"
+        if tool_calls_data and ai_message_chunk is not None:
+            lc_tool_messages = []
+            pending_quiz_events: list[dict[str, Any]] = []
+
+            for tc in tool_calls_data:
+                if tc["name"] == "generate_quiz":
+                    args = tc["args"]
+                    quiz = await _save_quiz(
+                        session=session,
+                        conversation_id=conversation_id,
+                        question=args["question"],
+                        quiz_type=args["quiz_type"],
+                        options=args.get("options"),
+                        correct_answer=args["correct_answer"],
+                        explanation=args["explanation"],
+                    )
+                    lc_tool_messages.append(
+                        LCToolMessage(
+                            content=f"Quiz (ID: {quiz.id}) saved and displayed to the student.",
+                            tool_call_id=tc["id"],
+                        )
+                    )
+                    pending_quiz_events.append({
+                        "quiz_id": quiz.id,
+                        "question": quiz.question,
+                        "quiz_type": quiz.quiz_type,
+                        "options": quiz.options,
+                    })
+
+            # Second pass: stream the intro response, then emit quiz card(s)
+            original_lc = llm_service.to_langchain_messages(input_messages)
+            second_pass = original_lc + [ai_message_chunk] + lc_tool_messages
+
+            async for event in llm_service.stream_lc(lc_messages=second_pass):
+                if event.type == "token" and event.delta:
+                    assistant_parts.append(event.delta)
+                    yield SseEvent(event="token", data={"delta": event.delta})
+                elif event.type == "completed":
+                    usage = event.usage
+
+            for quiz_data in pending_quiz_events:
+                yield SseEvent(event="quiz", data=quiz_data)
+
+        assistant_content = "".join(assistant_parts).strip() or "(No response content)"
 
         assistant_msg = Message(
             conversation_id=conversation_id,
@@ -107,12 +222,10 @@ async def stream_chat(
 
         yield SseEvent(
             event="end",
-            data={
-                "assistant_message_id": assistant_msg.id,
-                "usage": usage,
-            },
+            data={"assistant_message_id": assistant_msg.id, "usage": usage},
         )
-    except Exception as exc:  # noqa: BLE001
+
+    except Exception as exc:
         logger.exception("Streaming chat failed", extra={"conversation_id": conversation_id, "user_id": user_id})
         await session.rollback()
         yield SseEvent(event="error", data={"error": str(exc)})

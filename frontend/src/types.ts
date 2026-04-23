@@ -11,6 +11,7 @@ export interface Message {
 export interface Conversation {
   id: number;
   user_id: number;
+  subject: string | null;
   created_at: string;
   messages: Message[];
 }
@@ -80,4 +81,47 @@ export interface ChatErrorEvent {
   };
 }
 
-export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent;
+export interface MindMapNode {
+  topic: string;
+  subtopics: string[];
+}
+
+export interface MindMap {
+  subject: string;
+  nodes: MindMapNode[];
+}
+
+export interface ProjectProfile {
+  id: number;
+  subject: string;
+  level: string | null;
+  goals: string | null;
+  mind_map: MindMap | null;
+  created_at: string;
+}
+
+export interface QuizData {
+  quiz_id: number;
+  question: string;
+  quiz_type: "multiple_choice" | "short_answer";
+  options: string[] | null;
+}
+
+export interface QuizRead extends QuizData {
+  id: number;
+  conversation_id: number;
+  created_at: string;
+}
+
+export interface AttemptResult {
+  is_correct: boolean;
+  correct_answer: string;
+  explanation: string;
+}
+
+export interface ChatQuizEvent {
+  event: "quiz";
+  data: QuizData;
+}
+
+export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatQuizEvent;

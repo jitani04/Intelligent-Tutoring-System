@@ -1,10 +1,13 @@
 import { FormEvent, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 
-const LANDING_FEATURES = [
+import { login, register } from "../api";
+import { isAuthenticated, setToken } from "../auth";
+
+const FEATURES = [
   {
     title: "Structured guidance",
-    description: "The tutor leads with questions, hints, and checkpoints instead of jumping to the answer.",
+    description: "The agent leads with questions, hints, and checkpoints instead of jumping to the answer.",
   },
   {
     title: "Course-grounded study",
@@ -16,12 +19,37 @@ const LANDING_FEATURES = [
   },
 ];
 
-export function LandingPage() {
-  const [isSignInOpen, setIsSignInOpen] = useState(false);
+type ModalMode = "signin" | "signup";
 
-  function handleSignInSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSignInOpen(false);
+export function LandingPage() {
+  const navigate = useNavigate();
+
+  if (isAuthenticated()) {
+    return <Navigate replace to="/dashboard" />;
+  }
+
+  const [mode, setMode] = useState<ModalMode | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function openModal(m: ModalMode) {
+    setEmail(""); setPassword(""); setError(null); setMode(m);
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null); setLoading(true);
+    try {
+      const token = mode === "signup" ? await register(email, password) : await login(email, password);
+      setToken(token);
+      navigate("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -48,94 +76,98 @@ export function LandingPage() {
           </div>
 
           <div className="landing-hero-copy">
-            <p className="landing-kicker">KnowledgePal</p>
-            <h1>A conversational tutor that pushes students to think before it explains.</h1>
+            <span className="landing-kicker">KnowledgePal</span>
+            <h1>A tutor that thinks before it answers.</h1>
             <p className="landing-summary">
-              Start with subject context, optional course material, and a session flow that is built
-              around Socratic tutoring instead of answer dumping.
+              An AI agent that selects the right learning tool — quiz, diagram, or Socratic dialogue
+              — based on where you're actually stuck.
             </p>
-
             <div className="landing-actions">
-              <Link className="button button-primary" to="/sessions/new">
-                Start a session
-              </Link>
-              <button className="button button-secondary" onClick={() => setIsSignInOpen(true)} type="button">
+              <button className="button button-primary" onClick={() => openModal("signup")} type="button">
+                Get started free
+              </button>
+              <button className="button button-secondary" onClick={() => openModal("signin")} type="button">
                 Sign in
               </button>
             </div>
-
             <div className="landing-inline-links">
-              <Link className="text-link" to="/materials">
-                Upload your material
-              </Link>
-              <Link className="text-link" to="/history">
-                View session history
-              </Link>
+              <Link className="text-link" to="/materials">Upload material</Link>
+              <Link className="text-link" to="/history">Session history</Link>
             </div>
           </div>
         </div>
       </header>
 
-      <section className="landing-grid" id="scope">
-        {LANDING_FEATURES.map((feature) => (
-          <article className="landing-card" key={feature.title}>
-            <h2>{feature.title}</h2>
-            <p>{feature.description}</p>
+      <section className="landing-grid" id="features">
+        {FEATURES.map((f) => (
+          <article className="landing-card" key={f.title}>
+            <h2>{f.title}</h2>
+            <p>{f.description}</p>
           </article>
         ))}
       </section>
 
-      {isSignInOpen ? (
-        <div className="landing-modal-backdrop" onClick={() => setIsSignInOpen(false)} role="presentation">
+      {mode !== null && (
+        <div className="landing-modal-backdrop" onClick={() => setMode(null)} role="presentation">
           <div
-            aria-labelledby="signin-modal-title"
-            aria-modal="true"
             className="landing-modal"
-            onClick={(event) => event.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
             role="dialog"
+            aria-modal="true"
           >
-            <div className="landing-modal-header">
+            <div className="landing-modal-head">
               <div>
-                <p className="landing-kicker">Account</p>
-                <h2 id="signin-modal-title">Sign in to continue</h2>
+                <span className="landing-kicker-sm">Account</span>
+                <h2>{mode === "signup" ? "Create account" : "Welcome back"}</h2>
               </div>
-              <button
-                aria-label="Close sign in modal"
-                className="modal-close"
-                onClick={() => setIsSignInOpen(false)}
-                type="button"
-              >
-                ×
+              <button className="modal-close-x" onClick={() => setMode(null)} type="button">×</button>
+            </div>
+
+            <div className="modal-tabs-row">
+              <button className={`modal-tab-btn ${mode === "signin" ? "active" : ""}`} onClick={() => setMode("signin")} type="button">
+                Sign in
+              </button>
+              <button className={`modal-tab-btn ${mode === "signup" ? "active" : ""}`} onClick={() => setMode("signup")} type="button">
+                Create account
               </button>
             </div>
 
-            <p className="landing-modal-copy">
-              Sign in to keep your materials, session history, and study context in one place.
-            </p>
+            <form className="modal-form" onSubmit={(e) => void handleSubmit(e)}>
+              <div className="modal-field">
+                <label>Email</label>
+                <input
+                  className="modal-input"
+                  type="email" required
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="modal-field">
+                <label>Password</label>
+                <input
+                  className="modal-input"
+                  type="password" required
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
 
-            <form className="modal-form" onSubmit={handleSignInSubmit}>
-              <label className="flow-field">
-                <span>Email</span>
-                <input autoComplete="email" placeholder="you@example.com" type="email" />
-              </label>
+              {error ? <p className="error-text">{error}</p> : null}
 
-              <label className="flow-field">
-                <span>Password</span>
-                <input autoComplete="current-password" placeholder="Enter your password" type="password" />
-              </label>
-
-              <div className="flow-actions">
-                <button className="button button-secondary" onClick={() => setIsSignInOpen(false)} type="button">
-                  Cancel
-                </button>
-                <button className="button button-primary" type="submit">
-                  Continue
+              <div className="modal-actions">
+                <button className="button button-secondary" onClick={() => setMode(null)} type="button">Cancel</button>
+                <button className="button button-primary" disabled={loading} type="submit">
+                  {loading ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
                 </button>
               </div>
             </form>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

@@ -1,203 +1,131 @@
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 
 import { deleteMaterial, listMaterials, uploadMaterial } from "../api";
-import { getPendingStudyContext, getStoredUserId } from "../studyState";
+import { getPendingStudyContext } from "../studyState";
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function MaterialsPage() {
   const queryClient = useQueryClient();
   const pendingContext = getPendingStudyContext();
   const [subject, setSubject] = useState(pendingContext?.subject ?? "");
-  const [userIdInput, setUserIdInput] = useState(() => getStoredUserId());
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const parsedUserId = Number(userIdInput);
-  const isValidUserId = Number.isInteger(parsedUserId) && parsedUserId > 0;
-
-  useEffect(() => {
-    if (isValidUserId) {
-      window.localStorage.setItem("its-user-id", userIdInput);
-    }
-  }, [isValidUserId, userIdInput]);
-
   const materialsQuery = useQuery({
-    queryKey: ["materials", parsedUserId],
-    queryFn: () => listMaterials(parsedUserId),
-    enabled: isValidUserId,
-    refetchInterval: (query) =>
-      query.state.data?.some((material) => material.status === "processing") ? 3000 : false,
+    queryKey: ["materials"],
+    queryFn: listMaterials,
+    refetchInterval: (q) =>
+      q.state.data?.some((m) => m.status === "processing") ? 3000 : false,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (materialId: number) => deleteMaterial(parsedUserId, materialId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["materials", parsedUserId] });
-    },
+    mutationFn: (id: number) => deleteMaterial(id),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["materials"] }); },
   });
 
   const materials = materialsQuery.data ?? [];
-  const subjectSummary = useMemo(
-    () => new Set(materials.map((material) => material.subject ?? "General")).size,
-    [materials],
-  );
 
-  async function handleFilesChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    if (!isValidUserId || files.length === 0) {
-      return;
-    }
-
+  async function handleFiles(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
     setUploadError(null);
-    setUploadingNames(files.map((file) => file.name));
+    setUploadingNames(files.map((f) => f.name));
     try {
-      await Promise.all(files.map((file) => uploadMaterial(parsedUserId, file, subject)));
-      await queryClient.invalidateQueries({ queryKey: ["materials", parsedUserId] });
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "Upload failed.");
+      await Promise.all(files.map((f) => uploadMaterial(f, subject)));
+      await queryClient.invalidateQueries({ queryKey: ["materials"] });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
       setUploadingNames([]);
-      event.target.value = "";
+      e.target.value = "";
     }
   }
 
-  function handleDelete(materialId: number) {
-    void deleteMutation.mutateAsync(materialId);
-  }
+  const statusClass: Record<string, string> = {
+    ready: "status-dot-ready",
+    processing: "status-dot-processing",
+    failed: "status-dot-failed",
+  };
 
   return (
-    <div className="resource-page">
-      <header className="resource-header">
-        <div>
-          <p className="page-kicker">Materials</p>
-          <h1>Course material library</h1>
-          <p className="resource-copy">
-            Keep your readings, lecture notes, and course files in one place so the tutor can
-            ground answers in your actual study material.
-          </p>
+    <div className="page-shell">
+      <div className="page-header">
+        <div className="page-header-text">
+          <h1 className="page-title">Materials</h1>
+          <p className="page-subtitle">Upload course files so the agent can ground its answers in your study material.</p>
         </div>
+      </div>
 
-        <div className="resource-actions">
-          <label className="flow-field compact">
-            <span>User id</span>
-            <input
-              min={1}
-              onChange={(event) => setUserIdInput(event.target.value)}
-              type="number"
-              value={userIdInput}
-            />
-          </label>
-          <Link className="button button-secondary" to="/history">
-            Session history
-          </Link>
-          <Link className="button button-primary" to="/sessions/new">
-            Start a session
-          </Link>
+      <div className="content-card">
+        <div className="content-card-title">Upload</div>
+        <div className="flow-field" style={{ marginBottom: "0.875rem" }}>
+          <span>Subject tag</span>
+          <input
+            placeholder="Biology 101"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            style={{ padding: "0.6rem 0.875rem", border: "1px solid var(--panel-border)", borderRadius: "8px", background: "var(--surface)", outline: "none", width: "100%" }}
+          />
         </div>
-      </header>
+        <label className="upload-zone">
+          <div className="upload-zone-icon">📄</div>
+          <div className="upload-zone-label">Drop files or click to browse</div>
+          <div className="upload-zone-sub">PDF, TXT, MD · max 10 MB each</div>
+          <input type="file" multiple style={{ display: "none" }} onChange={handleFiles} />
+        </label>
+        {uploadError ? <p className="error-text" style={{ marginTop: "0.5rem" }}>{uploadError}</p> : null}
+      </div>
 
-      <section className="resource-grid">
-        <div className="resource-card">
-          <p className="rail-card-label">Upload material</p>
-          <label className="flow-field">
-            <span>Subject tag</span>
-            <input
-              onChange={(event) => setSubject(event.target.value)}
-              placeholder="Biology 101"
-              value={subject}
-            />
-          </label>
+      <div className="content-card">
+        <div className="content-card-title">All materials</div>
 
-          <label className="upload-dropzone">
-            <span>Select files</span>
-            <small>Supported formats: PDF, TXT, and MD.</small>
-            <input disabled={!isValidUserId} multiple onChange={handleFilesChange} type="file" />
-          </label>
-
-          {!isValidUserId ? <p className="error-text">Enter a valid user id before uploading.</p> : null}
-          {uploadError ? <p className="error-text">{uploadError}</p> : null}
-        </div>
-
-        <div className="resource-card">
-          <p className="rail-card-label">Current snapshot</p>
-          <div className="snapshot-grid">
-            <div>
-              <strong>{materials.length}</strong>
-              <span>stored materials</span>
-            </div>
-            <div>
-              <strong>{subjectSummary}</strong>
-              <span>subjects tagged</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="resource-card">
-        <div className="table-header">
-          <div>
-            <p className="rail-card-label">Library</p>
-            <h2>Uploaded materials</h2>
-          </div>
-        </div>
-
-        {materialsQuery.isLoading ? <p className="muted">Loading materials…</p> : null}
+        {materialsQuery.isLoading ? <p className="muted">Loading…</p> : null}
         {materialsQuery.isError ? <p className="error-text">Failed to load materials.</p> : null}
 
-        {uploadingNames.length > 0 ? (
-          <div className="resource-list pending-resource-list">
-            {uploadingNames.map((name) => (
-              <article className="resource-item" key={name}>
-                <div>
-                  <strong>{name}</strong>
-                  <p>{subject.trim() || "General"} • Uploading now</p>
-                </div>
-                <div className="resource-item-actions">
-                  <span className="status-pill">uploading</span>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : null}
+        <div className="material-list">
+          {uploadingNames.map((name) => (
+            <div key={name} className="material-row">
+              <div className="material-row-icon">📄</div>
+              <div className="material-row-info">
+                <div className="material-row-name">{name}</div>
+                <div className="material-row-meta">Uploading…</div>
+              </div>
+              <div className="status-dot status-dot-processing" />
+            </div>
+          ))}
 
-        {materials.length === 0 && uploadingNames.length === 0 && !materialsQuery.isLoading ? (
-          <p className="muted">No materials stored yet.</p>
-        ) : (
-          <div className="resource-list">
-            {materials.map((material) => (
-              <article className="resource-item" key={material.id}>
-                <div>
-                  <strong>{material.filename}</strong>
-                  <p>
-                    {material.subject ?? "General"} • {formatDate(material.created_at)}
-                  </p>
-                  {material.error_message ? <p className="error-text">{material.error_message}</p> : null}
+          {materials.length === 0 && uploadingNames.length === 0 && !materialsQuery.isLoading ? (
+            <p className="muted">No materials yet. Upload files above.</p>
+          ) : null}
+
+          {materials.map((m) => (
+            <div key={m.id} className="material-row">
+              <div className="material-row-icon">📄</div>
+              <div className="material-row-info">
+                <div className="material-row-name">{m.filename}</div>
+                <div className="material-row-meta">
+                  {m.subject ?? "General"} · {formatDate(m.created_at)}
+                  {m.error_message ? ` · ${m.error_message}` : ""}
                 </div>
-                <div className="resource-item-actions">
-                  <span className="status-pill">{material.status}</span>
-                  <button
-                    className="button button-secondary"
-                    disabled={deleteMutation.isPending}
-                    onClick={() => handleDelete(material.id)}
-                    type="button"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+              </div>
+              <div className={`status-dot ${statusClass[m.status] ?? ""}`} />
+              <button
+                className="button button-secondary"
+                style={{ fontSize: "0.76rem", padding: "0.3rem 0.65rem" }}
+                disabled={deleteMutation.isPending}
+                onClick={() => void deleteMutation.mutateAsync(m.id)}
+                type="button"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

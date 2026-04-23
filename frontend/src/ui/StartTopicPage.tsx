@@ -7,23 +7,15 @@ export function StartTopicPage() {
   const navigate = useNavigate();
   const pendingContext = getPendingStudyContext();
   const [subject, setSubject] = useState(pendingContext?.subject ?? "");
-  const [topic, setTopic] = useState(pendingContext?.topic ?? "");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     const nextSubject = subject.trim();
-    const nextTopic = topic.trim();
-    if (!nextSubject || !nextTopic) {
-      return;
-    }
-
+    if (!nextSubject) return;
     setPendingStudyContext({
       subject: nextSubject,
-      topic: nextTopic,
       createdAt: pendingContext?.createdAt ?? new Date().toISOString(),
     });
-
     navigate("/start/materials");
   }
 
@@ -41,27 +33,16 @@ export function StartTopicPage() {
             <span>Subject</span>
             <input
               autoComplete="off"
-              onChange={(event) => setSubject(event.target.value)}
-              placeholder="Organic chemistry"
+              autoFocus
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="e.g. Organic Chemistry, SQL, Calculus"
               value={subject}
             />
           </label>
 
-          <label className="flow-field">
-            <span>Topic</span>
-            <input
-              autoComplete="off"
-              onChange={(event) => setTopic(event.target.value)}
-              placeholder="Acid-base titration curves"
-              value={topic}
-            />
-          </label>
-
           <div className="flow-actions">
-            <Link className="button button-secondary" to="/">
-              Back
-            </Link>
-            <button className="button button-primary" disabled={!subject.trim() || !topic.trim()} type="submit">
+            <Link className="button button-secondary" to="/dashboard">Back</Link>
+            <button className="button button-primary" disabled={!subject.trim()} type="submit">
               Continue
             </button>
           </div>

@@ -2,7 +2,7 @@ import { ChangeEvent, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { uploadMaterial } from "../api";
-import { getPendingStudyContext, getStoredUserId } from "../studyState";
+import { getPendingStudyContext } from "../studyState";
 
 export function StartMaterialsPage() {
   const navigate = useNavigate();
@@ -16,7 +16,7 @@ export function StartMaterialsPage() {
       return "";
     }
 
-    return `${pendingContext.subject} • ${pendingContext.topic}`;
+    return pendingContext.subject;
   }, [pendingContext]);
 
   if (!pendingContext) {
@@ -32,17 +32,12 @@ export function StartMaterialsPage() {
       return;
     }
 
-    const userId = Number(getStoredUserId());
     setError(null);
     setIsSubmitting(true);
 
     try {
       if (selectedFiles.length > 0) {
-        if (!Number.isInteger(userId) || userId <= 0) {
-          throw new Error("Set a valid user id in the app before uploading materials.");
-        }
-
-        await Promise.all(selectedFiles.map((file) => uploadMaterial(userId, file, pendingContext.subject)));
+        await Promise.all(selectedFiles.map((file) => uploadMaterial(file, pendingContext.subject)));
       }
 
       navigate("/start/method");

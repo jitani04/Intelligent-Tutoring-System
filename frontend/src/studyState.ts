@@ -1,6 +1,5 @@
 export interface StudyContext {
   subject: string;
-  topic: string;
   createdAt: string;
 }
 

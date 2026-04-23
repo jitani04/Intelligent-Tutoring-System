@@ -1,515 +1,334 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
-import { createConversation, getConversation, listConversations, streamChat } from "../api";
-import {
-  attachContextToConversation,
-  clearPendingStudyContext,
-  getConversationContext,
-  getPendingStudyContext,
-  getStoredUserId,
-} from "../studyState";
-import type { ChatStreamEvent, Conversation, Message, RetrievedSource } from "../types";
+import { createConversation, getConversation, getConversationQuizzes, streamChat } from "../api";
+import { getPendingStudyContext } from "../studyState";
+import type { AttemptResult, ChatStreamEvent, Conversation, Message, QuizData, RetrievedSource } from "../types";
+import { QuizCard } from "./QuizCard";
+
+const SESSION_CONTROLS = [
+  { label: "Hint", prompt: "I'm stuck. Give me one targeted hint without revealing the answer." },
+  { label: "Explain differently", prompt: "Explain this differently using a simple analogy." },
+  { label: "Quiz me", prompt: "Quiz me on this topic instead of giving the answer directly." },
+  { label: "Move on", prompt: "I understand this. Give me the next question or a harder follow-up." },
+];
 
 const QUICK_PROMPTS = [
   "Quiz me on this topic instead of giving the answer immediately.",
-  "Explain the concept step by step, then check my understanding.",
-  "Give me a hint first and wait for my attempt.",
+  "Explain step by step, then check my understanding.",
+  "Give me a hint and wait for my attempt.",
 ];
 
-const SESSION_CONTROLS = [
-  {
-    label: "Need a hint",
-    prompt: "I'm stuck. Give me one targeted hint without revealing the final answer.",
-  },
-  {
-    label: "Explain differently",
-    prompt: "Explain the idea differently and connect it to a simple analogy.",
-  },
-  {
-    label: "Ready to move on",
-    prompt: "I understand this part. Give me the next question or a harder follow-up.",
-  },
-];
-
-function formatConversationDate(value: string): string {
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatElapsed(startValue: string | null): string {
-  if (!startValue) {
-    return "0 min";
-  }
-
-  const elapsedMs = Date.now() - new Date(startValue).getTime();
-  const minutes = Math.max(0, Math.floor(elapsedMs / 60000));
-
-  if (minutes < 60) {
-    return `${minutes} min`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  return `${hours}h ${remainingMinutes}m`;
+function formatTime(value: string): string {
+  return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 export function ChatPage() {
   const params = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const routeConversationId = params.conversationId ? Number(params.conversationId) : null;
-  const [userIdInput, setUserIdInput] = useState(() => getStoredUserId());
+  const conversationId = params.conversationId ? Number(params.conversationId) : null;
   const [draft, setDraft] = useState("");
-  const [streamedAssistantText, setStreamedAssistantText] = useState("");
+  const [streamedText, setStreamedText] = useState("");
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [retrievedSources, setRetrievedSources] = useState<RetrievedSource[]>([]);
-  const [pendingContext, setPendingContext] = useState(() => getPendingStudyContext());
-  const [elapsedLabel, setElapsedLabel] = useState("0 min");
+  const [sources, setSources] = useState<RetrievedSource[]>([]);
+  const [showSources, setShowSources] = useState(false);
+  const [sseQuizzes, setSseQuizzes] = useState<QuizData[]>([]);
+  const [pendingContext] = useState(() => getPendingStudyContext());
 
-  const parsedUserId = Number(userIdInput);
-  const isValidUserId = Number.isInteger(parsedUserId) && parsedUserId > 0;
-
-  useEffect(() => {
-    if (isValidUserId) {
-      window.localStorage.setItem("its-user-id", userIdInput);
-    }
-  }, [isValidUserId, userIdInput]);
-
-  const conversationsQuery = useQuery({
-    queryKey: ["conversations", parsedUserId],
-    queryFn: () => listConversations(parsedUserId),
-    enabled: isValidUserId,
+  const conversationQuery = useQuery({
+    queryKey: ["conversation", conversationId],
+    queryFn: () => getConversation(conversationId!),
+    enabled: conversationId !== null,
   });
 
-  const activeConversationQuery = useQuery({
-    queryKey: ["conversation", parsedUserId, routeConversationId],
-    queryFn: () => getConversation(parsedUserId, routeConversationId!),
-    enabled: isValidUserId && routeConversationId !== null,
+  const quizzesQuery = useQuery({
+    queryKey: ["conversation-quizzes", conversationId],
+    queryFn: () => getConversationQuizzes(conversationId!),
+    enabled: conversationId !== null,
   });
+  const historicalQuizzes: QuizData[] = (quizzesQuery.data ?? []).map((q) => ({
+    quiz_id: q.id,
+    question: q.question,
+    quiz_type: q.quiz_type as QuizData["quiz_type"],
+    options: q.options,
+  }));
 
-  const createConversationMutation = useMutation({
-    mutationFn: () => createConversation(parsedUserId),
-    onSuccess: async (conversation) => {
-      const nextPendingContext = getPendingStudyContext();
-      if (nextPendingContext) {
-        attachContextToConversation(conversation.id, nextPendingContext);
-        clearPendingStudyContext();
-        setPendingContext(null);
-      }
-
-      await queryClient.invalidateQueries({ queryKey: ["conversations", parsedUserId] });
-      navigate(`/sessions/${conversation.id}`);
+  const createMutation = useMutation({
+    mutationFn: () => createConversation(),
+    onSuccess: async (c) => {
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      navigate(`/sessions/${c.id}`, { replace: true });
     },
   });
 
-  const activeConversation = activeConversationQuery.data ?? null;
-  const activeStudyContext = useMemo(() => {
-    if (activeConversation) {
-      return getConversationContext(activeConversation.id);
-    }
-
-    return pendingContext;
-  }, [activeConversation, pendingContext]);
-
-  const conversationCount = conversationsQuery.data?.length ?? 0;
-  const lastSavedMessage = activeConversation?.messages.at(-1) ?? null;
-  const renderedMessages = activeConversation?.messages ?? [];
-  const workspaceTitle =
-    activeStudyContext?.topic ?? (activeConversation ? `Conversation #${activeConversation.id}` : "New tutoring chat");
+  const conversation = conversationQuery.data ?? null;
+  const context = useMemo(
+    () => conversation
+      ? (conversation.subject ? { subject: conversation.subject, createdAt: conversation.created_at } : null)
+      : pendingContext,
+    [conversation, pendingContext],
+  );
+  const messages = conversation?.messages ?? [];
 
   useEffect(() => {
-    const container = messageListRef.current;
-    if (!container) {
-      return;
-    }
-
-    container.scrollTop = container.scrollHeight;
-  }, [activeConversation?.messages, streamedAssistantText]);
+    const el = threadRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, streamedText]);
 
   useEffect(() => {
-    const startValue = activeConversation?.created_at ?? activeStudyContext?.createdAt ?? null;
-    setElapsedLabel(formatElapsed(startValue));
-
-    if (!startValue) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setElapsedLabel(formatElapsed(startValue));
-    }, 30000);
-
-    return () => window.clearInterval(timer);
-  }, [activeConversation?.created_at, activeStudyContext?.createdAt]);
+    setSources([]);
+    setShowSources(false);
+    setSseQuizzes([]);
+  }, [conversationId]);
 
   useEffect(() => {
-    setRetrievedSources([]);
-  }, [routeConversationId]);
+    if (sources.length > 0) setShowSources(true);
+  }, [sources]);
 
-  async function handleCreateConversation() {
-    setStreamError(null);
-    setStreamedAssistantText("");
-    await createConversationMutation.mutateAsync();
+  function autoGrow() {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function send(message: string) {
+    if (!message.trim() || isStreaming) return;
 
-    const message = draft.trim();
-    if (!message || !isValidUserId || isStreaming) {
-      return;
-    }
-
-    setDraft("");
     setStreamError(null);
-    setStreamedAssistantText("");
-    setRetrievedSources([]);
+    setStreamedText("");
+    setSources([]);
     setIsStreaming(true);
 
-    let targetConversation = activeConversation;
-    if (!targetConversation) {
-      targetConversation = await createConversationMutation.mutateAsync();
+    let target = conversation;
+    if (!target) {
+      target = await createMutation.mutateAsync();
     }
 
-    const optimisticUserMessage: Message = {
-      id: -1,
-      conversation_id: targetConversation.id,
-      role: "user",
-      content: message,
+    const optimistic: Message = {
+      id: -1, conversation_id: target.id,
+      role: "user", content: message,
       created_at: new Date().toISOString(),
     };
 
     queryClient.setQueryData<Conversation | undefined>(
-      ["conversation", parsedUserId, targetConversation.id],
-      (current) =>
-        current
-          ? {
-              ...current,
-              messages: [...current.messages, optimisticUserMessage],
-            }
-          : current,
+      ["conversation", target.id],
+      (cur) => cur ? { ...cur, messages: [...cur.messages, optimistic] } : cur,
     );
 
     try {
-      await streamChat(parsedUserId, targetConversation.id, { message }, handleStreamEvent);
-      await queryClient.invalidateQueries({ queryKey: ["conversation", parsedUserId, targetConversation.id] });
-      await queryClient.invalidateQueries({ queryKey: ["conversations", parsedUserId] });
-    } catch (error) {
-      setStreamError(error instanceof Error ? error.message : "Streaming failed.");
-      await queryClient.invalidateQueries({ queryKey: ["conversation", parsedUserId, targetConversation.id] });
+      await streamChat(target.id, { message }, handleEvent);
+      await queryClient.invalidateQueries({ queryKey: ["conversation", target.id] });
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      await queryClient.invalidateQueries({ queryKey: ["conversation-quizzes", target.id] });
+    } catch (err) {
+      setStreamError(err instanceof Error ? err.message : "Streaming failed.");
+      await queryClient.invalidateQueries({ queryKey: ["conversation", target.id] });
     } finally {
       setIsStreaming(false);
-      setStreamedAssistantText("");
+      setStreamedText("");
     }
   }
 
-  function handleStreamEvent(event: ChatStreamEvent) {
-    if (event.event === "token") {
-      setStreamedAssistantText((current) => current + event.data.delta);
-      return;
-    }
-
-    if (event.event === "sources") {
-      setRetrievedSources(event.data.sources);
-      return;
-    }
-
-    if (event.event === "error") {
-      setStreamError(event.data.error);
-    }
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    const message = draft.trim();
+    setDraft("");
+    await send(message);
   }
+
+  function handleQuizAnswered(result: AttemptResult, answer: string) {
+    const msg = result.is_correct
+      ? `I answered "${answer}" — that was correct!`
+      : `I answered "${answer}" but got it wrong. The correct answer was "${result.correct_answer}". Can you explain why?`;
+    void send(msg);
+  }
+
+  function handleEvent(event: ChatStreamEvent) {
+    if (event.event === "token") { setStreamedText((t) => t + event.data.delta); return; }
+    if (event.event === "sources") { setSources(event.data.sources); return; }
+    if (event.event === "quiz") { setSseQuizzes((q) => [...q, event.data]); return; }
+    if (event.event === "error") { setStreamError(event.data.error); }
+  }
+
+  function setDraftAndFocus(text: string) {
+    setDraft(text);
+    textareaRef.current?.focus();
+  }
+
+  const title = context?.subject ?? (conversation ? `Session #${conversation.id}` : "New session");
+  const subtitle = context?.subject ?? "General study";
 
   return (
-    <div className="notebook-layout">
-      <header className="workspace-topbar">
-        <div className="workspace-topbar-title">
-          <Link className="workspace-brand" to="/">
-            <span className="workspace-brand-mark">KP</span>
-          </Link>
-
-          <div>
-            <h1>{workspaceTitle}</h1>
-            <p>{activeStudyContext?.subject ?? "General study"}</p>
+    <div className="workspace">
+      <div className="thread-pane">
+        <div className="thread-topbar">
+          <div className="thread-topbar-info">
+            <div className="thread-topbar-title">{title}</div>
+            <div className="thread-topbar-sub">{subtitle}</div>
+          </div>
+          <div className="thread-topbar-actions">
+            {sources.length > 0 && (
+              <button
+                className="button button-secondary"
+                onClick={() => setShowSources((s) => !s)}
+                type="button"
+                style={{ fontSize: "0.78rem", padding: "0.35rem 0.75rem" }}
+              >
+                {showSources ? "Hide" : "Sources"} ({sources.length})
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="workspace-topbar-actions">
-          <button
-            className="button button-primary"
-            disabled={!isValidUserId || createConversationMutation.isPending}
-            onClick={() => void handleCreateConversation()}
-            type="button"
-          >
-            New chat
-          </button>
-          <Link className="button button-secondary" to="/materials">
-            Materials
-          </Link>
-          <Link className="button button-secondary" to="/history">
-            History
-          </Link>
-        </div>
-      </header>
-
-      <div className="workspace-shell">
-        <aside className="workspace-sidebar">
-          <div className="workspace-panel-header">
-            <h2>Workspace</h2>
-          </div>
-
-          <div className="workspace-sidebar-body">
-            <div className="workspace-sidebar-actions">
-              <Link className="button button-secondary workspace-side-button" to="/start/topic">
-                Guided setup
-              </Link>
-              <Link className="button button-secondary workspace-side-button" to="/materials">
-                Add materials
-              </Link>
-            </div>
-
-            <div className="workspace-summary-card">
-              <div className="workspace-summary-row">
-                <span>Subject</span>
-                <strong>{activeStudyContext?.subject ?? "General study"}</strong>
-              </div>
-              <div className="workspace-summary-row">
-                <span>Topic</span>
-                <strong>{activeStudyContext?.topic ?? "Not set yet"}</strong>
-              </div>
-              <div className="workspace-summary-row">
-                <span>Session time</span>
-                <strong>{elapsedLabel}</strong>
+        <div className="thread-body" ref={threadRef}>
+          {conversationId === null || (conversationQuery.isFetched && messages.length === 0 && !isStreaming) ? (
+            <div className="thread-empty">
+              <div className="thread-empty-glyph">◎</div>
+              <h2>{context?.subject ?? "What should we work on?"}</h2>
+              <p>
+                {context
+                  ? `Ask a question about ${context.subject} to start the session.`
+                  : "Start with a question or choose a guided prompt below."}
+              </p>
+              <div className="prompt-chips">
+                {QUICK_PROMPTS.map((p) => (
+                  <button key={p} className="prompt-chip" onClick={() => setDraftAndFocus(p)} type="button">
+                    {p}
+                  </button>
+                ))}
               </div>
             </div>
+          ) : null}
 
-            <label className="flow-field compact">
-              <span>Demo user</span>
-              <input
-                min={1}
-                onChange={(event) => setUserIdInput(event.target.value)}
-                type="number"
-                value={userIdInput}
-              />
-            </label>
+          {conversationQuery.isLoading && conversationId !== null ? (
+            <div className="thread-empty">
+              <p className="muted">Loading session…</p>
+            </div>
+          ) : null}
 
-            {!isValidUserId ? <p className="error-text">Enter a valid user id to load sessions.</p> : null}
-            {conversationsQuery.isLoading ? <p className="muted">Loading conversations…</p> : null}
-            {conversationsQuery.isError ? <p className="error-text">Failed to load conversations.</p> : null}
-
-            <div className="workspace-session-group">
-              <div className="workspace-section-label">
-                <span>Sessions</span>
-                <strong>{conversationCount}</strong>
-              </div>
-
-              <div className="conversation-list notebook-conversation-list">
-                {conversationsQuery.data?.length === 0 ? (
-                  <div className="conversation-empty">
-                    <p>No saved sessions yet.</p>
-                    <span>Create one and start the first tutoring exchange.</span>
+          {messages.length > 0 || streamedText ? (
+            <div className="messages">
+              {messages.map((msg) =>
+                msg.role === "user" ? (
+                  <div key={`${msg.id}-${msg.created_at}`} className="msg-user-row">
+                    <div className="msg-user-bubble">{msg.content}</div>
                   </div>
-                ) : null}
-
-                {conversationsQuery.data?.map((conversation) => {
-                  const isActive = conversation.id === routeConversationId;
-                  const preview = conversation.messages.at(-1)?.content ?? "Empty conversation";
-                  const meta = conversation.messages.at(-1)?.created_at ?? conversation.created_at;
-                  const context = getConversationContext(conversation.id);
-
-                  return (
-                    <Link
-                      className={isActive ? "conversation-link active" : "conversation-link"}
-                      key={conversation.id}
-                      to={`/sessions/${conversation.id}`}
-                    >
-                      <span className="conversation-title">{context?.topic ?? `Conversation #${conversation.id}`}</span>
-                      <span className="conversation-preview">{preview}</span>
-                      <span className="conversation-meta">
-                        {context?.subject ?? "General"} • {formatConversationDate(meta)}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        <main className="workspace-chat-panel">
-          <div className="workspace-panel-header">
-            <h2>Chat</h2>
-            <div className="workspace-panel-meta">
-              <span className="topic-pill">{activeStudyContext?.subject ?? "General"}</span>
-              <span className="workspace-meta-text">
-                {activeConversation ? `${renderedMessages.length} messages` : "Ready to begin"}
-              </span>
-            </div>
-          </div>
-
-          <section className="workspace-chat-body">
-            {routeConversationId === null ? (
-              <div className="notebook-empty-state">
-                <div className="notebook-empty-intro">
-                  <div className="notebook-empty-icon">◌</div>
-                  <h2>{activeStudyContext?.topic ?? "What should we work on?"}</h2>
-                  <p>
-                    Start with a question or choose one of the guided prompts below. The tutor
-                    should lead with questions, not shortcuts.
-                  </p>
-                </div>
-
-                <div className="prompt-grid">
-                  {QUICK_PROMPTS.map((prompt) => (
-                    <button
-                      className="prompt-card"
-                      key={prompt}
-                      onClick={() => setDraft(prompt)}
-                      type="button"
-                    >
-                      {prompt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {routeConversationId !== null && activeConversationQuery.isLoading ? (
-              <div className="thread-feedback">
-                <p className="muted">Loading conversation…</p>
-              </div>
-            ) : null}
-
-            {routeConversationId !== null && activeConversationQuery.isError ? (
-              <div className="thread-feedback">
-                <p className="error-text">Failed to load the selected conversation.</p>
-              </div>
-            ) : null}
-
-            {activeConversation ? (
-              <>
-                <div className="thread-summary notebook-thread-summary">
-                  <span>
-                    {lastSavedMessage
-                      ? `Last update ${formatConversationDate(lastSavedMessage.created_at)}`
-                      : `Created ${formatConversationDate(activeConversation.created_at)}`}
-                  </span>
-                </div>
-
-                {retrievedSources.length > 0 ? (
-                  <section className="retrieved-sources-card">
-                    <div className="table-header">
-                      <div>
-                        <p className="rail-card-label">Used sources</p>
-                        <h3>{retrievedSources.length} material excerpts</h3>
-                      </div>
-                    </div>
-
-                    <div className="retrieved-sources-list">
-                      {retrievedSources.map((source) => (
-                        <article className="retrieved-source-item" key={`${source.chunk_id}-${source.material_id}`}>
-                          <div className="retrieved-source-head">
-                            <strong>{source.material_filename}</strong>
-                            <span className="status-pill">
-                              {source.page_number ? `Page ${source.page_number}` : "Text"}
-                            </span>
-                          </div>
-                          <p>{source.snippet}</p>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
-
-                <div className="message-list notebook-message-list" ref={messageListRef}>
-                  {renderedMessages.length === 0 ? (
-                    <div className="thread-feedback">
-                      <p className="muted">Send the first message to begin the tutoring exchange.</p>
-                    </div>
-                  ) : null}
-
-                  {renderedMessages.map((message) => (
-                    <article className={`message-card role-${message.role}`} key={`${message.id}-${message.created_at}`}>
-                      <div className="message-meta-row">
-                        <span className="message-role">{message.role}</span>
-                        <span className="message-time">{formatConversationDate(message.created_at)}</span>
-                      </div>
-                      <p>{message.content}</p>
-                    </article>
-                  ))}
-
-                  {streamedAssistantText ? (
-                    <article className="message-card role-assistant streaming">
-                      <div className="message-meta-row">
-                        <span className="message-role">assistant</span>
-                        <span className="message-time">Streaming now</span>
-                      </div>
-                      <p>{streamedAssistantText}</p>
-                    </article>
-                  ) : null}
-                </div>
-              </>
-            ) : null}
-          </section>
-
-          <form className="workspace-composer-shell" onSubmit={(event) => void handleSubmit(event)}>
-            <div className="session-controls">
-              {SESSION_CONTROLS.map((control) => (
-                <button
-                  className="composer-pill"
-                  key={control.label}
-                  onClick={() => setDraft(control.prompt)}
-                  type="button"
-                >
-                  {control.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="composer-pills">
-              {QUICK_PROMPTS.map((prompt) => (
-                <button
-                  className="composer-pill"
-                  key={prompt}
-                  onClick={() => setDraft(prompt)}
-                  type="button"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-
-            <div className="composer-surface notebook-composer-surface">
-              <textarea
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="Start typing..."
-                rows={4}
-                value={draft}
-              />
-
-              <div className="composer-footer">
-                {streamError ? (
-                  <p className="error-text">{streamError}</p>
                 ) : (
-                  <span className="muted">
-                    {activeStudyContext?.subject ?? "General study"} • {conversationCount} saved chats
-                  </span>
-                )}
-                <button className="button button-primary notebook-send-button" disabled={!draft.trim() || isStreaming} type="submit">
-                  {isStreaming ? "Streaming…" : "Send"}
-                </button>
-              </div>
+                  <div key={`${msg.id}-${msg.created_at}`} className="msg">
+                    <div className="msg-avatar msg-avatar-ai">KP</div>
+                    <div className="msg-body">
+                      <div className="msg-sender">KnowledgePal · {formatTime(msg.created_at)}</div>
+                      <div className="msg-text">{msg.content}</div>
+                    </div>
+                  </div>
+                )
+              )}
+
+              {isStreaming && (
+                <div className="agent-step">
+                  <div className="agent-step-dot">⟳</div>
+                  <span className="agent-step-text">Agent is selecting the best approach…</span>
+                </div>
+              )}
+
+              {streamedText && (
+                <div className="msg">
+                  <div className="msg-avatar msg-avatar-ai">KP</div>
+                  <div className="msg-body">
+                    <div className="msg-sender">KnowledgePal</div>
+                    <div className={`msg-text${streamedText && isStreaming ? " msg-text-streaming" : ""}`}>
+                      {streamedText}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {streamError && (
+                <div className="agent-step">
+                  <div className="agent-step-dot">!</div>
+                  <span className="agent-step-text" style={{ color: "var(--error)" }}>{streamError}</span>
+                </div>
+              )}
+
+              {(() => {
+                const sseIds = new Set(sseQuizzes.map((q) => q.quiz_id));
+                const allQuizzes = [
+                  ...historicalQuizzes.filter((q) => !sseIds.has(q.quiz_id)),
+                  ...sseQuizzes,
+                ];
+                return allQuizzes.map((q) => (
+                  <div key={q.quiz_id} className="msg">
+                    <div className="msg-avatar msg-avatar-ai">KP</div>
+                    <div className="msg-body">
+                      <div className="msg-sender">KnowledgePal</div>
+                      <QuizCard quiz={q} onAnswered={handleQuizAnswered} />
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
-          </form>
-        </main>
+          ) : null}
+        </div>
+
+        <form className="composer" onSubmit={(e) => void handleSubmit(e)}>
+          <div className="composer-controls">
+            {SESSION_CONTROLS.map((c) => (
+              <button key={c.label} className="composer-ctrl" onClick={() => setDraftAndFocus(c.prompt)} type="button">
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <div className="composer-row">
+            <textarea
+              ref={textareaRef}
+              className="composer-textarea"
+              placeholder="Ask a question…"
+              rows={1}
+              value={draft}
+              onChange={(e) => { setDraft(e.target.value); autoGrow(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSubmit(e as unknown as FormEvent);
+                }
+              }}
+            />
+            <button className="composer-send" disabled={!draft.trim() || isStreaming} type="submit">
+              ↑
+            </button>
+          </div>
+          <div className="composer-hint">Press Enter to send · Shift+Enter for new line</div>
+        </form>
       </div>
+
+      {showSources && sources.length > 0 && (
+        <div className="sources-panel">
+          <div className="sources-header">
+            <span className="sources-title">Sources ({sources.length})</span>
+            <button className="sources-close" onClick={() => setShowSources(false)} type="button">×</button>
+          </div>
+          <div className="sources-body">
+            {sources.map((s) => (
+              <div key={`${s.chunk_id}-${s.material_id}`} className="source-item">
+                <div className="source-item-file">
+                  {s.material_filename}
+                  {s.page_number ? ` · p.${s.page_number}` : ""}
+                </div>
+                <div className="source-item-snippet">{s.snippet}</div>
+                <div className="source-item-meta">{(s.similarity_score * 100).toFixed(0)}% match</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

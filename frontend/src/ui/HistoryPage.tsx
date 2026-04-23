@@ -1,144 +1,100 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { listConversations } from "../api";
-import { getConversationContext, getStoredUserId } from "../studyState";
 import type { Conversation } from "../types";
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
-function estimateDuration(conversation: Conversation): string {
-  const start = new Date(conversation.created_at).getTime();
-  const end = new Date(conversation.messages.at(-1)?.created_at ?? conversation.created_at).getTime();
-  const minutes = Math.max(1, Math.round((end - start) / 60000));
-  return `${minutes} min`;
+function duration(c: Conversation): string {
+  const start = new Date(c.created_at).getTime();
+  const end = new Date(c.messages.at(-1)?.created_at ?? c.created_at).getTime();
+  const mins = Math.max(1, Math.round((end - start) / 60000));
+  return `${mins} min`;
 }
 
 export function HistoryPage() {
-  const [userIdInput, setUserIdInput] = useState(() => getStoredUserId());
-  const parsedUserId = Number(userIdInput);
-  const isValidUserId = Number.isInteger(parsedUserId) && parsedUserId > 0;
-
-  useEffect(() => {
-    if (isValidUserId) {
-      window.localStorage.setItem("its-user-id", userIdInput);
-    }
-  }, [isValidUserId, userIdInput]);
-
-  const conversationsQuery = useQuery({
-    queryKey: ["conversations", parsedUserId],
-    queryFn: () => listConversations(parsedUserId),
-    enabled: isValidUserId,
+  const { data: conversations = [], isLoading, isError } = useQuery({
+    queryKey: ["conversations"],
+    queryFn: listConversations,
   });
 
-  const groupedSessions = useMemo(() => {
-    const groups = new Map<string, Array<Conversation & { topic: string }>>();
-
-    for (const conversation of conversationsQuery.data ?? []) {
-      const metadata = getConversationContext(conversation.id);
-      const subject = metadata?.subject ?? "Unlabeled";
-      const topic = metadata?.topic ?? `Conversation #${conversation.id}`;
-      const currentGroup = groups.get(subject) ?? [];
-      currentGroup.push({ ...conversation, topic });
-      groups.set(subject, currentGroup);
+  const groups = useMemo(() => {
+    const map = new Map<string, Conversation[]>();
+    for (const c of conversations) {
+      const subject = c.subject ?? "Unlabeled";
+      const group = map.get(subject) ?? [];
+      group.push(c);
+      map.set(subject, group);
     }
-
-    return Array.from(groups.entries());
-  }, [conversationsQuery.data]);
+    return Array.from(map.entries());
+  }, [conversations]);
 
   return (
-    <div className="resource-page">
-      <header className="resource-header">
-        <div>
-          <p className="page-kicker">History</p>
-          <h1>Session history</h1>
-          <p className="resource-copy">
-            Pick up where you left off, revisit earlier explanations, and scan your recent study
-            work by subject.
-          </p>
+    <div className="page-shell">
+      <div className="page-header">
+        <div className="page-header-text">
+          <h1 className="page-title">History</h1>
+          <p className="page-subtitle">All past sessions, grouped by subject.</p>
         </div>
+        <Link to="/sessions/new" className="button button-primary">New session</Link>
+      </div>
 
-        <div className="resource-actions">
-          <label className="flow-field compact">
-            <span>User id</span>
-            <input
-              min={1}
-              onChange={(event) => setUserIdInput(event.target.value)}
-              type="number"
-              value={userIdInput}
-            />
-          </label>
-          <Link className="button button-secondary" to="/materials">
-            Materials
-          </Link>
-          <Link className="button button-primary" to="/sessions/new">
-            New session
-          </Link>
+      <div className="two-col" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+        <div className="snap-cell content-card">
+          <strong style={{ fontSize: "1.75rem", fontFamily: "Newsreader, serif" }}>{conversations.length}</strong>
+          <span className="muted" style={{ fontSize: "0.78rem" }}>total sessions</span>
         </div>
-      </header>
-
-      {!isValidUserId ? <p className="error-text">Enter a valid `X-User-Id` to load history.</p> : null}
-      {conversationsQuery.isLoading ? <p className="muted">Loading sessions…</p> : null}
-      {conversationsQuery.isError ? <p className="error-text">Failed to load sessions.</p> : null}
-
-      <section className="resource-grid">
-        <div className="resource-card">
-          <p className="rail-card-label">Overview</p>
-          <div className="snapshot-grid">
-            <div>
-              <strong>{conversationsQuery.data?.length ?? 0}</strong>
-              <span>saved sessions</span>
-            </div>
-            <div>
-              <strong>{groupedSessions.length}</strong>
-              <span>subjects represented</span>
-            </div>
-          </div>
+        <div className="snap-cell content-card">
+          <strong style={{ fontSize: "1.75rem", fontFamily: "Newsreader, serif" }}>{groups.length}</strong>
+          <span className="muted" style={{ fontSize: "0.78rem" }}>subjects</span>
         </div>
-      </section>
+        <div className="snap-cell content-card">
+          <strong style={{ fontSize: "1.75rem", fontFamily: "Newsreader, serif" }}>
+            {conversations.reduce((acc, c) => acc + c.messages.length, 0)}
+          </strong>
+          <span className="muted" style={{ fontSize: "0.78rem" }}>total messages</span>
+        </div>
+      </div>
 
-      {groupedSessions.length === 0 && !conversationsQuery.isLoading ? (
-        <section className="resource-card">
-          <p className="muted">No saved sessions yet.</p>
-        </section>
+      {isLoading ? <p className="muted">Loading…</p> : null}
+      {isError ? <p className="error-text">Failed to load sessions.</p> : null}
+
+      {groups.length === 0 && !isLoading ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">◷</div>
+          <h3>No sessions yet</h3>
+          <p>Your past tutoring sessions will appear here.</p>
+          <Link to="/sessions/new" className="button button-primary">Start a session</Link>
+        </div>
       ) : null}
 
-      {groupedSessions.map(([subject, sessions]) => (
-        <section className="resource-card" key={subject}>
-          <div className="table-header">
-            <div>
-              <p className="rail-card-label">{subject}</p>
-              <h2>{sessions.length} sessions</h2>
-            </div>
-          </div>
-
-          <div className="resource-list">
-            {sessions.map((session) => (
-              <article className="resource-item" key={session.id}>
-                <div>
-                  <strong>{session.topic}</strong>
-                  <p>
-                    {formatDate(session.created_at)} • {estimateDuration(session)}
-                  </p>
+      {groups.map(([subject, sessions]) => (
+        <div key={subject} className="content-card">
+          <div className="content-card-title">{subject} · {sessions.length} session{sessions.length !== 1 ? "s" : ""}</div>
+          <div className="history-list">
+            {sessions.map((s) => (
+              <div key={s.id} className="history-item">
+                <div className="history-item-info">
+                  <div className="history-item-name">{s.subject ?? `Session #${s.id}`}</div>
+                  <div className="history-item-meta">
+                    {formatDate(s.created_at)} · {s.messages.length} messages · {duration(s)}
+                  </div>
                 </div>
-                <div className="resource-item-actions">
-                  <span className="status-pill">{session.messages.length} messages</span>
-                  <Link className="button button-secondary" to={`/sessions/${session.id}`}>
+                <div className="history-item-actions">
+                  <span className="pill pill-blue">{s.messages.length} msg</span>
+                  <Link className="button button-secondary" to={`/sessions/${s.id}`}
+                    style={{ fontSize: "0.78rem", padding: "0.35rem 0.75rem" }}>
                     Resume
                   </Link>
                 </div>
-              </article>
+              </div>
             ))}
           </div>
-        </section>
+        </div>
       ))}
     </div>
   );

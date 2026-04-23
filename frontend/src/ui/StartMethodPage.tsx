@@ -1,14 +1,27 @@
+import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
+import { useMutation } from "@tanstack/react-query";
 
-import { getPendingStudyContext } from "../studyState";
+import { createConversation } from "../api";
+import { clearPendingStudyContext, getPendingStudyContext } from "../studyState";
 
 export function StartMethodPage() {
   const navigate = useNavigate();
   const pendingContext = getPendingStudyContext();
+  const [error, setError] = useState<string | null>(null);
 
   if (!pendingContext) {
     return <Navigate replace to="/start/topic" />;
   }
+
+  const createMutation = useMutation({
+    mutationFn: () => createConversation(pendingContext.subject),
+    onSuccess: (c) => {
+      clearPendingStudyContext();
+      navigate(`/projects/${encodeURIComponent(pendingContext.subject)}/setup?session=${c.id}`, { replace: true });
+    },
+    onError: () => setError("Failed to create project. Please try again."),
+  });
 
   return (
     <div className="flow-page">
@@ -37,15 +50,21 @@ export function StartMethodPage() {
 
         <div className="flow-summary">
           <span>{pendingContext.subject}</span>
-          <span>{pendingContext.topic}</span>
         </div>
+
+        {error && <p className="error-text">{error}</p>}
 
         <div className="flow-actions">
           <Link className="button button-secondary" to="/start/materials">
             Back
           </Link>
-          <button className="button button-primary" onClick={() => navigate("/sessions/new")} type="button">
-            Start session
+          <button
+            className="button button-primary"
+            disabled={createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+            type="button"
+          >
+            {createMutation.isPending ? "Creating…" : "Start project"}
           </button>
         </div>
       </div>

@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(alias="JWT_SECRET")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     jwt_expire_minutes: int = Field(default=10080, alias="JWT_EXPIRE_MINUTES")
+    google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
 
     cors_allow_origins_raw: str = Field(
         default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",

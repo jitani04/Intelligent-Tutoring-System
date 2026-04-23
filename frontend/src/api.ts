@@ -1,5 +1,5 @@
 import { getToken } from "./auth";
-import type { AttemptResult, ChatRequest, ChatStreamEvent, Conversation, Material, ProjectProfile, QuizRead } from "./types";
+import type { AttemptResult, AuthResult, ChatRequest, ChatStreamEvent, Conversation, Material, ProjectProfile, QuizRead, UserProfile } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -46,24 +46,47 @@ export async function getHealth(): Promise<{ status: string }> {
   return parseJson(response);
 }
 
-export async function register(email: string, password: string): Promise<string> {
+export async function register(email: string, password: string): Promise<AuthResult> {
   const response = await fetch(`${API_BASE_URL}/auth/register`, {
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ email, password }),
   });
-  const data = await parseJson<{ access_token: string }>(response);
-  return data.access_token;
+  return parseJson(response);
 }
 
-export async function login(email: string, password: string): Promise<string> {
+export async function login(email: string, password: string): Promise<AuthResult> {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ email, password }),
   });
-  const data = await parseJson<{ access_token: string }>(response);
-  return data.access_token;
+  return parseJson(response);
+}
+
+export async function loginWithGoogle(credential: string): Promise<AuthResult> {
+  const response = await fetch(`${API_BASE_URL}/auth/google`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ credential }),
+  });
+  return parseJson(response);
+}
+
+export async function getCurrentUser(): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/auth/me`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function completeOnboarding(name: string, useCase: string): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/auth/onboarding`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ name, use_case: useCase }),
+  });
+  return parseJson(response);
 }
 
 export async function listConversations(): Promise<Conversation[]> {

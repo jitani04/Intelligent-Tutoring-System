@@ -16,6 +16,20 @@ export interface Conversation {
   messages: Message[];
 }
 
+export interface UserProfile {
+  id: number;
+  email: string;
+  name: string | null;
+  use_case: string | null;
+  onboarding_complete: boolean;
+}
+
+export interface AuthResult {
+  access_token: string;
+  token_type: string;
+  user: UserProfile;
+}
+
 export interface ChatRequest {
   message: string;
 }

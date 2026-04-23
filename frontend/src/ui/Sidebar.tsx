@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { listConversations } from "../api";
@@ -15,6 +15,7 @@ function progressFromCount(n: number): number {
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: conversations = [] } = useQuery({
     queryKey: ["conversations"],
@@ -43,6 +44,7 @@ export function Sidebar() {
 
   function handleSignOut() {
     clearToken();
+    queryClient.clear();
     navigate("/");
   }
 

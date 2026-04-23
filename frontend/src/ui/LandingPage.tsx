@@ -1,8 +1,11 @@
 import { FormEvent, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
-import { login, register } from "../api";
+import { login, loginWithGoogle, register } from "../api";
 import { isAuthenticated, setToken } from "../auth";
+import type { AuthResult } from "../types";
 
 const FEATURES = [
   {
@@ -23,30 +26,56 @@ type ModalMode = "signin" | "signup";
 
 export function LandingPage() {
   const navigate = useNavigate();
-
-  if (isAuthenticated()) {
-    return <Navigate replace to="/dashboard" />;
-  }
-
+  const queryClient = useQueryClient();
+  const authenticated = isAuthenticated();
   const [mode, setMode] = useState<ModalMode | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  if (authenticated) {
+    return <Navigate replace to="/dashboard" />;
+  }
 
   function openModal(m: ModalMode) {
     setEmail(""); setPassword(""); setError(null); setMode(m);
+  }
+
+  async function handleAuthResult(result: AuthResult) {
+    setToken(result.access_token);
+    queryClient.setQueryData(["me"], result.user);
+    await queryClient.invalidateQueries({ queryKey: ["me"] });
+    navigate(result.user.onboarding_complete ? "/dashboard" : "/onboarding");
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null); setLoading(true);
     try {
-      const token = mode === "signup" ? await register(email, password) : await login(email, password);
-      setToken(token);
-      navigate("/dashboard");
+      const result = mode === "signup" ? await register(email, password) : await login(email, password);
+      await handleAuthResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogleSuccess(response: CredentialResponse) {
+    if (!response.credential) {
+      setError("Google did not return a credential.");
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await loginWithGoogle(response.credential);
+      await handleAuthResult(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google sign-in failed.");
     } finally {
       setLoading(false);
     }
@@ -131,6 +160,21 @@ export function LandingPage() {
                 Create account
               </button>
             </div>
+
+            <div className="google-auth-box">
+              {googleClientId ? (
+                <GoogleLogin
+                  onError={() => setError("Google sign-in failed.")}
+                  onSuccess={(response) => void handleGoogleSuccess(response)}
+                  text={mode === "signup" ? "signup_with" : "signin_with"}
+                  useOneTap={false}
+                />
+              ) : (
+                <p className="muted">Set VITE_GOOGLE_CLIENT_ID to enable Google sign-in.</p>
+              )}
+            </div>
+
+            <div className="modal-divider"><span>or use email</span></div>
 
             <form className="modal-form" onSubmit={(e) => void handleSubmit(e)}>
               <div className="modal-field">

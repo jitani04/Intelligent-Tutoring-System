@@ -6,6 +6,7 @@ import { DashboardPage } from "./ui/DashboardPage";
 import { HistoryPage } from "./ui/HistoryPage";
 import { LandingPage } from "./ui/LandingPage";
 import { MaterialsPage } from "./ui/MaterialsPage";
+import { OnboardingPage } from "./ui/OnboardingPage";
 import { ProjectPage } from "./ui/ProjectPage";
 import { ProjectSetupPage } from "./ui/ProjectSetupPage";
 import { RequireAuth } from "./ui/RequireAuth";
@@ -41,6 +42,7 @@ export const router = createBrowserRouter([
       { path: "/start/topic", element: <StartTopicPage /> },
       { path: "/start/materials", element: <StartMaterialsPage /> },
       { path: "/start/method", element: <StartMethodPage /> },
+      { path: "/onboarding", element: <OnboardingPage /> },
       { path: "/start", element: <Navigate replace to="/start/topic" /> },
       { path: "/sessions", element: <Navigate replace to="/sessions/new" /> },
     ],

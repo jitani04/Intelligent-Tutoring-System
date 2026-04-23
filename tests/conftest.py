@@ -11,3 +11,4 @@ if str(ROOT) not in sys.path:
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot_db")
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("OPENAI_MODEL", "gpt-4.1-mini")
+os.environ.setdefault("JWT_SECRET", "test-secret")

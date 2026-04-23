@@ -11,7 +11,16 @@ if str(ROOT) not in sys.path:
 
 from app.core.config import get_settings
 from app.db.base import Base
-from app.models import Conversation, Message, User  # noqa: F401
+from app.models import (  # noqa: F401
+    Conversation,
+    Material,
+    MaterialChunk,
+    Message,
+    ProjectProfile,
+    Quiz,
+    QuizAttempt,
+    User,
+)
 
 config = context.config
 

@@ -6,7 +6,7 @@ Production-style async backend for chatbot streaming with PostgreSQL persistence
 - FastAPI + async SQLAlchemy 2.0 + PostgreSQL
 - LangChain chat model integration with Gemini
 - Server-Sent Events (`text/event-stream`)
-- Strict conversation ownership via `X-User-Id`
+- JWT-backed account auth with email/password and Google sign-in
 - Alembic migrations
 - RAG-ready retriever interface placeholder
 
@@ -43,7 +43,7 @@ See the schema reference and ER diagram in [DATABASE_SCHEMA.md](/Users/jennaitan
    ```bash
    cp .env.example .env
    ```
-4. Add your Gemini API key in `.env`.
+4. Add your Gemini API key, `JWT_SECRET`, and Google OAuth client ID in `.env`.
 5. Create PostgreSQL database (example):
    ```sql
    CREATE DATABASE chatbot_db;
@@ -52,11 +52,7 @@ See the schema reference and ER diagram in [DATABASE_SCHEMA.md](/Users/jennaitan
    ```bash
    alembic upgrade head
    ```
-7. Seed a user for testing (`X-User-Id` depends on existing user rows):
-   ```sql
-   INSERT INTO users (email) VALUES ('demo@example.com');
-   ```
-8. Run server:
+7. Run server:
    ```bash
    uvicorn app.main:app --reload
    ```
@@ -73,6 +69,7 @@ Frontend:
 ```bash
 cd frontend
 npm install
+cp .env.example .env
 npm run dev
 ```
 
@@ -111,17 +108,34 @@ By default the frontend targets `http://localhost:8000`. You can override that w
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
+Google sign-in requires the same OAuth web client ID in both places:
+
+```bash
+# backend .env
+GOOGLE_CLIENT_ID=your_google_oauth_client_id.apps.googleusercontent.com
+
+# frontend/.env
+VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id.apps.googleusercontent.com
+```
+
 ## Curl Examples
+Get a bearer token:
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"password"}' | jq -r .access_token)
+```
+
 Create conversation:
 ```bash
 curl -X POST http://localhost:8000/conversations \
-  -H "X-User-Id: 1"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 Get conversation:
 ```bash
 curl http://localhost:8000/conversations/1 \
-  -H "X-User-Id: 1"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 Stream chat:
@@ -129,7 +143,7 @@ Stream chat:
 curl -N -X POST http://localhost:8000/chat/1 \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
-  -H "X-User-Id: 1" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"message":"Hello"}'
 ```
 ## Colorway 
@@ -137,5 +151,4 @@ cobalt sky
 ## Notes
 - Ownership violations return `404` to avoid leaking conversation existence.
 - Retriever currently returns empty context list by design.
-- This milestone intentionally excludes auth/JWT and RAG storage.
 - The default LLM configuration targets Gemini through LangChain's `ChatGoogleGenerativeAI`.

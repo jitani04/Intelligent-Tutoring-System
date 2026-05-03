@@ -3,8 +3,9 @@ import type { CSSProperties } from "react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { createConversation, generateSummary, getProjectProfile, getProjectProgress, listConversations } from "../api";
-import type { Conversation, SessionSummary } from "../types";
+import { createConversation, generateSummary, generateWeakQuiz, getProjectProfile, getProjectProgress, listConversations } from "../api";
+import type { Conversation, PracticeQuizItem, SessionSummary } from "../types";
+import { WeakQuizModal } from "./WeakQuizModal";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
@@ -28,7 +29,7 @@ const LEVEL_LABELS: Record<string, string> = {
 
 function buildSummaryText(subject: string, sessionNum: number, date: string, s: SessionSummary): string {
   const lines: string[] = [
-    `Session ${sessionNum} Summary — ${subject}`,
+    `Study Session ${sessionNum} Summary — ${subject}`,
     `Date: ${date}`,
     "",
     "COVERED",
@@ -55,7 +56,7 @@ function downloadSummary(subject: string, sessionNum: number, c: Conversation) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${subject.replace(/\s+/g, "-").toLowerCase()}-session-${sessionNum}-summary.txt`;
+  a.download = `${subject.replace(/\s+/g, "-").toLowerCase()}-study-session-${sessionNum}-summary.txt`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -69,6 +70,9 @@ export function ProjectPage() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [generatingId, setGeneratingId] = useState<number | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [weakQuizzes, setWeakQuizzes] = useState<PracticeQuizItem[] | null>(null);
+  const [generatingWeakQuiz, setGeneratingWeakQuiz] = useState(false);
+  const [weakQuizError, setWeakQuizError] = useState<string | null>(null);
 
   const { data: conversations = [] } = useQuery({
     queryKey: ["conversations"],
@@ -119,6 +123,19 @@ export function ProjectPage() {
     }
   }
 
+  async function handleGenerateWeakQuiz() {
+    setGeneratingWeakQuiz(true);
+    setWeakQuizError(null);
+    try {
+      const data = await generateWeakQuiz(decoded);
+      setWeakQuizzes(data.quizzes);
+    } catch (err) {
+      setWeakQuizError(err instanceof Error ? err.message : "Failed to generate quiz. Try again.");
+    } finally {
+      setGeneratingWeakQuiz(false);
+    }
+  }
+
   const totalMessages = sessions.reduce((sum, c) => sum + c.messages.length, 0);
   const sessionsSorted = [...sessions].reverse();
   const maxMessages = Math.max(...sessionsSorted.map((c) => c.messages.length), 1);
@@ -131,16 +148,30 @@ export function ProjectPage() {
           <p className="page-subtitle">
             {profile?.level ? LEVEL_LABELS[profile.level] ?? profile.level : null}
             {profile?.level && " · "}
-            {sessions.length} session{sessions.length !== 1 ? "s" : ""} · {totalMessages} messages
+            {sessions.length} study session{sessions.length !== 1 ? "s" : ""} · {totalMessages} messages
           </p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
+          <Link
+            to={`/projects/${encodeURIComponent(decoded)}/materials`}
+            className="button button-secondary"
+            style={{ fontSize: "0.8rem", padding: "0.45rem 0.875rem" }}
+          >
+            Materials
+          </Link>
+          <Link
+            to={`/projects/${encodeURIComponent(decoded)}/flashcards`}
+            className="button button-secondary"
+            style={{ fontSize: "0.8rem", padding: "0.45rem 0.875rem" }}
+          >
+            Flashcards
+          </Link>
           <Link
             to={`/projects/${encodeURIComponent(decoded)}/setup`}
             className="button button-secondary"
             style={{ fontSize: "0.8rem", padding: "0.45rem 0.875rem" }}
           >
-            Edit profile
+            Edit subject / cover
           </Link>
           <button
             className="button button-primary"
@@ -148,7 +179,7 @@ export function ProjectPage() {
             onClick={() => newSessionMutation.mutate()}
             type="button"
           >
-            {newSessionMutation.isPending ? "Creating…" : "+ New session"}
+            {newSessionMutation.isPending ? "Creating…" : "+ New study session"}
           </button>
         </div>
       </div>
@@ -159,6 +190,28 @@ export function ProjectPage() {
           <span className="project-goals-text">{profile.goals}</span>
         </div>
       )}
+
+      <div className="project-cover-card">
+        {profile?.cover_image_url ? (
+          <img
+            src={profile.cover_image_url}
+            alt={`${decoded} cover`}
+            className="project-cover-image"
+          />
+        ) : (
+          <div className="project-cover-image project-cover-image-empty" />
+        )}
+        <div className="project-cover-overlay" />
+        <div className="project-cover-content">
+          <h2>{decoded}</h2>
+          <Link
+            to={`/projects/${encodeURIComponent(decoded)}/setup`}
+            className="project-cover-action"
+          >
+            Change cover
+          </Link>
+        </div>
+      </div>
 
       {/* Progress section */}
       {progress && (progress.quizzes_attempted > 0 || progress.concepts_covered.length > 0) && (
@@ -206,13 +259,26 @@ export function ProjectPage() {
                     <span key={t} className="progress-topic-chip progress-topic-chip-weak">{t}</span>
                   ))}
                 </div>
+                <div className="weak-quiz-action">
+                  <button
+                    className="button button-primary"
+                    disabled={generatingWeakQuiz}
+                    onClick={() => void handleGenerateWeakQuiz()}
+                    type="button"
+                  >
+                    {generatingWeakQuiz ? "Generating…" : "Practice weak areas"}
+                  </button>
+                  {weakQuizError && (
+                    <p className="weak-quiz-error">{weakQuizError}</p>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Next review */}
             {progress.next_review.length > 0 && (
               <div className="progress-stat-card progress-stat-card-wide">
-                <div className="progress-stat-label">Review next session</div>
+                <div className="progress-stat-label">Review next study session</div>
                 <div className="progress-topic-list">
                   {progress.next_review.map((t) => (
                     <span key={t} className="progress-topic-chip progress-topic-chip-review">{t}</span>
@@ -263,7 +329,7 @@ export function ProjectPage() {
             </div>
           ) : (
             <p className="muted" style={{ fontSize: "0.875rem" }}>
-              Complete the project setup to generate a learning map.
+              Complete the subject setup to generate a learning map.
             </p>
           )}
         </div>
@@ -272,7 +338,7 @@ export function ProjectPage() {
         <div className="content-card">
           <div className="content-card-title">Activity</div>
           {sessionsSorted.length === 0 ? (
-            <p className="muted" style={{ fontSize: "0.875rem" }}>No sessions yet.</p>
+            <p className="muted" style={{ fontSize: "0.875rem" }}>No study sessions yet.</p>
           ) : (
             <div className="trend-chart">
               {sessionsSorted.map((c, i) => {
@@ -293,18 +359,18 @@ export function ProjectPage() {
         </div>
       </div>
 
-      {/* Sessions list */}
-      <div className="content-card-title" style={{ marginBottom: "0.75rem" }}>Sessions</div>
+      {/* Study sessions list */}
+      <div className="content-card-title" style={{ marginBottom: "0.75rem" }}>Study Sessions</div>
       {generateError && (
         <p style={{ fontSize: "0.8rem", color: "var(--error, #e55)", marginBottom: "0.5rem" }}>{generateError}</p>
       )}
       {sessions.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">💬</div>
-          <h3>No sessions yet</h3>
-          <p>Start your first session for this project.</p>
+          <h3>No study sessions yet</h3>
+          <p>Start your first study session for this subject.</p>
           <button className="button button-primary" onClick={() => newSessionMutation.mutate()} type="button">
-            Start session
+            Start study session
           </button>
         </div>
       ) : (
@@ -317,7 +383,7 @@ export function ProjectPage() {
               <div key={c.id} className="project-session-wrap">
                 <div className="project-session-row" style={{ borderTop: i === 0 ? "none" : undefined }}>
                   <div className="project-session-info">
-                    <div className="project-session-num">Session {sessionNum}</div>
+                    <div className="project-session-num">Study Session {sessionNum}</div>
                     <div className="project-session-meta">
                       {formatDate(c.created_at)}
                       {c.messages.length > 0 && <> · {c.messages.length} messages · {duration(c)}</>}
@@ -351,7 +417,7 @@ export function ProjectPage() {
                         className="button button-secondary"
                         disabled={generatingId === c.id || c.messages.length < 2}
                         onClick={() => void handleGenerateSummary(c.id)}
-                        title={c.messages.length < 2 ? "Session is too short to summarize" : undefined}
+                        title={c.messages.length < 2 ? "Study session is too short to summarize" : undefined}
                         type="button"
                         style={{ fontSize: "0.78rem", padding: "0.4rem 0.8rem" }}
                       >
@@ -396,6 +462,9 @@ export function ProjectPage() {
             );
           })}
         </div>
+      )}
+      {weakQuizzes && (
+        <WeakQuizModal quizzes={weakQuizzes} onClose={() => setWeakQuizzes(null)} />
       )}
     </div>
   );

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { generateMindMap, setupProject } from "../api";
+import { generateMindMap, getProjectProfile, searchProjectCoverImages, setupProject } from "../api";
+import type { ProjectCoverImageOption } from "../types";
 
 const LEVELS = [
   { value: "beginner", label: "Complete beginner", description: "Little to no prior experience" },
@@ -20,25 +21,104 @@ export function ProjectSetupPage() {
 
   const [level, setLevel] = useState<string | null>(null);
   const [goals, setGoals] = useState("");
+  const [coverImageUrl, setCoverImageUrl] = useState("");
+  const [coverImageSource, setCoverImageSource] = useState<string | null>(null);
+  const [coverImageSourceUrl, setCoverImageSourceUrl] = useState<string | null>(null);
+  const [coverImagePhotographer, setCoverImagePhotographer] = useState<string | null>(null);
+  const [coverImagePhotographerUrl, setCoverImagePhotographerUrl] = useState<string | null>(null);
+  const [coverSearchQuery, setCoverSearchQuery] = useState("");
+  const [coverSearchResults, setCoverSearchResults] = useState<ProjectCoverImageOption[]>([]);
+  const [coverSearchError, setCoverSearchError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   const sessionId = searchParams.get("session");
   const destination = sessionId ? `/sessions/${sessionId}` : `/projects/${encodeURIComponent(decoded)}`;
 
+  const { data: profile } = useQuery({
+    queryKey: ["project-profile", decoded],
+    queryFn: () => getProjectProfile(decoded),
+    enabled: Boolean(decoded),
+  });
+
+  useEffect(() => {
+    if (!profile || hydrated) return;
+    setLevel(profile.level);
+    setGoals(profile.goals ?? "");
+    setCoverImageUrl(profile.cover_image_url ?? "");
+    setCoverImageSource(profile.cover_image_source ?? null);
+    setCoverImageSourceUrl(profile.cover_image_source_url ?? null);
+    setCoverImagePhotographer(profile.cover_image_photographer ?? null);
+    setCoverImagePhotographerUrl(profile.cover_image_photographer_url ?? null);
+    setCoverSearchQuery(profile.subject);
+    setHydrated(true);
+  }, [profile, hydrated]);
+
+  useEffect(() => {
+    if (hydrated) return;
+    setCoverSearchQuery(decoded);
+  }, [decoded, hydrated]);
+
+  const coverSearchMutation = useMutation({
+    mutationFn: async () => searchProjectCoverImages(coverSearchQuery.trim() || decoded),
+    onSuccess: (results) => {
+      setCoverSearchResults(results);
+      setCoverSearchError(results.length === 0 ? "No images found for that search." : null);
+    },
+    onError: (err) => {
+      setCoverSearchResults([]);
+      setCoverSearchError(err instanceof Error ? err.message : "Image search failed.");
+    },
+  });
+
   const setupMutation = useMutation({
     mutationFn: async () => {
-      await setupProject(decoded, level, goals.trim() || null);
-      await generateMindMap(decoded);
+      const trimmedGoals = goals.trim() || null;
+      const trimmedCoverImageUrl = coverImageUrl.trim() || null;
+      const levelChanged = (profile?.level ?? null) !== level;
+      const goalsChanged = (profile?.goals ?? null) !== trimmedGoals;
+
+      await setupProject(
+        decoded,
+        level,
+        trimmedGoals,
+        trimmedCoverImageUrl,
+        trimmedCoverImageUrl ? coverImageSource : null,
+        trimmedCoverImageUrl ? coverImageSourceUrl : null,
+        trimmedCoverImageUrl ? coverImagePhotographer : null,
+        trimmedCoverImageUrl ? coverImagePhotographerUrl : null,
+      );
+
+      if (!profile?.mind_map || levelChanged || goalsChanged) {
+        await generateMindMap(decoded);
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["project-profile", decoded] });
+      await queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
       navigate(destination, { replace: true });
     },
-    onError: () => setError("Something went wrong. You can still continue to the project."),
+    onError: (err) => setError(err instanceof Error ? err.message : "Something went wrong. You can still continue to the subject."),
   });
 
   function handleSkip() {
     navigate(destination, { replace: true });
+  }
+
+  function handleCoverUrlChange(value: string) {
+    setCoverImageUrl(value);
+    setCoverImageSource(null);
+    setCoverImageSourceUrl(null);
+    setCoverImagePhotographer(null);
+    setCoverImagePhotographerUrl(null);
+  }
+
+  function handleSelectCoverImage(option: ProjectCoverImageOption) {
+    setCoverImageUrl(option.image_url);
+    setCoverImageSource(option.source);
+    setCoverImageSourceUrl(option.source_url);
+    setCoverImagePhotographer(option.photographer);
+    setCoverImagePhotographerUrl(option.photographer_url);
   }
 
   return (
@@ -74,14 +154,91 @@ export function ProjectSetupPage() {
         </div>
 
         <div className="setup-question">
-          <div className="setup-question-label">What are your goals for this project?</div>
+          <div className="setup-question-label">What are your goals for this subject?</div>
           <textarea
             className="setup-textarea"
-            placeholder={`e.g. "Prepare for my database exam", "Build a side project", "Fill gaps in my knowledge"`}
+            placeholder={`e.g. "Prepare for my database exam", "Build a study plan", "Fill gaps in my knowledge"`}
             rows={3}
             value={goals}
             onChange={(e) => setGoals(e.target.value)}
           />
+        </div>
+
+        <div className="setup-question">
+          <div className="setup-question-label">Dashboard cover image</div>
+          <div className="setup-cover-field">
+            {coverImageUrl.trim() ? (
+              <img
+                src={coverImageUrl.trim()}
+                alt={`${decoded} cover preview`}
+                className="setup-cover-preview"
+              />
+            ) : (
+              <div className="setup-cover-placeholder">No custom cover yet</div>
+            )}
+            <input
+              className="form-input"
+              placeholder="https://example.com/cover-image.jpg"
+              value={coverImageUrl}
+              onChange={(e) => handleCoverUrlChange(e.target.value)}
+            />
+            <p className="setup-cover-help">
+              Paste a public image URL or use the Pexels search below to override the default dashboard card image for this subject.
+            </p>
+            <div className="setup-cover-search">
+              <div className="setup-cover-search-row">
+                <input
+                  className="form-input"
+                  placeholder={`Search Pexels for ${decoded}`}
+                  value={coverSearchQuery}
+                  onChange={(e) => setCoverSearchQuery(e.target.value)}
+                />
+                <button
+                  className="button button-secondary"
+                  disabled={coverSearchMutation.isPending || !(coverSearchQuery.trim() || decoded)}
+                  onClick={() => coverSearchMutation.mutate()}
+                  type="button"
+                >
+                  {coverSearchMutation.isPending ? "Searching…" : "Search Pexels"}
+                </button>
+              </div>
+              <p className="setup-cover-help">
+                Pexels requires attribution when possible. Selected images keep source metadata with the subject.
+              </p>
+              {coverSearchError && <p className="error-text">{coverSearchError}</p>}
+              {coverSearchResults.length > 0 && (
+                <div className="setup-cover-results">
+                  {coverSearchResults.map((option) => {
+                    const isSelected = coverImageUrl === option.image_url;
+                    return (
+                      <div key={option.id} className={`setup-cover-result ${isSelected ? "selected" : ""}`}>
+                        <img src={option.thumbnail_url} alt="" className="setup-cover-result-image" />
+                        <div className="setup-cover-result-body">
+                          <span className="setup-cover-result-source">{option.source}</span>
+                          <span className="setup-cover-result-credit">Photo by {option.photographer}</span>
+                          <span className="setup-cover-result-links">
+                            <a href={option.photographer_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                              Photographer
+                            </a>
+                            <a href={option.source_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                              Photo page
+                            </a>
+                          </span>
+                          <button
+                            type="button"
+                            className="button button-secondary setup-cover-result-select"
+                            onClick={() => handleSelectCoverImage(option)}
+                          >
+                            {isSelected ? "Selected" : "Use image"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {error && <p className="error-text">{error}</p>}
@@ -92,11 +249,11 @@ export function ProjectSetupPage() {
           </button>
           <button
             className="button button-primary"
-            disabled={setupMutation.isPending || (!level && !goals.trim())}
+            disabled={setupMutation.isPending || (!level && !goals.trim() && !coverImageUrl.trim())}
             onClick={() => setupMutation.mutate()}
             type="button"
           >
-            {setupMutation.isPending ? "Setting up…" : "Set up project →"}
+            {setupMutation.isPending ? "Setting up…" : "Set up subject →"}
           </button>
         </div>
       </div>

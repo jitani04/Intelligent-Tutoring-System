@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PointerEvent, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
-import { listConversations } from "../api";
+import { getDueFlashcards, listConversations } from "../api";
 import { clearToken } from "../auth";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -21,20 +21,12 @@ function getStoredSidebarWidth(): number {
   return Number.isFinite(saved) ? clampSidebarWidth(saved) : DEFAULT_SIDEBAR_WIDTH;
 }
 
-function progressFromCount(n: number): number {
-  if (n === 0) return 0;
-  if (n <= 2) return 20;
-  if (n <= 5) return 45;
-  if (n <= 10) return 68;
-  return 85;
-}
-
 function recentChatLabel(conversation: { id: number; subject: string | null; messages: { role: string; content: string }[] }): string {
   const firstUserMessage = conversation.messages.find((message) => message.role === "user")?.content.trim();
   if (firstUserMessage) {
     return firstUserMessage.length > 34 ? `${firstUserMessage.slice(0, 34)}…` : firstUserMessage;
   }
-  return `Chat #${conversation.id}`;
+  return `Study session #${conversation.id}`;
 }
 
 export function Sidebar() {
@@ -44,26 +36,37 @@ export function Sidebar() {
   const dragStateRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(getStoredSidebarWidth);
   const [isResizing, setIsResizing] = useState(false);
+  const projectRouteMatch = location.pathname.match(/^\/projects\/([^/]+)/);
+  const activeProjectSubject = projectRouteMatch ? decodeURIComponent(projectRouteMatch[1]) : null;
+  const activeProjectPath = activeProjectSubject
+    ? `/projects/${encodeURIComponent(activeProjectSubject)}`
+    : null;
 
   const { data: conversations = [] } = useQuery({
     queryKey: ["conversations"],
     queryFn: listConversations,
   });
 
+  const { data: flashcardData } = useQuery({
+    queryKey: ["flashcards-due", activeProjectSubject],
+    queryFn: () => getDueFlashcards(activeProjectSubject ?? undefined),
+    enabled: Boolean(activeProjectSubject),
+    staleTime: 60_000,
+  });
+  const dueCount = flashcardData?.total_due ?? 0;
+
   const projects = (() => {
-    const map = new Map<string, { count: number; lastId: number }>();
+    const map = new Map<string, { lastId: number }>();
     for (const c of conversations) {
       const subject = c.subject ?? "General";
       const existing = map.get(subject);
       if (!existing || c.id > existing.lastId) {
-        map.set(subject, { count: (existing?.count ?? 0) + 1, lastId: c.id });
-      } else {
-        map.set(subject, { ...existing, count: existing.count + 1 });
+        map.set(subject, { lastId: c.id });
       }
     }
-    return Array.from(map.entries()).map(([subject, { count, lastId }]) => ({
-      subject, count, lastId, progress: progressFromCount(count),
-    }));
+    return Array.from(map.entries())
+      .map(([subject, { lastId }]) => ({ subject, lastId }))
+      .sort((a, b) => b.lastId - a.lastId);
   })();
 
   const recentConversations = [...conversations]
@@ -81,6 +84,17 @@ export function Sidebar() {
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        navigate("/search");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [navigate]);
 
   function handleResizePointerDown(event: PointerEvent<HTMLButtonElement>) {
     event.preventDefault();
@@ -126,7 +140,7 @@ export function Sidebar() {
 
       <Link to="/sessions/new" className="sidebar-new-btn">
         <span>+</span>
-        <span>New session</span>
+        <span>New study session</span>
       </Link>
 
       <div className="sidebar-scroll">
@@ -140,18 +154,14 @@ export function Sidebar() {
 
         {projects.length > 0 && (
           <>
-            <div className="sidebar-section">Projects</div>
-            {projects.map(({ subject, count, progress }) => (
+            <div className="sidebar-section">Subjects</div>
+            {projects.map(({ subject }) => (
               <Link
                 key={subject}
                 to={`/projects/${encodeURIComponent(subject)}`}
                 className={`sidebar-project ${isActive(`/projects/${encodeURIComponent(subject)}`) ? "active" : ""}`}
               >
                 <span className="sidebar-project-name">{subject}</span>
-                <div className="sidebar-project-progress">
-                  <div className="sidebar-project-fill" style={{ width: `${progress}%` }} />
-                </div>
-                <span className="sidebar-project-meta">{count} session{count !== 1 ? "s" : ""}</span>
               </Link>
             ))}
           </>
@@ -168,7 +178,7 @@ export function Sidebar() {
                   key={c.id}
                   to={`/sessions/${c.id}`}
                   className={`sidebar-item ${location.pathname === `/sessions/${c.id}` ? "active" : ""}`}
-                  title={`${project} · Chat #${c.id}`}
+                  title={`${project} · Study session #${c.id}`}
                 >
                   <em className="sidebar-item-icon">◎</em>
                   <span className="sidebar-item-label">
@@ -183,12 +193,44 @@ export function Sidebar() {
 
         <div className="sidebar-divider" />
 
+        {activeProjectSubject && activeProjectPath && (
+          <>
+            <div className="sidebar-section">Current subject</div>
+            <Link
+              to={`${activeProjectPath}/flashcards`}
+              className={`sidebar-item ${isActive(`${activeProjectPath}/flashcards`) ? "active" : ""}`}
+            >
+              <em className="sidebar-item-icon">⬡</em>
+              <span className="sidebar-item-label">Flashcards</span>
+              {dueCount > 0 && <span className="sidebar-badge">{dueCount}</span>}
+            </Link>
+
+            <Link
+              to={`${activeProjectPath}/materials`}
+              className={`sidebar-item ${isActive(`${activeProjectPath}/materials`) ? "active" : ""}`}
+            >
+              <em className="sidebar-item-icon">📂</em>
+              <span className="sidebar-item-label">Materials</span>
+            </Link>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
         <Link
-          to="/materials"
-          className={`sidebar-item ${isActive("/materials") ? "active" : ""}`}
+          to="/notes"
+          className={`sidebar-item ${isActive("/notes") ? "active" : ""}`}
         >
-          <em className="sidebar-item-icon">📂</em>
-          <span className="sidebar-item-label">Materials</span>
+          <em className="sidebar-item-icon">✦</em>
+          <span className="sidebar-item-label">Notes</span>
+        </Link>
+
+        <Link
+          to="/search"
+          className={`sidebar-item ${isActive("/search") ? "active" : ""}`}
+        >
+          <em className="sidebar-item-icon">⌕</em>
+          <span className="sidebar-item-label">Search</span>
+          <span className="sidebar-shortcut">⌘K</span>
         </Link>
 
         <Link

@@ -1,34 +1,48 @@
 import { ChangeEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { deleteMaterial, listMaterials, uploadMaterial } from "../api";
-import { getPendingStudyContext } from "../studyState";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function MaterialsPage() {
+  const { subject } = useParams<{ subject: string }>();
+  const decodedSubject = decodeURIComponent(subject ?? "");
+  const projectMaterialsPath = `/projects/${encodeURIComponent(decodedSubject)}/materials`;
   const queryClient = useQueryClient();
-  const pendingContext = getPendingStudyContext();
-  const [subject, setSubject] = useState(pendingContext?.subject ?? "");
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const materialsQuery = useQuery({
-    queryKey: ["materials"],
-    queryFn: listMaterials,
+    queryKey: ["materials", decodedSubject],
+    queryFn: () => listMaterials(decodedSubject),
+    enabled: Boolean(decodedSubject),
     refetchInterval: (q) =>
       q.state.data?.some((m) => m.status === "processing") ? 3000 : false,
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteMaterial(id),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["materials"] }); },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["materials", decodedSubject] }); },
   });
 
   const materials = materialsQuery.data ?? [];
+
+  if (!decodedSubject) {
+    return (
+      <div className="page-shell">
+        <div className="empty-state">
+          <div className="empty-state-icon">?</div>
+          <h3>Subject not found</h3>
+          <p>Open materials from a specific subject.</p>
+          <Link className="button button-primary" to="/dashboard">Back to dashboard</Link>
+        </div>
+      </div>
+    );
+  }
 
   async function handleFiles(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -36,8 +50,8 @@ export function MaterialsPage() {
     setUploadError(null);
     setUploadingNames(files.map((f) => f.name));
     try {
-      await Promise.all(files.map((f) => uploadMaterial(f, subject)));
-      await queryClient.invalidateQueries({ queryKey: ["materials"] });
+      await Promise.all(files.map((f) => uploadMaterial(f, decodedSubject)));
+      await queryClient.invalidateQueries({ queryKey: ["materials", decodedSubject] });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
@@ -57,21 +71,17 @@ export function MaterialsPage() {
       <div className="page-header">
         <div className="page-header-text">
           <h1 className="page-title">Materials</h1>
-          <p className="page-subtitle">Upload course files so the agent can ground its answers in your study material.</p>
+          <p className="page-subtitle">
+            {decodedSubject} subject files for grounded tutoring, retrieval, and study support.
+          </p>
         </div>
       </div>
 
       <div className="content-card">
         <div className="content-card-title">Upload</div>
-        <div className="flow-field" style={{ marginBottom: "0.875rem" }}>
-          <span>Subject tag</span>
-          <input
-            placeholder="Biology 101"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            style={{ padding: "0.6rem 0.875rem", border: "1px solid var(--panel-border)", borderRadius: "8px", background: "var(--surface)", outline: "none", width: "100%" }}
-          />
-        </div>
+        <p className="settings-copy" style={{ marginBottom: "0.875rem" }}>
+          Uploading here automatically attaches each file to <strong>{decodedSubject}</strong>.
+        </p>
         <label className="upload-zone">
           <div className="upload-zone-icon">📄</div>
           <div className="upload-zone-label">Drop files or click to browse</div>
@@ -107,11 +117,11 @@ export function MaterialsPage() {
             <div key={m.id} className="material-row">
               <div className="material-row-icon">📄</div>
               <div className="material-row-info">
-                <Link className="material-row-name material-row-link" to={`/materials/${m.id}`}>
+                <Link className="material-row-name material-row-link" to={`${projectMaterialsPath}/${m.id}`}>
                   {m.filename}
                 </Link>
                 <div className="material-row-meta">
-                  {m.subject ?? "General"} · {formatDate(m.created_at)}
+                  {formatDate(m.created_at)}
                   {m.error_message ? ` · ${m.error_message}` : ""}
                 </div>
               </div>

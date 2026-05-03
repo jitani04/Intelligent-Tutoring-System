@@ -7,7 +7,7 @@ const USE_CASES = [
   "Studying for a class",
   "Preparing for exams",
   "Learning a new skill",
-  "Building a project",
+  "Learning a subject",
   "Reviewing uploaded materials",
 ];
 

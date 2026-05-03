@@ -92,22 +92,39 @@ AGENT_TOOLS = [
                 "Use this whenever a concept is spatial, structural, or relational — "
                 "e.g. system architectures, flowcharts, process steps, hierarchies, "
                 "comparisons, cause-and-effect, geometry, or anything better shown than described. "
-                "Keep diagrams simple: 4-10 elements.\n\n"
-                "Each element in the JSON array requires these fields:\n"
-                '{ "id": "<unique 8-char string>", '
-                '"type": "rectangle"|"ellipse"|"diamond"|"arrow"|"line"|"text", '
-                '"x": <number>, "y": <number>, "width": <number>, "height": <number>, '
-                '"angle": 0, "strokeColor": "#1e1e1e", "backgroundColor": "transparent", '
-                '"fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid", '
-                '"roughness": 1, "opacity": 100, "groupIds": [], "frameId": null, '
-                '"roundness": null, "seed": <random int>, "version": 1, "versionNonce": 0, '
-                '"isDeleted": false, "boundElements": null, "updated": 0, "link": null, "locked": false }\n'
-                'Text elements also need: "text": "label", "fontSize": 16, "fontFamily": 1, '
-                '"textAlign": "center", "verticalAlign": "middle", "containerId": null, "lineHeight": 1.25\n'
-                'Arrow elements also need: "points": [[0,0],[dx,dy]], "startBinding": null, '
-                '"endBinding": null, "startArrowhead": null, "endArrowhead": "arrow", "elbowed": false\n\n'
-                "Place elements starting around x:100, y:80. Space them 150-200px apart. "
-                "Use separate text elements as labels, centered over shapes."
+                "Keep diagrams simple: 4-12 elements.\n\n"
+                "ELEMENT BASE FIELDS (required on every element):\n"
+                '{"id":"<unique-8-char>","type":"rectangle"|"ellipse"|"diamond"|"arrow"|"text",'
+                '"x":<int>,"y":<int>,"width":<int>,"height":<int>,'
+                '"angle":0,"strokeColor":"#1e1e1e","backgroundColor":"transparent","fillStyle":"solid",'
+                '"strokeWidth":2,"strokeStyle":"solid","roughness":1,"opacity":100,'
+                '"groupIds":[],"frameId":null,"roundness":null,"seed":<random-int>,'
+                '"version":1,"versionNonce":0,"isDeleted":false,"updated":0,"link":null,"locked":false}\n\n'
+                "SHAPES (rectangle / ellipse / diamond):\n"
+                "- Set boundElements to an array listing every arrow id that connects to this shape:\n"
+                '  "boundElements":[{"id":"<arrowId>","type":"arrow"}, ...]\n'
+                "- If nothing connects to it, use null.\n\n"
+                "TEXT LABELS:\n"
+                "- Place a text element centered inside each shape. Set containerId to the parent shape id.\n"
+                "- The parent shape must include the text id in its boundElements:\n"
+                '  {"id":"<textId>","type":"text"}\n'
+                '- Text extra fields: "text":"label","fontSize":16,"fontFamily":1,'
+                '"textAlign":"center","verticalAlign":"middle","lineHeight":1.25\n\n'
+                "ARROWS — CRITICAL RULES:\n"
+                "- ALWAYS use startBinding and endBinding. Never rely on manual point coordinates alone.\n"
+                '- startBinding: {"elementId":"<sourceId>","focus":0.0,"gap":8}\n'
+                '- endBinding:   {"elementId":"<targetId>","focus":0.0,"gap":8}\n'
+                '- points: [[0,0],[0,150]] — use a rough placeholder; Excalidraw recalculates with bindings.\n'
+                '- Arrow extra fields: "startArrowhead":null,"endArrowhead":"arrow","elbowed":false,"boundElements":null\n'
+                "- Each shape touched by an arrow MUST list that arrow id in its boundElements.\n\n"
+                "LAYOUT GUIDE:\n"
+                "- Box size: width 140, height 60. Arrow placeholder length ≥ 100.\n"
+                "- Tree / hierarchy: parent centered at top (x:300,y:80). "
+                "  Children in a row 160px below, spaced 200px apart horizontally. "
+                "  One arrow per parent→child edge, starting at parent bottom, ending at child top.\n"
+                "- Flowchart: top-to-bottom, each step 130px below the previous, x aligned.\n"
+                "- Side-by-side comparison: two columns 260px apart, rows 120px apart.\n"
+                "- Never let arrows cross. If they would, rearrange node positions."
             ),
             "parameters": {
                 "type": "object",
@@ -209,6 +226,7 @@ async def stream_chat(
         user_id=user_id,
         conversation_id=conversation_id,
         query=user_message,
+        subject=subject,
     )
 
     history_turns: list[ChatTurn] = [
@@ -296,6 +314,9 @@ async def stream_chat(
                         for el in elements:
                             if not el.get("id"):
                                 el["id"] = str(uuid.uuid4())[:8]
+                            # Arrows must have a points array for Excalidraw to render
+                            if el.get("type") == "arrow" and not el.get("points"):
+                                el["points"] = [[0, 0], [0, 120]]
                     except (json.JSONDecodeError, TypeError, AttributeError):
                         elements = []
                     lc_tool_messages.append(

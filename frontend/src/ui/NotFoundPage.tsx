@@ -19,7 +19,7 @@ export function NotFoundPage() {
           </Link>
           {isSignedIn ? (
             <Link className="button button-secondary" to="/sessions/new">
-              Start a session
+              Start a study session
             </Link>
           ) : null}
         </div>

@@ -17,12 +17,12 @@ const FEATURES = [
   {
     icon: "✣",
     title: "Concept Mapping",
-    description: "Build connections between topics with project maps that organize what you are learning.",
+    description: "Build connections between topics with subject maps that organize what you are learning.",
   },
   {
     icon: "↗",
     title: "Progress Tracking",
-    description: "Track materials, sessions, and subjects so every conversation keeps momentum.",
+    description: "Track materials, study sessions, and subjects so each subject keeps momentum.",
   },
   {
     icon: "▤",
@@ -44,99 +44,115 @@ const FEATURES = [
 const STEPS = [
   { number: "01", title: "Upload your material", body: "Add notes, readings, or a topic you want to master." },
   { number: "02", title: "Engage actively", body: "Answer guided questions and ask for hints when you need them." },
-  { number: "03", title: "Track and improve", body: "Return to projects, review sessions, and keep building mastery." },
+  { number: "03", title: "Track and improve", body: "Return to subjects, review study sessions, and keep building mastery." },
 ];
 
 type ModalMode = "signin" | "signup";
 
-function NeuralNetCanvas() {
+type WaveLayer = {
+  components: { amp: number; freq: number; speed: number; phase: number }[];
+  yOffset: number;
+  rgba: [number, number, number, number];
+};
+
+const AURORA_LAYERS: WaveLayer[] = [
+  {
+    components: [
+      { amp: 0.13, freq: 1.2, speed: 0.00042, phase: 0.0 },
+      { amp: 0.05, freq: 2.9, speed: 0.00080, phase: 1.4 },
+    ],
+    yOffset: 0.52,
+    rgba: [115, 147, 179, 0.28],
+  },
+  {
+    components: [
+      { amp: 0.16, freq: 0.9, speed: 0.00031, phase: 2.2 },
+      { amp: 0.06, freq: 3.4, speed: 0.00110, phase: 0.7 },
+    ],
+    yOffset: 0.63,
+    rgba: [158, 183, 207, 0.22],
+  },
+  {
+    components: [
+      { amp: 0.11, freq: 1.6, speed: 0.00055, phase: 1.0 },
+      { amp: 0.04, freq: 4.2, speed: 0.00140, phase: 3.1 },
+    ],
+    yOffset: 0.74,
+    rgba: [90, 120, 152, 0.18],
+  },
+  {
+    components: [
+      { amp: 0.18, freq: 0.6, speed: 0.00022, phase: 3.8 },
+      { amp: 0.07, freq: 2.1, speed: 0.00065, phase: 2.6 },
+    ],
+    yOffset: 0.82,
+    rgba: [140, 165, 195, 0.14],
+  },
+];
+
+function AuroraCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const canvasEl = canvas;
-    const context = ctx;
 
-    const nodes = [
-      { rx: 0.8, ry: 0.1 }, { rx: 0.68, ry: 0.2 }, { rx: 0.88, ry: 0.28 },
-      { rx: 0.73, ry: 0.38 }, { rx: 0.6, ry: 0.46 }, { rx: 0.82, ry: 0.52 },
-      { rx: 0.66, ry: 0.62 }, { rx: 0.52, ry: 0.7 }, { rx: 0.78, ry: 0.76 },
-      { rx: 0.9, ry: 0.86 }, { rx: 0.58, ry: 0.88 },
-    ];
-    const edges = [[0, 1], [0, 2], [1, 3], [2, 3], [2, 5], [3, 4], [3, 5], [4, 6], [5, 6], [5, 8], [6, 7], [6, 8], [7, 10], [8, 9], [8, 10]];
-    const signals = edges.map((edge, i) => ({ edge, t: (i * 0.18) % 1, speed: 0.004 + Math.random() * 0.003, on: Math.random() > 0.35 }));
-    let frame = 0;
+    const el: HTMLCanvasElement = canvas;
+    const c: CanvasRenderingContext2D = ctx;
+
     let raf = 0;
+    let w = 0;
+    let h = 0;
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
-      canvasEl.width = canvasEl.offsetWidth * dpr;
-      canvasEl.height = canvasEl.offsetHeight * dpr;
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      w = el.offsetWidth;
+      h = el.offsetHeight;
+      el.width = w * dpr;
+      el.height = h * dpr;
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
-    function draw() {
-      const width = canvasEl.offsetWidth;
-      const height = canvasEl.offsetHeight;
-      context.clearRect(0, 0, width, height);
-      const placed = nodes.map((node) => ({ x: node.rx * width, y: node.ry * height }));
+    function sampleY(layer: WaveLayer, time: number, x: number): number {
+      return (
+        h * layer.yOffset +
+        layer.components.reduce((acc, comp) => {
+          return acc + Math.sin((x / w) * Math.PI * 2 * comp.freq + comp.phase + time * comp.speed) * h * comp.amp;
+        }, 0)
+      );
+    }
 
-      edges.forEach(([a, b]) => {
-        context.beginPath();
-        context.moveTo(placed[a].x, placed[a].y);
-        context.lineTo(placed[b].x, placed[b].y);
-        context.strokeStyle = "rgba(115,147,179,0.18)";
-        context.lineWidth = 1;
-        context.stroke();
-      });
+    function draw(time: number) {
+      c.clearRect(0, 0, w, h);
 
-      signals.forEach((signal) => {
-        if (!signal.on) return;
-        const [a, b] = signal.edge;
-        const x = placed[a].x + (placed[b].x - placed[a].x) * signal.t;
-        const y = placed[a].y + (placed[b].y - placed[a].y) * signal.t;
-        const glow = context.createRadialGradient(x, y, 0, x, y, 8);
-        glow.addColorStop(0, "rgba(158,183,207,0.95)");
-        glow.addColorStop(1, "rgba(115,147,179,0)");
-        context.beginPath();
-        context.arc(x, y, 8, 0, Math.PI * 2);
-        context.fillStyle = glow;
-        context.fill();
-        signal.t += signal.speed;
-        if (signal.t > 1) {
-          signal.t = 0;
-          signal.on = Math.random() > 0.25;
+      for (const layer of AURORA_LAYERS) {
+        const [r, g, b, a] = layer.rgba;
+        const grad = c.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
+        grad.addColorStop(0.35, `rgba(${r},${g},${b},${a})`);
+        grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+
+        c.beginPath();
+        c.moveTo(0, sampleY(layer, time, 0));
+        for (let x = 1; x <= w; x += 3) {
+          c.lineTo(x, sampleY(layer, time, x));
         }
-      });
+        c.lineTo(w, h);
+        c.lineTo(0, h);
+        c.closePath();
+        c.fillStyle = grad;
+        c.fill();
+      }
 
-      placed.forEach((node, i) => {
-        const pulse = 0.82 + Math.sin(frame * 0.032 + i * 0.9) * 0.18;
-        const radius = 6.5 * pulse;
-        const glow = context.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius * 3.5);
-        glow.addColorStop(0, `rgba(115,147,179,${0.18 * pulse})`);
-        glow.addColorStop(1, "rgba(115,147,179,0)");
-        context.beginPath();
-        context.arc(node.x, node.y, radius * 3.5, 0, Math.PI * 2);
-        context.fillStyle = glow;
-        context.fill();
-        context.beginPath();
-        context.arc(node.x, node.y, radius, 0, Math.PI * 2);
-        context.fillStyle = `rgba(115,147,179,${0.88 * pulse})`;
-        context.fill();
-      });
-
-      frame += 1;
       raf = requestAnimationFrame(draw);
     }
 
     resize();
     const observer = new ResizeObserver(resize);
-    observer.observe(canvasEl);
-    draw();
+    observer.observe(el);
+    raf = requestAnimationFrame(draw);
 
     return () => {
       cancelAnimationFrame(raf);
@@ -144,7 +160,7 @@ function NeuralNetCanvas() {
     };
   }, []);
 
-  return <canvas className="bb-neural-canvas" ref={canvasRef} />;
+  return <canvas className="bb-constellation-canvas" ref={canvasRef} />;
 }
 
 export function LandingPage() {
@@ -247,32 +263,9 @@ export function LandingPage() {
       </nav>
 
       <header className="bb-hero landing-hero">
-        <div className="bb-hero-inner">
-          <div className="bb-hero-copy motion-reveal motion-slide-left">
-            <span className="landing-kicker">KnowledgePal tutoring engine</span>
-            <h1 className="bb-hero-h1">
-              <span>Learn smarter,</span>
-              <span className="bb-hero-muted">not harder</span>
-            </h1>
-            <p className="bb-hero-body">
-              AI-powered tutoring that strengthens learning through active engagement, personalized
-              challenges, and material-grounded guidance. Do not let AI replace you. Use it to amplify your potential.
-            </p>
-            <div className="landing-actions">
-              <button className="bb-btn bb-btn-primary bb-btn-lg" onClick={() => openModal("signup")} type="button">
-                Start learning
-              </button>
-              <button className="bb-btn bb-btn-outline bb-btn-lg" onClick={() => openModal("signin")} type="button">
-                Sign in
-              </button>
-            </div>
-            <div className="landing-inline-links">
-              <Link className="text-link" to="/materials">Upload material</Link>
-              <Link className="text-link" to="/history">Session history</Link>
-            </div>
-          </div>
+        <div className="bb-hero-inner bb-hero-inner-visual-only">
           <div className="bb-hero-visual motion-reveal motion-scale" aria-hidden="true">
-            <NeuralNetCanvas />
+            <AuroraCanvas />
           </div>
         </div>
       </header>
@@ -280,7 +273,6 @@ export function LandingPage() {
       <section className="bb-features" id="features">
         <div className="bb-section-inner">
           <h2 className="bb-section-h2 motion-reveal motion-rise">Active learning features</h2>
-          <p className="bb-section-sub motion-reveal motion-rise">KnowledgePal guides you to discover answers, not just receive them.</p>
           <div className="bb-feat-grid landing-grid">
             {FEATURES.map((f, index) => (
               <article
@@ -318,14 +310,14 @@ export function LandingPage() {
       <section className="bb-cta" id="start">
         <div className="bb-section-inner motion-reveal motion-rise">
           <h2>Ready to unlock your learning potential?</h2>
-          <p>Start with a project, upload material, and let the tutor guide the next question.</p>
+          <p>Start with a subject, upload material, and let the tutor guide the next question.</p>
           <button className="bb-btn bb-btn-primary bb-btn-xl" onClick={() => openModal("signup")} type="button">
             Get started free
           </button>
         </div>
       </section>
 
-      <footer className="bb-footer">© 2026 BrainBoost AI. Powered by KnowledgePal.</footer>
+      <footer className="bb-footer">© 2026 BrainBoost AI.</footer>
 
       {mode !== null && (
         <div className="landing-modal-backdrop" onClick={() => setMode(null)} role="presentation">

@@ -3,7 +3,10 @@ import { Navigate, createBrowserRouter, useParams } from "react-router-dom";
 import { AppLayout } from "./ui/AppLayout";
 import { ChatPage } from "./ui/ChatPage";
 import { DashboardPage } from "./ui/DashboardPage";
+import { FlashcardsPage } from "./ui/FlashcardsPage";
 import { HistoryPage } from "./ui/HistoryPage";
+import { NotesPage } from "./ui/NotesPage";
+import { SearchPage } from "./ui/SearchPage";
 import { LandingPage } from "./ui/LandingPage";
 import { MaterialDetailPage } from "./ui/MaterialDetailPage";
 import { MaterialsPage } from "./ui/MaterialsPage";
@@ -37,10 +40,16 @@ export const router = createBrowserRouter([
           { path: "/dashboard", element: <DashboardPage /> },
           { path: "/projects/:subject", element: <ProjectPage /> },
           { path: "/projects/:subject/setup", element: <ProjectSetupPage /> },
+          { path: "/projects/:subject/materials", element: <MaterialsPage /> },
+          { path: "/projects/:subject/materials/:materialId", element: <MaterialDetailPage /> },
+          { path: "/projects/:subject/flashcards", element: <FlashcardsPage /> },
           { path: "/sessions/new", element: <ChatPage /> },
           { path: "/sessions/:conversationId", element: <ChatPage /> },
-          { path: "/materials", element: <MaterialsPage /> },
-          { path: "/materials/:materialId", element: <MaterialDetailPage /> },
+          { path: "/materials", element: <Navigate replace to="/dashboard" /> },
+          { path: "/materials/:materialId", element: <Navigate replace to="/dashboard" /> },
+          { path: "/flashcards", element: <Navigate replace to="/dashboard" /> },
+          { path: "/notes", element: <NotesPage /> },
+          { path: "/search", element: <SearchPage /> },
           { path: "/history", element: <HistoryPage /> },
           { path: "/profile", element: <ProfilePage /> },
           { path: "/settings", element: <SettingsPage /> },

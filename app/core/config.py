@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(alias="JWT_SECRET")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     jwt_expire_minutes: int = Field(default=10080, alias="JWT_EXPIRE_MINUTES")
+    openai_tts_api_key: str = Field(default="", alias="OPENAI_TTS_API_KEY")
+    openai_tts_voice: str = Field(default="nova", alias="OPENAI_TTS_VOICE")
+    pexels_api_key: str = Field(default="", alias="PEXELS_API_KEY")
+
     google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
 
     cors_allow_origins_raw: str = Field(

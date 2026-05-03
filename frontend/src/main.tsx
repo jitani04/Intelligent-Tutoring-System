@@ -6,16 +6,22 @@ import { RouterProvider } from "react-router-dom";
 
 import { router } from "./router";
 import "./styles.css";
+import "@excalidraw/excalidraw/index.css";
 import { applyTheme, getStoredTheme } from "./theme";
+import { applyReadingPrefs } from "./readingPrefs";
+import { ReadingPrefsProvider } from "./ReadingPrefsContext";
 
 const queryClient = new QueryClient();
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 applyTheme(getStoredTheme());
+applyReadingPrefs();
 
 const app = (
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ReadingPrefsProvider>
+        <RouterProvider router={router} />
+      </ReadingPrefsProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );

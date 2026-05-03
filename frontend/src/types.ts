@@ -122,8 +122,23 @@ export interface ProjectProfile {
   subject: string;
   level: string | null;
   goals: string | null;
+  cover_image_url: string | null;
+  cover_image_source: string | null;
+  cover_image_source_url: string | null;
+  cover_image_photographer: string | null;
+  cover_image_photographer_url: string | null;
   mind_map: MindMap | null;
   created_at: string;
+}
+
+export interface ProjectCoverImageOption {
+  id: string;
+  image_url: string;
+  thumbnail_url: string;
+  photographer: string;
+  photographer_url: string;
+  source_url: string;
+  source: string;
 }
 
 export interface QuizData {
@@ -178,6 +193,8 @@ export interface KeyIdea {
   concept: string;
   summary: string;
   subject: string | null;
+  sr_repetitions: number;
+  sr_due_date: string;
   created_at: string;
 }
 
@@ -186,6 +203,64 @@ export interface SessionSummary {
   struggled_with: string[];
   key_concepts: string[];
   next_review: string[];
+}
+
+export interface Flashcard {
+  id: number;
+  concept: string;
+  summary: string;
+  subject: string | null;
+  sr_interval: number;
+  sr_repetitions: number;
+  sr_ease_factor: number;
+  sr_due_date: string;
+}
+
+export interface FlashcardDueResponse {
+  cards: Flashcard[];
+  total_due: number;
+}
+
+export interface SearchSessionResult {
+  conversation_id: number;
+  subject: string | null;
+  message_id: number;
+  snippet: string;
+  created_at: string;
+}
+
+export interface SearchNoteResult {
+  id: number;
+  concept: string;
+  subject: string | null;
+  snippet: string;
+}
+
+export interface SearchMaterialResult {
+  material_id: number;
+  filename: string;
+  snippet: string;
+  page_number: number | null;
+}
+
+export interface SearchResponse {
+  sessions: SearchSessionResult[];
+  notes: SearchNoteResult[];
+  materials: SearchMaterialResult[];
+}
+
+export interface PracticeQuizItem {
+  id: number;
+  conversation_id: number;
+  question: string;
+  quiz_type: "multiple_choice" | "short_answer";
+  options: string[] | null;
+  created_at: string;
+}
+
+export interface WeakQuizResponse {
+  conversation_id: number;
+  quizzes: PracticeQuizItem[];
 }
 
 export interface ProjectProgress {

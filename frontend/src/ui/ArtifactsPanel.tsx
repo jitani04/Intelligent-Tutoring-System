@@ -39,7 +39,7 @@ export function ArtifactsPanel({ conversationId, keyIdeas, onClose, onIdeaDelete
   return (
     <div className="artifacts-panel">
       <div className="artifacts-header">
-        <span className="artifacts-title">Session Notes</span>
+        <span className="artifacts-title">Study Session Notes</span>
         <button className="sources-close" onClick={onClose} type="button">×</button>
       </div>
       <div className="artifacts-body">
@@ -68,7 +68,7 @@ export function ArtifactsPanel({ conversationId, keyIdeas, onClose, onIdeaDelete
         </div>
 
         <div className="artifacts-section">
-          <div className="artifacts-section-label">Session Summary</div>
+          <div className="artifacts-section-label">Study Session Summary</div>
           {summary ? (
             <div className="summary-content">
               <div className="summary-group">

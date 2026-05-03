@@ -22,3 +22,8 @@ class AttemptResult(BaseModel):
     is_correct: bool
     correct_answer: str
     explanation: str
+
+
+class WeakQuizResponse(BaseModel):
+    conversation_id: int
+    quizzes: list[QuizRead]

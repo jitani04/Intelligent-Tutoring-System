@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pypdf import PdfReader
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -54,10 +54,16 @@ def build_storage_path(*, user_id: int, material_id: int, filename: str) -> Path
     return settings.upload_dir / f"user-{user_id}" / f"material-{material_id}" / sanitize_filename(filename)
 
 
-async def list_materials_for_user(*, session: AsyncSession, user_id: int) -> list[Material]:
-    result = await session.execute(
-        select(Material).where(Material.user_id == user_id).order_by(Material.created_at.desc(), Material.id.desc())
-    )
+async def list_materials_for_user(
+    *,
+    session: AsyncSession,
+    user_id: int,
+    subject: str | None = None,
+) -> list[Material]:
+    query = select(Material).where(Material.user_id == user_id)
+    if subject and subject.strip():
+        query = query.where(func.lower(Material.subject) == subject.strip().lower())
+    result = await session.execute(query.order_by(Material.created_at.desc(), Material.id.desc()))
     return list(result.scalars())
 
 

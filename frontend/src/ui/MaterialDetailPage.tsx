@@ -16,19 +16,24 @@ function formatDateTime(value: string | null): string {
 
 function getFirstUserMessage(messages: { role: string; content: string }[]): string {
   const firstUserMessage = messages.find((message) => message.role === "user")?.content.trim();
-  if (!firstUserMessage) return "Untitled chat";
+  if (!firstUserMessage) return "Untitled study session";
   return firstUserMessage.length > 88 ? `${firstUserMessage.slice(0, 88)}...` : firstUserMessage;
 }
 
 export function MaterialDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { materialId } = useParams();
+  const { materialId, subject } = useParams<{ materialId: string; subject: string }>();
+  const decodedSubject = decodeURIComponent(subject ?? "");
   const parsedMaterialId = Number(materialId);
+  const projectMaterialsPath = decodedSubject
+    ? `/projects/${encodeURIComponent(decodedSubject)}/materials`
+    : "/dashboard";
 
   const materialsQuery = useQuery({
-    queryKey: ["materials"],
-    queryFn: listMaterials,
+    queryKey: ["materials", decodedSubject],
+    queryFn: () => listMaterials(decodedSubject),
+    enabled: Boolean(decodedSubject),
     refetchInterval: (q) =>
       q.state.data?.some((material) => material.status === "processing") ? 3000 : false,
   });
@@ -41,8 +46,8 @@ export function MaterialDetailPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteMaterial(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["materials"] });
-      navigate("/materials");
+      await queryClient.invalidateQueries({ queryKey: ["materials", decodedSubject] });
+      navigate(projectMaterialsPath);
     },
   });
 
@@ -68,7 +73,7 @@ export function MaterialDetailPage() {
           <div className="empty-state-icon">?</div>
           <h3>Material not found</h3>
           <p>This material link is not valid.</p>
-          <Link className="button button-primary" to="/materials">Back to materials</Link>
+          <Link className="button button-primary" to={projectMaterialsPath}>Back to materials</Link>
         </div>
       </div>
     );
@@ -89,7 +94,7 @@ export function MaterialDetailPage() {
           <div className="empty-state-icon">?</div>
           <h3>Material not found</h3>
           <p>It may have been deleted, or you may not have access to it.</p>
-          <Link className="button button-primary" to="/materials">Back to materials</Link>
+          <Link className="button button-primary" to={projectMaterialsPath}>Back to materials</Link>
         </div>
       </div>
     );
@@ -99,7 +104,7 @@ export function MaterialDetailPage() {
     <div className="page-shell">
       <div className="page-header">
         <div className="page-header-text">
-          <Link className="text-link page-back-link" to="/materials">Back to materials</Link>
+          <Link className="text-link page-back-link" to={projectMaterialsPath}>Back to materials</Link>
           <h1 className="page-title">{material.filename}</h1>
           <p className="page-subtitle">
             {material.subject ?? "General"} material uploaded on {formatDateTime(material.created_at)}.
@@ -159,7 +164,7 @@ export function MaterialDetailPage() {
           {material.subject ? (
             <div className="settings-actions">
               <Link className="button button-secondary" to={`/projects/${encodeURIComponent(material.subject)}`}>
-                Open project
+                Open subject
               </Link>
             </div>
           ) : null}
@@ -167,16 +172,16 @@ export function MaterialDetailPage() {
       </div>
 
       <div className="content-card">
-        <div className="content-card-title">Related chats</div>
-        {conversationsQuery.isLoading ? <p className="muted">Loading chats...</p> : null}
+        <div className="content-card-title">Related study sessions</div>
+        {conversationsQuery.isLoading ? <p className="muted">Loading study sessions...</p> : null}
         {!conversationsQuery.isLoading && relatedConversations.length === 0 ? (
-          <p className="muted">No chats are tagged with this material&apos;s subject yet.</p>
+          <p className="muted">No study sessions are tagged with this material&apos;s subject yet.</p>
         ) : null}
         <div className="material-related-list">
           {relatedConversations.map((conversation) => (
             <Link className="material-related-row" key={conversation.id} to={`/sessions/${conversation.id}`}>
               <span>{getFirstUserMessage(conversation.messages)}</span>
-              <small>{conversation.subject ?? "General"} · Chat #{conversation.id}</small>
+              <small>{conversation.subject ?? "General"} · Study session #{conversation.id}</small>
             </Link>
           ))}
         </div>

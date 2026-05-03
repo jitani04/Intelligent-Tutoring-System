@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -32,15 +32,21 @@ async def retrieve_context(
     user_id: int,
     conversation_id: int,
     query: str,
+    subject: str | None = None,
 ) -> list[RetrievedChunk]:
     _ = conversation_id
     settings = get_settings()
+    clean_subject = subject.strip() if subject else None
 
-    ready_material = await session.execute(
+    ready_material_query = (
         select(Material.id)
         .where(Material.user_id == user_id, Material.status == MaterialStatus.READY)
-        .limit(1)
     )
+    if clean_subject:
+        ready_material_query = ready_material_query.where(func.lower(Material.subject) == clean_subject.lower())
+    ready_material_query = ready_material_query.limit(1)
+
+    ready_material = await session.execute(ready_material_query)
     if ready_material.scalar_one_or_none() is None:
         return []
 
@@ -48,13 +54,16 @@ async def retrieve_context(
     query_embedding = await embedding_service.embed_query(query)
     distance = MaterialChunk.embedding.cosine_distance(query_embedding)
 
-    result = await session.execute(
+    retrieval_query = (
         select(MaterialChunk, Material, distance.label("distance"))
         .join(Material, Material.id == MaterialChunk.material_id)
         .where(Material.user_id == user_id, Material.status == MaterialStatus.READY)
-        .order_by(distance.asc(), MaterialChunk.chunk_index.asc())
-        .limit(settings.rag_top_k * 4)
     )
+    if clean_subject:
+        retrieval_query = retrieval_query.where(func.lower(Material.subject) == clean_subject.lower())
+    retrieval_query = retrieval_query.order_by(distance.asc(), MaterialChunk.chunk_index.asc()).limit(settings.rag_top_k * 4)
+
+    result = await session.execute(retrieval_query)
 
     per_material_limit = 2
     per_material_counts: dict[int, int] = {}

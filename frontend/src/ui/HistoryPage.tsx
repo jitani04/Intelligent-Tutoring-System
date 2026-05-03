@@ -38,15 +38,15 @@ export function HistoryPage() {
       <div className="page-header">
         <div className="page-header-text">
           <h1 className="page-title">History</h1>
-          <p className="page-subtitle">All past sessions, grouped by subject.</p>
+          <p className="page-subtitle">All past study sessions, grouped by subject.</p>
         </div>
-        <Link to="/sessions/new" className="button button-primary">New session</Link>
+        <Link to="/sessions/new" className="button button-primary">New study session</Link>
       </div>
 
       <div className="two-col" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
         <div className="snap-cell content-card">
           <strong style={{ fontSize: "1.75rem", fontFamily: "Newsreader, serif" }}>{conversations.length}</strong>
-          <span className="muted" style={{ fontSize: "0.78rem" }}>total sessions</span>
+          <span className="muted" style={{ fontSize: "0.78rem" }}>total study sessions</span>
         </div>
         <div className="snap-cell content-card">
           <strong style={{ fontSize: "1.75rem", fontFamily: "Newsreader, serif" }}>{groups.length}</strong>
@@ -61,25 +61,25 @@ export function HistoryPage() {
       </div>
 
       {isLoading ? <p className="muted">Loading…</p> : null}
-      {isError ? <p className="error-text">Failed to load sessions.</p> : null}
+      {isError ? <p className="error-text">Failed to load study sessions.</p> : null}
 
       {groups.length === 0 && !isLoading ? (
         <div className="empty-state">
           <div className="empty-state-icon">◷</div>
-          <h3>No sessions yet</h3>
-          <p>Your past tutoring sessions will appear here.</p>
-          <Link to="/sessions/new" className="button button-primary">Start a session</Link>
+          <h3>No study sessions yet</h3>
+          <p>Your past study sessions will appear here.</p>
+          <Link to="/sessions/new" className="button button-primary">Start a study session</Link>
         </div>
       ) : null}
 
       {groups.map(([subject, sessions]) => (
         <div key={subject} className="content-card">
-          <div className="content-card-title">{subject} · {sessions.length} session{sessions.length !== 1 ? "s" : ""}</div>
+          <div className="content-card-title">{subject} · {sessions.length} study session{sessions.length !== 1 ? "s" : ""}</div>
           <div className="history-list">
             {sessions.map((s) => (
               <div key={s.id} className="history-item">
                 <div className="history-item-info">
-                  <div className="history-item-name">{s.subject ?? `Session #${s.id}`}</div>
+                  <div className="history-item-name">{s.subject ?? `Study session #${s.id}`}</div>
                   <div className="history-item-meta">
                     {formatDate(s.created_at)} · {s.messages.length} messages · {duration(s)}
                   </div>

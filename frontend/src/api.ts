@@ -1,5 +1,5 @@
 import { getToken } from "./auth";
-import type { AttemptResult, AuthResult, ChatRequest, ChatStreamEvent, Conversation, KeyIdea, Material, ProjectProfile, ProjectProgress, QuizRead, SessionSummary, TutorPreferences, UserProfile } from "./types";
+import type { AttemptResult, AuthResult, ChatRequest, ChatStreamEvent, Conversation, Flashcard, FlashcardDueResponse, KeyIdea, Material, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, SearchResponse, SessionSummary, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -121,8 +121,13 @@ export async function getConversation(conversationId: number): Promise<Conversat
   return parseJson(response);
 }
 
-export async function listMaterials(): Promise<Material[]> {
-  const response = await fetch(`${API_BASE_URL}/materials`, {
+export async function listMaterials(subject?: string): Promise<Material[]> {
+  const params = new URLSearchParams();
+  if (subject?.trim()) {
+    params.set("subject", subject.trim());
+  }
+
+  const response = await fetch(`${API_BASE_URL}/materials${params.size ? `?${params.toString()}` : ""}`, {
     headers: buildHeaders(),
   });
   return parseJson(response);
@@ -150,11 +155,69 @@ export async function getProjectProfile(subject: string): Promise<ProjectProfile
   return parseJson(response);
 }
 
-export async function setupProject(subject: string, level: string | null, goals: string | null): Promise<ProjectProfile> {
+export async function listProjectProfiles(): Promise<ProjectProfile[]> {
+  const response = await fetch(`${API_BASE_URL}/projects`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function searchProjectCoverImages(query: string): Promise<ProjectCoverImageOption[]> {
+  const response = await fetch(`${API_BASE_URL}/projects/cover-images/search?query=${encodeURIComponent(query)}`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function setupProject(
+  subject: string,
+  level: string | null,
+  goals: string | null,
+  coverImageUrl: string | null,
+  coverImageSource: string | null = null,
+  coverImageSourceUrl: string | null = null,
+  coverImagePhotographer: string | null = null,
+  coverImagePhotographerUrl: string | null = null,
+): Promise<ProjectProfile> {
   const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/setup`, {
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ subject, level, goals }),
+    body: JSON.stringify({
+      subject,
+      level,
+      goals,
+      cover_image_url: coverImageUrl,
+      cover_image_source: coverImageSource,
+      cover_image_source_url: coverImageSourceUrl,
+      cover_image_photographer: coverImagePhotographer,
+      cover_image_photographer_url: coverImagePhotographerUrl,
+    }),
+  });
+  return parseJson(response);
+}
+
+export async function searchAll(q: string): Promise<SearchResponse> {
+  const response = await fetch(`${API_BASE_URL}/search?q=${encodeURIComponent(q)}`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function transcribeAudio(blob: Blob, filename: string): Promise<string> {
+  const formData = new FormData();
+  formData.append("audio", blob, filename);
+  const response = await fetch(`${API_BASE_URL}/stt`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: formData,
+  });
+  return parseJson<{ text: string }>(response).then((r) => r.text);
+}
+
+export async function generateWeakQuiz(subject: string): Promise<WeakQuizResponse> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/weak-quiz`, {
+    method: "POST",
+    headers: buildHeaders(),
   });
   return parseJson(response);
 }
@@ -205,6 +268,25 @@ export async function getKeyIdeas(conversationId: number): Promise<KeyIdea[]> {
   return parseJson(response);
 }
 
+export async function listAllKeyIdeas(subject?: string, q?: string): Promise<KeyIdea[]> {
+  const params = new URLSearchParams();
+  if (subject) params.set("subject", subject);
+  if (q) params.set("q", q);
+  const qs = params.toString();
+  const response = await fetch(`${API_BASE_URL}/key-ideas${qs ? `?${qs}` : ""}`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function promoteKeyIdea(ideaId: number): Promise<KeyIdea> {
+  const response = await fetch(`${API_BASE_URL}/key-ideas/${ideaId}/promote`, {
+    method: "POST",
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
 export async function deleteKeyIdea(ideaId: number): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/key-ideas/${ideaId}`, {
     method: "DELETE",
@@ -221,6 +303,40 @@ export async function generateSummary(conversationId: number): Promise<SessionSu
     headers: buildHeaders(),
   });
   return parseJson(response);
+}
+
+export async function getDueFlashcards(subject?: string): Promise<FlashcardDueResponse> {
+  const params = new URLSearchParams();
+  if (subject?.trim()) {
+    params.set("subject", subject.trim());
+  }
+
+  const response = await fetch(`${API_BASE_URL}/flashcards/due${params.size ? `?${params.toString()}` : ""}`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function reviewFlashcard(cardId: number, quality: number): Promise<Flashcard> {
+  const response = await fetch(`${API_BASE_URL}/flashcards/${cardId}/review`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ quality }),
+  });
+  return parseJson(response);
+}
+
+export async function fetchSpeech(text: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/tts`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    throw new Error(`TTS failed: ${response.status}`);
+  }
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
 }
 
 export async function deleteMaterial(materialId: number): Promise<void> {

@@ -31,8 +31,9 @@ async def _ensure_user_exists(*, session: AsyncSession, user_id: int) -> None:
 async def list_materials_endpoint(
     user_id: Annotated[int, Depends(get_user_id)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    subject: str | None = None,
 ) -> list[MaterialRead]:
-    materials = await list_materials_for_user(session=session, user_id=user_id)
+    materials = await list_materials_for_user(session=session, user_id=user_id, subject=subject)
     return [MaterialRead.model_validate(material) for material in materials]
 
 

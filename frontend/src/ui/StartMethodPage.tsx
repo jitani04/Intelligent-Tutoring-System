@@ -20,7 +20,7 @@ export function StartMethodPage() {
       clearPendingStudyContext();
       navigate(`/projects/${encodeURIComponent(pendingContext.subject)}/setup?session=${c.id}`, { replace: true });
     },
-    onError: () => setError("Failed to create project. Please try again."),
+    onError: () => setError("Failed to create subject. Please try again."),
   });
 
   return (
@@ -29,7 +29,7 @@ export function StartMethodPage() {
         <div className="flow-step">Step 3 of 3</div>
         <h1>How this tutor will work</h1>
         <p className="flow-copy">
-          You should expect a guided conversation: questions first, hints when needed, and fuller
+          You should expect a guided study session: questions first, hints when needed, and fuller
           explanations only after the system understands where you are getting stuck.
         </p>
 
@@ -64,7 +64,7 @@ export function StartMethodPage() {
             onClick={() => createMutation.mutate()}
             type="button"
           >
-            {createMutation.isPending ? "Creating…" : "Start project"}
+            {createMutation.isPending ? "Creating…" : "Start subject"}
           </button>
         </div>
       </div>

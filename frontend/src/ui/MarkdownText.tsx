@@ -1,60 +1,79 @@
-import { ReactNode } from "react";
+import React, { ReactNode, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
+import { useReadingPrefs } from "../ReadingPrefsContext";
 
-type MarkdownSegment =
-  | { type: "text"; value: string }
-  | { type: "strong"; value: string }
-  | { type: "code"; value: string };
-
-function pushText(segments: MarkdownSegment[], value: string) {
-  if (!value) return;
-  const last = segments.at(-1);
-  if (last?.type === "text") {
-    last.value += value;
-    return;
-  }
-  segments.push({ type: "text", value });
+function bionicify(text: string, keyPrefix: string): ReactNode[] {
+  return text.split(/(\s+)/).map((token, i) => {
+    if (!token || /^\s+$/.test(token)) return token;
+    const cut = Math.max(1, Math.ceil(token.length / 2));
+    return (
+      <span key={`${keyPrefix}-${i}`}>
+        <b style={{ fontWeight: 700 }}>{token.slice(0, cut)}</b>
+        {token.slice(cut)}
+      </span>
+    );
+  });
 }
 
-function parseInlineMarkdown(input: string): MarkdownSegment[] {
-  const segments: MarkdownSegment[] = [];
-  let index = 0;
-
-  while (index < input.length) {
-    if (input.startsWith("**", index)) {
-      const end = input.indexOf("**", index + 2);
-      if (end > index + 2) {
-        segments.push({ type: "strong", value: input.slice(index + 2, end) });
-        index = end + 2;
-        continue;
-      }
-    }
-
-    if (input[index] === "`") {
-      const end = input.indexOf("`", index + 1);
-      if (end > index + 1) {
-        segments.push({ type: "code", value: input.slice(index + 1, end) });
-        index = end + 1;
-        continue;
-      }
-    }
-
-    pushText(segments, input[index]);
-    index += 1;
+function bionicChildren(children: ReactNode, keyPrefix: string): ReactNode {
+  if (typeof children === "string") return bionicify(children, keyPrefix);
+  if (Array.isArray(children)) {
+    return (children as ReactNode[]).map((child, i) =>
+      bionicChildren(child, `${keyPrefix}-${i}`)
+    );
   }
+  if (React.isValidElement(children)) {
+    const el = children as React.ReactElement<{ children?: ReactNode }>;
+    if (el.type === "code" || el.type === "pre") return children;
+    const nested = el.props.children;
+    if (nested == null) return children;
+    return React.cloneElement(el, {}, bionicChildren(nested, `${keyPrefix}-c`));
+  }
+  return children;
+}
 
-  return segments;
+function makeBionicWrapper(tag: string) {
+  return function BionicElement({ children, ...rest }: { children?: ReactNode; [key: string]: unknown }) {
+    const Tag = tag as keyof React.JSX.IntrinsicElements;
+    return <Tag {...(rest as object)}>{bionicChildren(children, tag)}</Tag>;
+  };
 }
 
 export function MarkdownText({ children, className }: { children: string; className?: string }) {
-  const nodes: ReactNode[] = parseInlineMarkdown(children).map((segment, index) => {
-    if (segment.type === "strong") {
-      return <strong key={index}>{segment.value}</strong>;
-    }
-    if (segment.type === "code") {
-      return <code className="msg-inline-code" key={index}>{segment.value}</code>;
-    }
-    return segment.value;
-  });
+  const { bionic } = useReadingPrefs();
 
-  return <div className={className}>{nodes}</div>;
+  const components = useMemo<Components>(() => {
+    const base: Components = {
+      // Open links externally; keep them safe
+      a: ({ children, href }) => (
+        <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+      ),
+      pre: ({ children }) => <pre className="md-code-block">{children}</pre>,
+      code: ({ children, className: cls }) => {
+        if (cls?.startsWith("language-")) {
+          return <code className={`md-code-block-inner ${cls}`}>{children}</code>;
+        }
+        return <code className="msg-inline-code">{children}</code>;
+      },
+    };
+
+    if (bionic) {
+      const textTags = ["p", "li", "h1", "h2", "h3", "h4", "blockquote", "td", "th"] as const;
+      for (const tag of textTags) {
+        (base as Record<string, unknown>)[tag] = makeBionicWrapper(tag);
+      }
+    }
+
+    return base;
+  }, [bionic]);
+
+  return (
+    <div className={className}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
 }

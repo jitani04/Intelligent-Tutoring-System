@@ -7,11 +7,12 @@ interface Props {
   quiz: QuizData;
   onAnswered?: (result: AttemptResult, answer: string) => void;
   onSkipped?: (result: AttemptResult) => void;
+  hideSkip?: boolean;
 }
 
 type PendingAction = "submit" | "skip" | null;
 
-export function QuizCard({ quiz, onAnswered, onSkipped }: Props) {
+export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Props) {
   const [selected, setSelected] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [skipped, setSkipped] = useState(false);
@@ -112,14 +113,16 @@ export function QuizCard({ quiz, onAnswered, onSkipped }: Props) {
           >
             {pendingAction === "submit" ? "Checking…" : "Submit answer"}
           </button>
-          <button
-            className="button button-secondary quiz-skip"
-            disabled={isPending}
-            onClick={() => void handleSkip()}
-            type="button"
-          >
-            {pendingAction === "skip" ? "Skipping…" : "Skip question"}
-          </button>
+          {!hideSkip && (
+            <button
+              className="button button-secondary quiz-skip"
+              disabled={isPending}
+              onClick={() => void handleSkip()}
+              type="button"
+            >
+              {pendingAction === "skip" ? "Skipping…" : "Skip question"}
+            </button>
+          )}
         </div>
       )}
 

@@ -8,7 +8,7 @@ const USE_CASES = [
   "Studying for a class",
   "Preparing for exams",
   "Learning a new skill",
-  "Building a project",
+  "Learning a subject",
   "Reviewing uploaded materials",
 ];
 
@@ -54,7 +54,7 @@ export function OnboardingPage() {
         <div className="flow-step">Welcome</div>
         <h1>Personalize your tutor</h1>
         <p className="flow-copy">
-          Answer two quick questions so KnowledgePal can shape your dashboard and tutoring sessions around your goals.
+          Answer two quick questions so KnowledgePal can shape your dashboard and study sessions around your goals.
         </p>
 
         <form className="flow-form" onSubmit={(event) => void handleSubmit(event)}>

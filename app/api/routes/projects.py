@@ -12,8 +12,10 @@ from app.db.session import get_db_session
 from app.models.conversation import Conversation
 from app.models.project_profile import ProjectProfile
 from app.models.quiz import Quiz, QuizAttempt
-from app.schemas.project import ProjectProfileRead, ProjectProgressRead, ProjectSetupRequest
+from app.schemas.project import ProjectCoverImageOption, ProjectProfileRead, ProjectProgressRead, ProjectSetupRequest
+from app.schemas.quiz import QuizRead, WeakQuizResponse
 from app.services.llm_service import LLMService
+from app.services.stock_image_service import StockImageError, StockImageService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -35,6 +37,42 @@ async def _get_or_create_profile(
         await session.commit()
         await session.refresh(profile)
     return profile
+
+
+@router.get("", response_model=list[ProjectProfileRead])
+async def list_project_profiles(
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[ProjectProfileRead]:
+    result = await session.execute(
+        select(ProjectProfile)
+        .where(ProjectProfile.user_id == user_id)
+        .order_by(ProjectProfile.updated_at.desc(), ProjectProfile.subject.asc())
+    )
+    return [ProjectProfileRead.model_validate(profile) for profile in result.scalars()]
+
+
+@router.get("/cover-images/search", response_model=list[ProjectCoverImageOption])
+async def search_cover_images(
+    query: str,
+    user_id: Annotated[int, Depends(get_user_id)],
+) -> list[ProjectCoverImageOption]:
+    del user_id
+    cleaned = query.strip()
+    if len(cleaned) < 2:
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters.")
+
+    settings = get_settings()
+    service = StockImageService(pexels_api_key=settings.pexels_api_key)
+
+    try:
+        results = await service.search_photos(cleaned)
+    except StockImageError as exc:
+        if "not configured" in str(exc):
+            raise HTTPException(status_code=503, detail=str(exc))
+        raise HTTPException(status_code=502, detail="Cover image search failed. Try again.")
+
+    return [ProjectCoverImageOption.model_validate(result) for result in results]
 
 
 @router.get("/{subject}/progress", response_model=ProjectProgressRead)
@@ -112,9 +150,135 @@ async def setup_project(
     profile = await _get_or_create_profile(session, user_id, subject)
     profile.level = body.level
     profile.goals = body.goals
+    profile.cover_image_url = str(body.cover_image_url) if body.cover_image_url is not None else None
+    profile.cover_image_source = body.cover_image_source
+    profile.cover_image_source_url = str(body.cover_image_source_url) if body.cover_image_source_url is not None else None
+    profile.cover_image_photographer = body.cover_image_photographer
+    profile.cover_image_photographer_url = (
+        str(body.cover_image_photographer_url) if body.cover_image_photographer_url is not None else None
+    )
     await session.commit()
     await session.refresh(profile)
     return ProjectProfileRead.model_validate(profile)
+
+
+@router.post("/{subject}/weak-quiz", response_model=WeakQuizResponse)
+async def generate_weak_quiz(
+    subject: str,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> WeakQuizResponse:
+    conv_result = await session.execute(
+        select(Conversation).where(Conversation.user_id == user_id, Conversation.subject == subject)
+    )
+    conversations = list(conv_result.scalars())
+    conv_ids = [c.id for c in conversations]
+
+    weak_areas: set[str] = set()
+    for c in conversations:
+        if c.summary:
+            weak_areas.update(c.summary.get("struggled_with", []))
+
+    failed_questions: list[str] = []
+    if conv_ids:
+        failed_result = await session.execute(
+            select(Quiz.question)
+            .join(QuizAttempt, QuizAttempt.quiz_id == Quiz.id)
+            .where(
+                Quiz.conversation_id.in_(conv_ids),
+                QuizAttempt.user_id == user_id,
+                QuizAttempt.is_correct == False,  # noqa: E712
+            )
+            .distinct()
+            .limit(10)
+        )
+        failed_questions = list(failed_result.scalars())
+
+    if not weak_areas and not failed_questions:
+        raise HTTPException(
+            status_code=422,
+            detail="No weak areas detected yet. Complete some sessions and generate summaries first.",
+        )
+
+    settings = get_settings()
+    llm = LLMService(
+        api_key=settings.llm_api_key,
+        model=settings.llm_model,
+        timeout_seconds=settings.llm_timeout_seconds,
+    )
+
+    weak_list = "\n".join(f"- {w}" for w in sorted(weak_areas)) if weak_areas else "None identified yet"
+    failed_section = (
+        "\n\nThey also got these questions wrong previously:\n"
+        + "\n".join(f"- {q}" for q in failed_questions)
+        if failed_questions
+        else ""
+    )
+
+    prompt = (
+        f'Generate 5 quiz questions for a student studying "{subject}" '
+        f"who has struggled with:\n{weak_list}{failed_section}\n\n"
+        "Return ONLY a valid JSON array, no markdown fences, no explanation.\n"
+        "Each item must follow one of these exact shapes:\n"
+        '{"question":"...","quiz_type":"multiple_choice","options":["A","B","C","D"],"correct_answer":"A","explanation":"..."}\n'
+        '{"question":"...","quiz_type":"short_answer","options":null,"correct_answer":"...","explanation":"..."}\n'
+        "Rules: correct_answer for multiple_choice must be the exact text of one option. "
+        "Include 3-4 multiple_choice and 1-2 short_answer. Target the weak areas specifically."
+    )
+
+    lc_messages = llm.to_langchain_messages([
+        {"role": "system", "content": "You are a quiz generator. Output only valid JSON arrays, nothing else."},
+        {"role": "user", "content": prompt},
+    ])
+
+    response = await llm._llm.ainvoke(lc_messages)
+    raw = response.content if isinstance(response.content, str) else ""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    raw = raw.strip()
+
+    try:
+        quiz_data_list = json.loads(raw)
+        if not isinstance(quiz_data_list, list):
+            raise ValueError("Expected a JSON array")
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Weak quiz JSON parse failed, raw: %s", raw[:200])
+        raise HTTPException(status_code=502, detail="Failed to generate quiz questions. Please try again.")
+
+    practice_conv = Conversation(user_id=user_id, subject=subject)
+    session.add(practice_conv)
+    await session.flush()
+
+    quizzes: list[Quiz] = []
+    for item in quiz_data_list[:5]:
+        try:
+            quiz = Quiz(
+                conversation_id=practice_conv.id,
+                question=str(item["question"]),
+                quiz_type=str(item.get("quiz_type", "short_answer")),
+                options=item.get("options"),
+                correct_answer=str(item["correct_answer"]),
+                explanation=str(item.get("explanation", "")),
+            )
+            session.add(quiz)
+            quizzes.append(quiz)
+        except (KeyError, TypeError):
+            continue
+
+    if not quizzes:
+        raise HTTPException(status_code=502, detail="Failed to generate valid quiz questions. Please try again.")
+
+    await session.commit()
+    for q in quizzes:
+        await session.refresh(q)
+
+    return WeakQuizResponse(
+        conversation_id=practice_conv.id,
+        quizzes=[QuizRead.model_validate(q) for q in quizzes],
+    )
 
 
 @router.post("/{subject}/mindmap", response_model=ProjectProfileRead)

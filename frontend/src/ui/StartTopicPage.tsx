@@ -25,7 +25,7 @@ export function StartTopicPage() {
         <div className="flow-step">Step 1 of 3</div>
         <h1>What are you studying?</h1>
         <p className="flow-copy">
-          Give the tutor enough context to ask better questions and keep the session grounded.
+          Give the tutor enough context to ask better questions and keep the study session grounded.
         </p>
 
         <form className="flow-form" onSubmit={handleSubmit}>

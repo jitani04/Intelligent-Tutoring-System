@@ -1,10 +1,11 @@
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_user_id
@@ -27,6 +28,8 @@ class KeyIdeaRead(BaseModel):
     concept: str
     summary: str
     subject: str | None
+    sr_repetitions: int
+    sr_due_date: str
     created_at: str
 
     model_config = {"from_attributes": True}
@@ -38,6 +41,8 @@ class KeyIdeaRead(BaseModel):
             concept=obj.concept,
             summary=obj.summary,
             subject=obj.subject,
+            sr_repetitions=obj.sr_repetitions,
+            sr_due_date=obj.sr_due_date.isoformat(),
             created_at=obj.created_at.isoformat(),
         )
 
@@ -62,6 +67,38 @@ async def list_key_ideas(
         .order_by(KeyIdea.created_at.asc())
     )
     return [KeyIdeaRead.from_orm(k) for k in result.scalars()]
+
+
+@router.get("/key-ideas", response_model=list[KeyIdeaRead])
+async def list_all_key_ideas(
+    user_id: UserDep,
+    session: DbDep,
+    subject: str | None = Query(None),
+    q: str | None = Query(None, max_length=200),
+) -> list[KeyIdeaRead]:
+    stmt = select(KeyIdea).where(KeyIdea.user_id == user_id)
+    if subject:
+        stmt = stmt.where(KeyIdea.subject == subject.strip())
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        stmt = stmt.where(or_(KeyIdea.concept.ilike(pattern), KeyIdea.summary.ilike(pattern)))
+    stmt = stmt.order_by(KeyIdea.created_at.desc())
+    result = await session.execute(stmt)
+    return [KeyIdeaRead.from_orm(k) for k in result.scalars()]
+
+
+@router.post("/key-ideas/{idea_id}/promote", response_model=KeyIdeaRead)
+async def promote_key_idea(
+    idea_id: int,
+    user_id: UserDep,
+    session: DbDep,
+) -> KeyIdeaRead:
+    idea = await session.get(KeyIdea, idea_id)
+    if not idea or idea.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found.")
+    idea.sr_due_date = datetime.now(timezone.utc)
+    await session.commit()
+    return KeyIdeaRead.from_orm(idea)
 
 
 @router.delete("/key-ideas/{idea_id}", status_code=status.HTTP_204_NO_CONTENT)

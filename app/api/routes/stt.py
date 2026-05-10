@@ -7,9 +7,14 @@ from pydantic import BaseModel
 
 from app.api.deps import get_user_id
 from app.core.config import get_settings
+from app.core.rate_limit import rate_limit_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["stt"])
+_settings = get_settings()
+router = APIRouter(
+    tags=["stt"],
+    dependencies=[Depends(rate_limit_user("stt", _settings.rate_limit_stt_per_min))],
+)
 
 _MAX_BYTES = 25 * 1024 * 1024  # 25 MB — OpenAI Whisper limit
 

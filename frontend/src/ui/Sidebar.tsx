@@ -134,8 +134,8 @@ export function Sidebar() {
       style={{ width: `${sidebarWidth}px` }}
     >
       <div className="sidebar-brand">
-        <div className="sidebar-logo">KP</div>
-        <span className="sidebar-name">KnowledgePal</span>
+        <div className="sidebar-logo">S</div>
+        <span className="sidebar-name">Sapient</span>
       </div>
 
       <Link to="/sessions/new" className="sidebar-new-btn">

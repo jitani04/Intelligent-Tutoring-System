@@ -32,7 +32,7 @@ export function SettingsPage() {
   const queryClient = useQueryClient();
   const { data: user } = useQuery({ queryKey: ["me"], queryFn: getCurrentUser });
   const [tab, setTab] = useState<Tab>("tutor");
-  const [tutorName, setTutorName] = useState("KnowledgePal");
+  const [tutorName, setTutorName] = useState("Sapient");
   const [tutorTone, setTutorTone] = useState("Supportive");
   const [tutorStyle, setTutorStyle] = useState("Socratic guide");
   const [tutorInstructions, setTutorInstructions] = useState("");
@@ -50,7 +50,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (!user) return;
-    setTutorName(user.tutor_name || "KnowledgePal");
+    setTutorName(user.tutor_name || "Sapient");
     setTutorTone(user.tutor_tone || "Supportive");
     setTutorStyle(user.tutor_style || "Socratic guide");
     setTutorInstructions(user.tutor_instructions || "");
@@ -124,7 +124,7 @@ export function SettingsPage() {
               <input
                 maxLength={80}
                 onChange={(event) => setTutorName(event.target.value)}
-                placeholder="KnowledgePal"
+                placeholder="Sapient"
                 required
                 value={tutorName}
               />
@@ -177,7 +177,7 @@ export function SettingsPage() {
             <div className="tutor-preview">
               <div className="msg-avatar msg-avatar-ai">{tutorName.slice(0, 2).toUpperCase() || "KP"}</div>
               <div>
-                <strong>{tutorName || "KnowledgePal"}</strong>
+                <strong>{tutorName || "Sapient"}</strong>
                 <p>{tutorTone} · {tutorStyle}</p>
               </div>
             </div>

@@ -10,11 +10,15 @@ from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_user_id
 from app.core.config import get_settings
+from app.core.rate_limit import rate_limit_ip
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db_session as get_db
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_auth_settings = get_settings()
+_auth_rate_limit = Depends(rate_limit_ip("auth", _auth_settings.rate_limit_auth_per_min))
 
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 
@@ -77,7 +81,12 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=TokenResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[_auth_rate_limit],
+)
 async def register(body: RegisterRequest, db: DbDep) -> TokenResponse:
     existing = await db.scalar(select(User).where(User.email == body.email))
     if existing:
@@ -91,7 +100,7 @@ async def register(body: RegisterRequest, db: DbDep) -> TokenResponse:
     return TokenResponse(access_token=create_access_token(user.id), user=UserResponse.from_user(user))
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, dependencies=[_auth_rate_limit])
 async def login(body: LoginRequest, db: DbDep) -> TokenResponse:
     user = await db.scalar(select(User).where(User.email == body.email))
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
@@ -100,7 +109,7 @@ async def login(body: LoginRequest, db: DbDep) -> TokenResponse:
     return TokenResponse(access_token=create_access_token(user.id), user=UserResponse.from_user(user))
 
 
-@router.post("/google", response_model=TokenResponse)
+@router.post("/google", response_model=TokenResponse, dependencies=[_auth_rate_limit])
 async def login_with_google(body: GoogleAuthRequest, db: DbDep) -> TokenResponse:
     settings = get_settings()
     if not settings.google_client_id:

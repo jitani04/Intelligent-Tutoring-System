@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_user_id
 from app.core.config import get_settings
+from app.core.rate_limit import rate_limit_user
 from app.db.session import get_db_session
 from app.models.conversation import Conversation
 from app.models.key_idea import KeyIdea
@@ -17,6 +18,8 @@ from app.services.conversation_service import get_conversation_for_user
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
+_artifact_settings = get_settings()
+_summary_rate_limit = Depends(rate_limit_user("summary", _artifact_settings.rate_limit_summary_per_min))
 router = APIRouter(tags=["artifacts"])
 
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -114,7 +117,11 @@ async def delete_key_idea(
     await session.commit()
 
 
-@router.post("/conversations/{conversation_id}/summary", response_model=SessionSummary)
+@router.post(
+    "/conversations/{conversation_id}/summary",
+    response_model=SessionSummary,
+    dependencies=[_summary_rate_limit],
+)
 async def generate_summary(
     conversation_id: int,
     user_id: UserDep,

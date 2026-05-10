@@ -1,6 +1,7 @@
 import asyncio
 import re
-import shutil
+import tempfile
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from app.core.config import get_settings
 from app.db.session import get_session_factory
 from app.models.material import Material, MaterialStatus
 from app.models.material_chunk import MaterialChunk
+from app.services import s3_client
 from app.services.embedding_service import create_embedding_service
 from app.services.errors import MaterialNotFoundError
 
@@ -49,9 +51,17 @@ def validate_material_filename(filename: str) -> None:
         raise ValueError("Only PDF, TXT, and MD uploads are supported.")
 
 
-def build_storage_path(*, user_id: int, material_id: int, filename: str) -> Path:
-    settings = get_settings()
-    return settings.upload_dir / f"user-{user_id}" / f"material-{material_id}" / sanitize_filename(filename)
+def build_user_key_prefix(user_id: int) -> str:
+    return f"user-{user_id}/"
+
+
+def build_upload_key(*, user_id: int, filename: str) -> str:
+    clean = sanitize_filename(filename)
+    return f"{build_user_key_prefix(user_id)}uploads/{uuid.uuid4()}/{clean}"
+
+
+def key_belongs_to_user(*, user_id: int, key: str) -> bool:
+    return key.startswith(build_user_key_prefix(user_id))
 
 
 async def list_materials_for_user(
@@ -77,51 +87,58 @@ async def get_material_for_user(*, session: AsyncSession, user_id: int, material
     return material
 
 
-async def create_material(
+async def create_material_from_key(
     *,
     session: AsyncSession,
     user_id: int,
     filename: str,
     mime_type: str,
     subject: str | None,
-    content: bytes,
+    key: str,
 ) -> Material:
+    settings = get_settings()
     clean_filename = sanitize_filename(filename)
     validate_material_filename(clean_filename)
+
+    if not key_belongs_to_user(user_id=user_id, key=key):
+        raise ValueError("Upload key does not belong to the current user.")
+
+    head = await s3_client.head_object(key=key)
+    if head is None:
+        raise ValueError("Uploaded object not found. Please retry the upload.")
+
+    content_length = int(head.get("ContentLength", 0))
+    if content_length <= 0:
+        raise ValueError("Uploaded object is empty.")
+    if content_length > settings.upload_max_bytes:
+        await s3_client.delete_object(key=key)
+        raise ValueError(f"Upload exceeds the {settings.upload_max_bytes} byte limit.")
 
     material = Material(
         user_id=user_id,
         filename=clean_filename,
-        storage_path="",
+        storage_path=key,
         mime_type=mime_type or "application/octet-stream",
         subject=(subject or "").strip() or None,
         status=MaterialStatus.PROCESSING,
         error_message=None,
     )
     session.add(material)
-    await session.flush()
-
-    storage_path = build_storage_path(user_id=user_id, material_id=material.id, filename=clean_filename)
-
-    try:
-        await asyncio.to_thread(storage_path.parent.mkdir, 0o755, True, True)
-        await asyncio.to_thread(storage_path.write_bytes, content)
-        material.storage_path = str(storage_path)
-        await session.commit()
-        await session.refresh(material)
-        return material
-    except Exception:
-        await session.rollback()
-        await asyncio.to_thread(_remove_material_dir, storage_path.parent)
-        raise
+    await session.commit()
+    await session.refresh(material)
+    return material
 
 
 async def delete_material(*, session: AsyncSession, user_id: int, material_id: int) -> None:
     material = await get_material_for_user(session=session, user_id=user_id, material_id=material_id)
-    material_dir = Path(material.storage_path).parent
+    key = material.storage_path
     await session.delete(material)
     await session.commit()
-    await asyncio.to_thread(_remove_material_dir, material_dir)
+    if key:
+        try:
+            await s3_client.delete_object(key=key)
+        except Exception:
+            pass
 
 
 async def process_material_ingestion(material_id: int) -> None:
@@ -179,7 +196,15 @@ async def mark_material_failed(*, material_id: int, error_message: str) -> None:
 
 async def build_chunks_for_material(material: Material) -> list[ChunkPayload]:
     settings = get_settings()
-    blocks = await extract_material_blocks(Path(material.storage_path))
+    suffix = Path(material.filename).suffix.lower() or ".bin"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        await s3_client.download_to_file(key=material.storage_path, destination=str(tmp_path))
+        blocks = await extract_material_blocks(tmp_path)
+    finally:
+        await asyncio.to_thread(tmp_path.unlink, True)
+
     return chunk_blocks(
         blocks,
         chunk_size=settings.rag_chunk_size,
@@ -246,8 +271,3 @@ def _extract_pdf_blocks(path: Path) -> list[ExtractedBlock]:
         if normalized:
             blocks.append(ExtractedBlock(text=normalized, page_number=index))
     return blocks
-
-
-def _remove_material_dir(path: Path) -> None:
-    if path.exists():
-        shutil.rmtree(path, ignore_errors=True)

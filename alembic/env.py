@@ -28,7 +28,13 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("+asyncpg", "+psycopg"))
+
+
+def _to_psycopg_url(url: str) -> str:
+    return url.replace("+asyncpg", "+psycopg").replace("ssl=require", "sslmode=require")
+
+
+config.set_main_option("sqlalchemy.url", _to_psycopg_url(settings.database_url))
 
 target_metadata = Base.metadata
 

@@ -4,6 +4,10 @@ from typing import Any, Literal
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
+from app.core.observability import record_llm_call, record_llm_tokens, tracer as _tracer
 
 
 @dataclass(slots=True)
@@ -17,12 +21,25 @@ class LLMStreamEvent:
 
 class LLMService:
     def __init__(self, *, api_key: str, model: str, timeout_seconds: float) -> None:
+        self._model = model
         self._llm = ChatGoogleGenerativeAI(
             model=model,
             google_api_key=api_key,
             timeout=timeout_seconds,
             convert_system_message_to_human=True,
         )
+
+    def _record_usage(self, span: trace.Span, usage: dict[str, Any] | None) -> None:
+        if not usage:
+            return
+        prompt_tokens = int(usage.get("input_tokens") or 0)
+        completion_tokens = int(usage.get("output_tokens") or 0)
+        if prompt_tokens:
+            span.set_attribute("gen_ai.usage.input_tokens", prompt_tokens)
+            record_llm_tokens(self._model, "prompt", prompt_tokens)
+        if completion_tokens:
+            span.set_attribute("gen_ai.usage.output_tokens", completion_tokens)
+            record_llm_tokens(self._model, "completion", completion_tokens)
 
     @staticmethod
     def _to_langchain_messages(input_messages: list[dict[str, Any]]) -> list[BaseMessage]:
@@ -45,18 +62,33 @@ class LLMService:
 
     async def _stream_lc(self, lc_messages: list[BaseMessage]) -> AsyncIterator[LLMStreamEvent]:
         usage_dict: dict[str, Any] | None = None
-        async for chunk in self._llm.astream(lc_messages):
-            if isinstance(chunk.content, str) and chunk.content:
-                yield LLMStreamEvent(type="token", delta=chunk.content)
-            elif isinstance(chunk.content, list):
-                for part in chunk.content:
-                    if isinstance(part, str) and part:
-                        yield LLMStreamEvent(type="token", delta=part)
-                    elif isinstance(part, dict) and part.get("type") == "text" and part.get("text"):
-                        yield LLMStreamEvent(type="token", delta=part["text"])
-            chunk_usage = getattr(chunk, "usage_metadata", None)
-            if chunk_usage is not None:
-                usage_dict = dict(chunk_usage)
+        with _tracer.start_as_current_span(
+            "llm.stream",
+            attributes={
+                "gen_ai.system": "google.gemini",
+                "gen_ai.request.model": self._model,
+                "gen_ai.operation.name": "chat",
+            },
+        ) as span:
+            try:
+                async for chunk in self._llm.astream(lc_messages):
+                    if isinstance(chunk.content, str) and chunk.content:
+                        yield LLMStreamEvent(type="token", delta=chunk.content)
+                    elif isinstance(chunk.content, list):
+                        for part in chunk.content:
+                            if isinstance(part, str) and part:
+                                yield LLMStreamEvent(type="token", delta=part)
+                            elif isinstance(part, dict) and part.get("type") == "text" and part.get("text"):
+                                yield LLMStreamEvent(type="token", delta=part["text"])
+                    chunk_usage = getattr(chunk, "usage_metadata", None)
+                    if chunk_usage is not None:
+                        usage_dict = dict(chunk_usage)
+            except Exception as exc:
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                record_llm_call(self._model, "error")
+                raise
+            self._record_usage(span, usage_dict)
+            record_llm_call(self._model, "ok")
         yield LLMStreamEvent(type="completed", usage=usage_dict)
 
     async def stream_response(self, *, input_messages: list[dict[str, Any]]) -> AsyncIterator[LLMStreamEvent]:
@@ -76,29 +108,44 @@ class LLMService:
         lc_messages = self._to_langchain_messages(input_messages)
         llm_with_tools = self._llm.bind_tools(tools)
 
-        # Buffer tokens — if a tool call is detected we discard them entirely to
-        # avoid emitting the question text that Gemini writes before calling the tool.
         accumulated = None
         text_buffer: list[str] = []
         has_tool_calls = False
         usage_dict: dict[str, Any] | None = None
 
-        async for chunk in llm_with_tools.astream(lc_messages):
-            accumulated = chunk if accumulated is None else accumulated + chunk
+        with _tracer.start_as_current_span(
+            "llm.stream_with_tools",
+            attributes={
+                "gen_ai.system": "google.gemini",
+                "gen_ai.request.model": self._model,
+                "gen_ai.operation.name": "chat",
+                "gen_ai.tool.count": len(tools),
+            },
+        ) as span:
+            try:
+                async for chunk in llm_with_tools.astream(lc_messages):
+                    accumulated = chunk if accumulated is None else accumulated + chunk
 
-            if getattr(chunk, "tool_call_chunks", None):
-                has_tool_calls = True
+                    if getattr(chunk, "tool_call_chunks", None):
+                        has_tool_calls = True
 
-            if isinstance(chunk.content, str) and chunk.content:
-                text_buffer.append(chunk.content)
-            elif isinstance(chunk.content, list):
-                for part in chunk.content:
-                    if isinstance(part, dict) and part.get("type") == "text" and part.get("text"):
-                        text_buffer.append(part["text"])
+                    if isinstance(chunk.content, str) and chunk.content:
+                        text_buffer.append(chunk.content)
+                    elif isinstance(chunk.content, list):
+                        for part in chunk.content:
+                            if isinstance(part, dict) and part.get("type") == "text" and part.get("text"):
+                                text_buffer.append(part["text"])
 
-            chunk_usage = getattr(chunk, "usage_metadata", None)
-            if chunk_usage is not None:
-                usage_dict = dict(chunk_usage)
+                    chunk_usage = getattr(chunk, "usage_metadata", None)
+                    if chunk_usage is not None:
+                        usage_dict = dict(chunk_usage)
+            except Exception as exc:
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                record_llm_call(self._model, "error")
+                raise
+            span.set_attribute("gen_ai.response.tool_calls", bool(has_tool_calls))
+            self._record_usage(span, usage_dict)
+            record_llm_call(self._model, "ok")
 
         if has_tool_calls and accumulated and accumulated.tool_calls:
             # Discard text_buffer — it was the model previewing the question before

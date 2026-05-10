@@ -3,8 +3,10 @@ import type { CSSProperties } from "react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { createConversation, generateSummary, generateWeakQuiz, getProjectProfile, getProjectProgress, listConversations } from "../api";
+import { createConversation, generateSummary, generateWeakQuiz, getCurrentUser, getProjectProfile, getProjectProgress, listConversations } from "../api";
+import { normalizeSubject } from "../subjects";
 import type { Conversation, PracticeQuizItem, SessionSummary } from "../types";
+import { LectureModeOverlay } from "./LectureModeOverlay";
 import { WeakQuizModal } from "./WeakQuizModal";
 
 function formatDate(value: string): string {
@@ -64,6 +66,7 @@ function downloadSummary(subject: string, sessionNum: number, c: Conversation) {
 export function ProjectPage() {
   const { subject } = useParams<{ subject: string }>();
   const decoded = decodeURIComponent(subject ?? "");
+  const normalizedSubject = normalizeSubject(decoded);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -73,11 +76,14 @@ export function ProjectPage() {
   const [weakQuizzes, setWeakQuizzes] = useState<PracticeQuizItem[] | null>(null);
   const [generatingWeakQuiz, setGeneratingWeakQuiz] = useState(false);
   const [weakQuizError, setWeakQuizError] = useState<string | null>(null);
+  const [lectureOpen, setLectureOpen] = useState(false);
 
   const { data: conversations = [] } = useQuery({
     queryKey: ["conversations"],
     queryFn: listConversations,
   });
+
+  const { data: user } = useQuery({ queryKey: ["me"], queryFn: getCurrentUser });
 
   const { data: profile } = useQuery({
     queryKey: ["project-profile", decoded],
@@ -90,7 +96,7 @@ export function ProjectPage() {
   });
 
   const sessions = conversations
-    .filter((c) => c.subject === decoded)
+    .filter((c) => normalizeSubject(c.subject) === normalizedSubject)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   const newSessionMutation = useMutation({
@@ -174,6 +180,14 @@ export function ProjectPage() {
             Edit subject / cover
           </Link>
           <button
+            className="button button-secondary"
+            onClick={() => setLectureOpen(true)}
+            style={{ fontSize: "0.8rem", padding: "0.45rem 0.875rem" }}
+            type="button"
+          >
+            ▶ Lecture mode
+          </button>
+          <button
             className="button button-primary"
             disabled={newSessionMutation.isPending}
             onClick={() => newSessionMutation.mutate()}
@@ -183,6 +197,15 @@ export function ProjectPage() {
           </button>
         </div>
       </div>
+
+      {lectureOpen && (
+        <LectureModeOverlay
+          subject={decoded}
+          tutorName={user?.tutor_name ?? "Sapient"}
+          tutorInitials={(user?.tutor_name ?? "S").slice(0, 2).toUpperCase()}
+          onClose={() => setLectureOpen(false)}
+        />
+      )}
 
       {profile?.goals && (
         <div className="project-goals">

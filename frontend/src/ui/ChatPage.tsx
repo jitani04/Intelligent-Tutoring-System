@@ -7,6 +7,7 @@ import { getPendingStudyContext } from "../studyState";
 import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, KeyIdea, Material, Message, QuizData, RetrievedSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { DiagramCard } from "./DiagramCard";
+import { LectureModeOverlay } from "./LectureModeOverlay";
 import { MarkdownText } from "./MarkdownText";
 import { QuizCard } from "./QuizCard";
 import { useSpeech } from "../useSpeech";
@@ -149,6 +150,7 @@ export function ChatPage() {
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [pendingContext] = useState(() => getPendingStudyContext());
+  const [lectureOpen, setLectureOpen] = useState(false);
 
   const userQuery = useQuery({
     queryKey: ["me"],
@@ -408,6 +410,8 @@ export function ChatPage() {
         concept: event.data.concept,
         summary: event.data.summary,
         subject: null,
+        sr_repetitions: 0,
+        sr_due_date: new Date().toISOString(),
         created_at: new Date().toISOString(),
       }]);
       setShowNotes(true);
@@ -423,7 +427,7 @@ export function ChatPage() {
 
   const title = context?.subject ?? (conversation ? `Study session #${conversation.id}` : "New study session");
   const subtitle = context?.subject ?? "General study";
-  const tutorName = userQuery.data?.tutor_name || "KnowledgePal";
+  const tutorName = userQuery.data?.tutor_name || "Sapient";
   const tutorInitials = initialsForName(tutorName);
 
   return (
@@ -438,6 +442,14 @@ export function ChatPage() {
             {timer.active && (
               <span className="thread-timer" title="Session duration">{formatTimer(timer.elapsed)}</span>
             )}
+            <button
+              className="thread-action-btn"
+              onClick={() => setLectureOpen(true)}
+              title="Start a voice lecture on this topic"
+              type="button"
+            >
+              ▶ Lecture
+            </button>
             <button
               className="thread-action-btn"
               onClick={() => setDraftAndFocus("Quiz me on this topic instead of explaining.")}
@@ -743,6 +755,15 @@ export function ChatPage() {
             setSseKeyIdeas((ks) => ks.filter((k) => k.id !== id));
             void queryClient.invalidateQueries({ queryKey: ["key-ideas", conversationId] });
           }}
+        />
+      )}
+
+      {lectureOpen && (
+        <LectureModeOverlay
+          subject={context?.subject ?? null}
+          tutorName={tutorName}
+          tutorInitials={tutorInitials}
+          onClose={() => setLectureOpen(false)}
         />
       )}
     </div>

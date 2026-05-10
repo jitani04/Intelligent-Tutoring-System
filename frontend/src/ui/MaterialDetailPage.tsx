@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { deleteMaterial, listConversations, listMaterials } from "../api";
+import { deleteMaterial, getMaterialPreviewUrl, listConversations, listMaterials } from "../api";
+import { normalizeSubject } from "../subjects";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "Not yet";
@@ -38,6 +39,21 @@ export function MaterialDetailPage() {
       q.state.data?.some((material) => material.status === "processing") ? 3000 : false,
   });
 
+  const material = materialsQuery.data?.find((item) => item.id === parsedMaterialId);
+  const isReady = material?.status === "ready";
+
+  const previewQuery = useQuery({
+    queryKey: ["material-preview", parsedMaterialId],
+    queryFn: () => getMaterialPreviewUrl(parsedMaterialId),
+    enabled: isReady && Number.isInteger(parsedMaterialId) && parsedMaterialId > 0,
+    refetchInterval: (q) => {
+      const expiresIn = q.state.data?.expires_in;
+      if (!expiresIn) return false;
+      return Math.max(60_000, (expiresIn - 60) * 1000);
+    },
+    staleTime: 30_000,
+  });
+
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
     queryFn: listConversations,
@@ -51,11 +67,10 @@ export function MaterialDetailPage() {
     },
   });
 
-  const material = materialsQuery.data?.find((item) => item.id === parsedMaterialId);
   const relatedConversations = (conversationsQuery.data ?? [])
     .filter((conversation) => {
       if (!material?.subject) return conversation.subject === null;
-      return conversation.subject?.toLowerCase() === material.subject.toLowerCase();
+      return normalizeSubject(conversation.subject) === normalizeSubject(material.subject);
     })
     .sort((a, b) => b.id - a.id)
     .slice(0, 6);
@@ -128,7 +143,7 @@ export function MaterialDetailPage() {
               {material.status}
             </span>
             {material.status === "processing" ? (
-              <p className="settings-copy">KnowledgePal is still reading and indexing this file.</p>
+              <p className="settings-copy">Sapient is still reading and indexing this file.</p>
             ) : null}
             {material.status === "ready" ? (
               <p className="settings-copy">This file is ready to ground tutor answers and source retrieval.</p>
@@ -170,6 +185,38 @@ export function MaterialDetailPage() {
           ) : null}
         </div>
       </div>
+
+      {isReady ? (
+        <div className="content-card">
+          <div className="content-card-title">Preview</div>
+          {previewQuery.isLoading ? <p className="muted">Loading preview...</p> : null}
+          {previewQuery.isError ? (
+            <p className="error-text">Could not load preview. {(previewQuery.error as Error)?.message ?? ""}</p>
+          ) : null}
+          {previewQuery.data ? (
+            <div className="material-preview-frame">
+              <iframe
+                key={previewQuery.data.url}
+                src={previewQuery.data.url}
+                title={`Preview of ${material.filename}`}
+                style={{ width: "100%", height: "70vh", border: "1px solid var(--border, #e2e2e2)", borderRadius: "8px", background: "#fff" }}
+              />
+              <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
+                <a className="button button-secondary" href={previewQuery.data.url} target="_blank" rel="noreferrer">
+                  Open in new tab
+                </a>
+                <a
+                  className="button button-secondary"
+                  href={previewQuery.data.url}
+                  download={material.filename}
+                >
+                  Download
+                </a>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="content-card">
         <div className="content-card-title">Related study sessions</div>

@@ -56,7 +56,7 @@ export function ProfilePage() {
       <div className="page-header">
         <div className="page-header-text">
           <h1 className="page-title">Profile</h1>
-          <p className="page-subtitle">Manage how KnowledgePal addresses you and understands your study goals.</p>
+          <p className="page-subtitle">Manage how Sapient addresses you and understands your study goals.</p>
         </div>
       </div>
 

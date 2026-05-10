@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_user_id
 from app.core.config import get_settings
+from app.core.rate_limit import rate_limit_user
 from app.db.session import get_db_session
 from app.models.user import User
 from app.schemas.chat import ChatRequest
@@ -17,8 +18,12 @@ from app.services.conversation_service import get_conversation_for_user
 from app.services.errors import ConversationNotFoundError
 from app.services.llm_service import LLMService
 
-router = APIRouter(prefix="/chat", tags=["chat"])
 settings = get_settings()
+router = APIRouter(
+    prefix="/chat",
+    tags=["chat"],
+    dependencies=[Depends(rate_limit_user("chat", settings.rate_limit_chat_per_min))],
+)
 
 
 def _build_tutor_customization_prompt(user: User) -> str:

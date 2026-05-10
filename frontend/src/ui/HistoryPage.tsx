@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { listConversations } from "../api";
+import { normalizeSubject } from "../subjects";
 import type { Conversation } from "../types";
 
 function formatDate(value: string): string {
@@ -23,14 +24,15 @@ export function HistoryPage() {
   });
 
   const groups = useMemo(() => {
-    const map = new Map<string, Conversation[]>();
+    const map = new Map<string, { label: string; sessions: Conversation[] }>();
     for (const c of conversations) {
-      const subject = c.subject ?? "Unlabeled";
-      const group = map.get(subject) ?? [];
-      group.push(c);
-      map.set(subject, group);
+      const label = c.subject?.trim() || "Unlabeled";
+      const key = normalizeSubject(label);
+      const group = map.get(key) ?? { label, sessions: [] };
+      group.sessions.push(c);
+      map.set(key, group);
     }
-    return Array.from(map.entries());
+    return Array.from(map.values()).map(({ label, sessions }) => [label, sessions] as const);
   }, [conversations]);
 
   return (

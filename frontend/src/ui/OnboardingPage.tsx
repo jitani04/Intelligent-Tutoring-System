@@ -54,7 +54,7 @@ export function OnboardingPage() {
         <div className="flow-step">Welcome</div>
         <h1>Personalize your tutor</h1>
         <p className="flow-copy">
-          Answer two quick questions so KnowledgePal can shape your dashboard and study sessions around your goals.
+          Answer two quick questions so Sapient can shape your dashboard and study sessions around your goals.
         </p>
 
         <form className="flow-form" onSubmit={(event) => void handleSubmit(event)}>

@@ -6,9 +6,9 @@
 | 2 | Session Summary | ✅ Implemented |
 | 3 | Progress Tracking | ✅ Implemented |
 | 4 | Key Ideas / Notes | ✅ Implemented |
-| 5 | Mind Map (Excalidraw) | ✅ Implemented |
+| 5 | Mind Map | ✅ Implemented |
 | 6 | Spaced Repetition Flashcards | ✅ Implemented |
-| 7 | Material Viewer | ✅ Implemented |
+| 7 | Material Viewer / Preview | ✅ Implemented |
 | 8 | Export | ⬜ Planned |
 | 9 | Search | ✅ Implemented |
 | 10 | Voice Input | ✅ Implemented |
@@ -46,7 +46,7 @@
 
 ## Priority 2 — Session Summary ✅ Implemented
 
-**What it does:** After a session the agent generates a structured summary of what was covered, what the student struggled with, and what to review next.
+**What it does:** After a session the user can generate a structured summary of what was covered, what the student struggled with, and what to review next. The summary is then cached on the conversation.
 
 **Backend**
 - `Conversation.summary` stores a JSON object:
@@ -59,13 +59,13 @@
   }
   ```
 - `POST /conversations/{id}/summary` — calls the LLM with full history, persists and returns the summary
-- Auto-triggered after ≥ 10 messages
+- If a summary already exists, the endpoint returns the cached version
 
 **Frontend**
 - Summary displayed in the History page ([frontend/src/ui/HistoryPage.tsx](frontend/src/ui/HistoryPage.tsx)) per session
 - `next_review` items surfaced as "pick up where you left off" hints on the project page
 
-**Key files:** `app/api/routes/conversations.py`, `app/models/conversation.py`, `frontend/src/ui/HistoryPage.tsx`
+**Key files:** `app/api/routes/artifacts.py`, `app/models/conversation.py`, `frontend/src/ui/HistoryPage.tsx`
 
 ---
 
@@ -105,21 +105,24 @@
 
 ---
 
-## Priority 5 — Mind Map (Excalidraw) ✅ Implemented
+## Priority 5 — Mind Maps and Diagrams ✅ Implemented
 
-**What it does:** The agent generates visual concept diagrams stored per session. Rendered with the Excalidraw SDK in a fullscreen card.
+**What it does:** The tutor can generate visual concept diagrams during chat, and the project layer can generate a persistent subject-level mind map.
 
-**Agent tool:** `generate_diagram(title, excalidraw_json)` — called when a structural overview would help
+**Chat diagrams**
+- Agent tool: `create_diagram(elements, title)` — called when a structural overview would help
+- Streamed as SSE `diagram` events and rendered inline with Excalidraw
+- Not stored in a dedicated database table
 
-**Backend**
-- `ProjectProfile.mind_map` (JSON) stores the Excalidraw scene for the project
-- Diagram data streamed as SSE `diagram` events during chat
+**Project mind maps**
+- `POST /projects/{subject}/mindmap` generates a persistent JSON mind map
+- `ProjectProfile.mind_map` stores the project-level mind map data
 
 **Frontend**
-- `DiagramCard` in [frontend/src/ui/DiagramCard.tsx](frontend/src/ui/DiagramCard.tsx) renders each diagram inline; double-click to open fullscreen via `createPortal`
-- Diagrams accumulate in the chat thread per session
+- `DiagramCard` in [frontend/src/ui/DiagramCard.tsx](frontend/src/ui/DiagramCard.tsx) renders streamed diagrams inline and fullscreen
+- Project pages render the saved `mind_map` from the project profile
 
-**Key files:** `app/models/project_profile.py`, `frontend/src/ui/DiagramCard.tsx`
+**Key files:** `app/api/routes/projects.py`, `app/models/project_profile.py`, `frontend/src/ui/DiagramCard.tsx`
 
 ---
 
@@ -142,18 +145,21 @@
 
 ---
 
-## Priority 7 — Material Viewer ✅ Implemented
+## Priority 7 — Material Viewer / Preview ✅ Implemented
 
-**What it does:** Students can open uploaded materials to view extracted text chunks with page citations. The tutor can cite sources in the Sources panel.
+**What it does:** Students can upload files for retrieval grounding, preview ready files securely, and use cited snippets from those files in tutor responses.
 
 **Backend**
-- `GET /projects/{subject}/materials` and `GET /materials/{id}` — material metadata
-- `MaterialChunk` stores text, `page_number`, `chunk_index`, and a `pgvector` embedding for RAG
-- Sources returned as `RetrievedSource` objects (chunk_id, material_id, filename, snippet, page_number, similarity_score) on each chat SSE stream
+- `POST /materials/presign` — returns a presigned upload URL
+- `POST /materials` — records the uploaded object and starts ingestion
+- `GET /materials?subject=` — list material metadata
+- `GET /materials/{id}/preview-url` — returns a presigned preview URL for ready materials
+- `MaterialChunk` stores extracted text and embeddings for RAG
+- Sources are returned as `RetrievedSource` objects on each chat SSE stream
 
 **Frontend**
-- `MaterialDetailPage` at `/projects/:subject/materials/:materialId` — renders all chunks grouped by page
-- Sources panel in the chat workspace: clickable sources show filename, page, snippet, and similarity score
+- `MaterialDetailPage` at `/projects/:subject/materials/:materialId` shows processing state, metadata, and a secure preview iframe when ready
+- Sources panel in the chat workspace shows filename, page, snippet, and similarity score
 
 **Key files:** `app/api/routes/materials.py`, `app/models/material_chunk.py`, `frontend/src/ui/MaterialDetailPage.tsx`
 

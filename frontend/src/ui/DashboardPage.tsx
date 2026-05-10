@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { getCurrentUser, listConversations, listProjectProfiles } from "../api";
+import { normalizeSubject } from "../subjects";
 import type { Conversation } from "../types";
 
 const SUBJECT_ICONS: Record<string, string> = {
@@ -204,18 +205,20 @@ export function DashboardPage() {
     queryFn: listProjectProfiles,
   });
 
-  const projectProfileBySubject = new Map(projectProfiles.map((profile) => [profile.subject, profile]));
+  const projectProfileBySubject = new Map(projectProfiles.map((profile) => [normalizeSubject(profile.subject), profile]));
 
   const projects = (() => {
     const map = new Map<string, { convs: Conversation[]; lastActive: string }>();
     for (const c of conversations) {
-      const subject = c.subject ?? "General";
-      const existing = map.get(subject) ?? { convs: [], lastActive: c.created_at };
+      const subject = (c.subject?.trim() || "General");
+      const subjectKey = normalizeSubject(subject);
+      const existing = map.get(subjectKey) ?? { convs: [], lastActive: c.created_at };
       existing.convs.push(c);
       if (c.created_at > existing.lastActive) existing.lastActive = c.created_at;
-      map.set(subject, existing);
+      map.set(subjectKey, existing);
     }
-    return Array.from(map.entries()).map(([subject, { convs, lastActive }]) => {
+    return Array.from(map.entries()).map(([subjectKey, { convs, lastActive }]) => {
+      const subject = convs.find((conversation) => conversation.subject?.trim())?.subject?.trim() ?? "General";
       const { progress, badge, tooltip, nextReview } = deriveProgress(convs);
       return {
         subject,
@@ -226,7 +229,7 @@ export function DashboardPage() {
         tooltip,
         nextReview,
         theme: subjectTheme(subject),
-        coverImageUrl: projectProfileBySubject.get(subject)?.cover_image_url ?? null,
+        coverImageUrl: projectProfileBySubject.get(subjectKey)?.cover_image_url ?? null,
       };
     }).sort((a, b) => b.lastActive.localeCompare(a.lastActive));
   })();

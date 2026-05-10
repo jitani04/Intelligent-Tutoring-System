@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_user_id
 from app.core.config import get_settings
+from app.core.rate_limit import rate_limit_user
 from app.db.session import get_db_session
 from app.models.conversation import Conversation
 from app.models.project_profile import ProjectProfile
@@ -18,6 +19,8 @@ from app.services.llm_service import LLMService
 from app.services.stock_image_service import StockImageError, StockImageService
 
 logger = logging.getLogger(__name__)
+_project_settings = get_settings()
+_summary_rate_limit = Depends(rate_limit_user("summary", _project_settings.rate_limit_summary_per_min))
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
@@ -162,7 +165,11 @@ async def setup_project(
     return ProjectProfileRead.model_validate(profile)
 
 
-@router.post("/{subject}/weak-quiz", response_model=WeakQuizResponse)
+@router.post(
+    "/{subject}/weak-quiz",
+    response_model=WeakQuizResponse,
+    dependencies=[_summary_rate_limit],
+)
 async def generate_weak_quiz(
     subject: str,
     user_id: Annotated[int, Depends(get_user_id)],
@@ -281,7 +288,11 @@ async def generate_weak_quiz(
     )
 
 
-@router.post("/{subject}/mindmap", response_model=ProjectProfileRead)
+@router.post(
+    "/{subject}/mindmap",
+    response_model=ProjectProfileRead,
+    dependencies=[_summary_rate_limit],
+)
 async def generate_mindmap(
     subject: str,
     user_id: Annotated[int, Depends(get_user_id)],

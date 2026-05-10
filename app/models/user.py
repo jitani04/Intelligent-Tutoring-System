@@ -16,7 +16,7 @@ class User(Base):
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     use_case: Mapped[str | None] = mapped_column(String(100), nullable=True)
     onboarding_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
-    tutor_name: Mapped[str] = mapped_column(String(80), default="KnowledgePal", server_default="KnowledgePal", nullable=False)
+    tutor_name: Mapped[str] = mapped_column(String(80), default="Sapient", server_default="Sapient", nullable=False)
     tutor_tone: Mapped[str] = mapped_column(String(80), default="Supportive", server_default="Supportive", nullable=False)
     tutor_style: Mapped[str] = mapped_column(String(120), default="Socratic guide", server_default="Socratic guide", nullable=False)
     tutor_instructions: Mapped[str] = mapped_column(String(1000), default="", server_default="", nullable=False)

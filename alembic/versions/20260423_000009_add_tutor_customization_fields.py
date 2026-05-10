@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "users",
-        sa.Column("tutor_name", sa.String(length=80), server_default="KnowledgePal", nullable=False),
+        sa.Column("tutor_name", sa.String(length=80), server_default="Sapient", nullable=False),
     )
     op.add_column(
         "users",

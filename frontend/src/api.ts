@@ -133,17 +133,60 @@ export async function listMaterials(subject?: string): Promise<Material[]> {
   return parseJson(response);
 }
 
+interface PresignResponse {
+  upload_url: string;
+  key: string;
+  expires_in: number;
+  max_bytes: number;
+  required_headers: Record<string, string>;
+}
+
 export async function uploadMaterial(file: File, subject?: string): Promise<Material> {
-  const formData = new FormData();
-  formData.set("file", file);
-  if (subject?.trim()) {
-    formData.set("subject", subject.trim());
+  const mimeType = file.type || "application/octet-stream";
+
+  const presignResp = await fetch(`${API_BASE_URL}/materials/presign`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ filename: file.name, mime_type: mimeType }),
+  });
+  const presigned = await parseJson<PresignResponse>(presignResp);
+
+  if (file.size > presigned.max_bytes) {
+    throw new Error(`Upload exceeds the ${presigned.max_bytes} byte limit.`);
   }
 
-  const response = await fetch(`${API_BASE_URL}/materials`, {
+  const putResp = await fetch(presigned.upload_url, {
+    method: "PUT",
+    headers: presigned.required_headers,
+    body: file,
+  });
+  if (!putResp.ok) {
+    throw new Error(`Upload failed (${putResp.status} ${putResp.statusText}).`);
+  }
+
+  const createResp = await fetch(`${API_BASE_URL}/materials`, {
     method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      filename: file.name,
+      mime_type: mimeType,
+      subject: subject?.trim() || null,
+      key: presigned.key,
+    }),
+  });
+  return parseJson(createResp);
+}
+
+export interface MaterialPreview {
+  url: string;
+  expires_in: number;
+  mime_type: string;
+  filename: string;
+}
+
+export async function getMaterialPreviewUrl(materialId: number): Promise<MaterialPreview> {
+  const response = await fetch(`${API_BASE_URL}/materials/${materialId}/preview-url`, {
     headers: buildHeaders(),
-    body: formData,
   });
   return parseJson(response);
 }

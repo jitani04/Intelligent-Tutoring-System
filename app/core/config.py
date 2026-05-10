@@ -1,5 +1,4 @@
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    app_name: str = Field(default="Chatbot Backend", alias="APP_NAME")
+    app_name: str = Field(default="Sapient", alias="APP_NAME")
     environment: str = Field(default="development", alias="ENVIRONMENT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
@@ -34,8 +33,15 @@ class Settings(BaseSettings):
         return v.replace("\\n", "\n")
 
     keepalive_seconds: int = Field(default=15, alias="KEEPALIVE_SECONDS")
-    upload_dir: Path = Field(default=Path("storage/uploads"), alias="UPLOAD_DIR")
     upload_max_bytes: int = Field(default=10 * 1024 * 1024, alias="UPLOAD_MAX_BYTES")
+    upload_url_expires_seconds: int = Field(default=300, alias="UPLOAD_URL_EXPIRES_SECONDS")
+    preview_url_expires_seconds: int = Field(default=3600, alias="PREVIEW_URL_EXPIRES_SECONDS")
+
+    s3_bucket: str = Field(default="", alias="S3_BUCKET")
+    s3_region: str = Field(default="us-east-1", alias="S3_REGION")
+    s3_endpoint_url: str = Field(default="", alias="S3_ENDPOINT_URL")
+    aws_access_key_id: str = Field(default="", alias="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(default="", alias="AWS_SECRET_ACCESS_KEY")
     rag_top_k: int = Field(default=4, alias="RAG_TOP_K")
     rag_chunk_size: int = Field(default=1200, alias="RAG_CHUNK_SIZE")
     rag_chunk_overlap: int = Field(default=200, alias="RAG_CHUNK_OVERLAP")
@@ -57,6 +63,21 @@ class Settings(BaseSettings):
     @property
     def cors_allow_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allow_origins_raw.split(",") if origin.strip()]
+
+    metrics_enabled: bool = Field(default=True, alias="METRICS_ENABLED")
+    json_logs: bool = Field(default=True, alias="JSON_LOGS")
+    app_version: str = Field(default="dev", alias="APP_VERSION")
+    otel_otlp_endpoint: str = Field(default="", alias="OTEL_EXPORTER_OTLP_ENDPOINT")
+    otel_otlp_headers: str = Field(default="", alias="OTEL_EXPORTER_OTLP_HEADERS")
+    otel_console_traces: bool = Field(default=False, alias="OTEL_CONSOLE_TRACES")
+
+    rate_limit_enabled: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
+    rate_limit_chat_per_min: int = Field(default=30, alias="RATE_LIMIT_CHAT_PER_MIN")
+    rate_limit_stt_per_min: int = Field(default=20, alias="RATE_LIMIT_STT_PER_MIN")
+    rate_limit_tts_per_min: int = Field(default=30, alias="RATE_LIMIT_TTS_PER_MIN")
+    rate_limit_auth_per_min: int = Field(default=10, alias="RATE_LIMIT_AUTH_PER_MIN")
+    rate_limit_summary_per_min: int = Field(default=10, alias="RATE_LIMIT_SUMMARY_PER_MIN")
+    rate_limit_upload_per_min: int = Field(default=30, alias="RATE_LIMIT_UPLOAD_PER_MIN")
 
 
 @lru_cache

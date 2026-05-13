@@ -1,3 +1,4 @@
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,10 @@ def test_validate_material_filename_rejects_unsupported_types() -> None:
         validate_material_filename("slides.docx")
 
 
+def test_validate_material_filename_accepts_pptx() -> None:
+    validate_material_filename("lecture-slides.pptx")
+
+
 @pytest.mark.asyncio
 async def test_extract_material_blocks_reads_text_file(tmp_path: Path) -> None:
     path = tmp_path / "notes.txt"
@@ -25,6 +30,34 @@ async def test_extract_material_blocks_reads_text_file(tmp_path: Path) -> None:
     assert len(blocks) == 1
     assert blocks[0].text == "Cell respiration produces ATP."
     assert blocks[0].page_number is None
+
+
+@pytest.mark.asyncio
+async def test_extract_material_blocks_reads_pptx_slide_text(tmp_path: Path) -> None:
+    path = tmp_path / "lecture.pptx"
+    slide_xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+           xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+      <p:cSld>
+        <p:spTree>
+          <p:sp>
+            <p:txBody>
+              <a:p><a:r><a:t>Photosynthesis</a:t></a:r></a:p>
+              <a:p><a:r><a:t>converts light into chemical energy.</a:t></a:r></a:p>
+            </p:txBody>
+          </p:sp>
+        </p:spTree>
+      </p:cSld>
+    </p:sld>
+    """
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("ppt/slides/slide1.xml", slide_xml)
+
+    blocks = await extract_material_blocks(path)
+
+    assert len(blocks) == 1
+    assert blocks[0].text == "Photosynthesis converts light into chemical energy."
+    assert blocks[0].page_number == 1
 
 
 def test_chunk_blocks_preserve_order_and_overlap() -> None:

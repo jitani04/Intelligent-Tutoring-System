@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_user_id
 from app.core.config import get_settings
+from app.core.llm_errors import is_llm_quota_error, retry_after_from_message
 from app.core.rate_limit import rate_limit_user
 from app.db.session import get_db_session
 from app.models.user import User
@@ -101,6 +102,13 @@ async def stream_chat_endpoint(
             async for payload in _with_keepalive(source, settings.keepalive_seconds):
                 yield payload
         except Exception as exc:  # noqa: BLE001
-            yield _format_sse_event(SseEvent(event="error", data={"error": str(exc)}))
+            payload: dict[str, object] = {"error": str(exc)}
+            if is_llm_quota_error(exc):
+                payload = {
+                    "error": "AI is rate-limited right now. Please try again in a moment.",
+                    "rate_limited": True,
+                    "retry_after_seconds": retry_after_from_message(str(exc)),
+                }
+            yield _format_sse_event(SseEvent(event="error", data=payload))
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

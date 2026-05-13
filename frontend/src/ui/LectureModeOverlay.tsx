@@ -17,7 +17,7 @@ interface Props {
 const WAVEFORM_BARS = [0, 1, 2, 3, 4];
 
 export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose }: Props) {
-  const { session, send, activate, deactivate } = useLectureSession(subject);
+  const { session, send, retry, activate, deactivate } = useLectureSession(subject);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const notebookRef = useRef<HTMLDivElement>(null);
@@ -46,7 +46,7 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
     if (notebookRef.current) {
       notebookRef.current.scrollTop = notebookRef.current.scrollHeight;
     }
-  }, [session.keyIdeas.length, session.diagrams.length, session.transcript]);
+  }, [session.keyIdeas.length, session.diagrams.length]);
 
 
   function handleSend() {
@@ -75,8 +75,14 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
     void send(text);
   }, handsFreeActive);
   const pageHeading = subject ?? "Open lecture notes";
+  const hasContent = keyIdeas.length > 0 || diagrams.length > 0 || transcript.length > 0;
+  const isFirstDraft = !hasContent;
   const statusLabel = agentThinking
-    ? "Drafting the next explanation"
+    ? isFirstDraft
+      ? subject
+        ? `Preparing your lecture on ${subject}`
+        : "Preparing your lecture"
+      : "Drafting the next explanation"
     : agentSpeaking
       ? "Speaking through the idea"
       : speechSupported
@@ -86,9 +92,8 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
             : "Call live: ready for you"
           : "Call muted"
         : "Notebook ready";
-  const liveText = transcript || (agentThinking ? "Let me sketch this out in the margins..." : "");
   const recentConcepts = keyIdeas.slice(-4);
-  const notebookEmpty = keyIdeas.length === 0 && diagrams.length === 0 && !liveText;
+  const showIdleState = !hasContent;
   const latestDiagram = currentDiagram ?? diagrams[diagrams.length - 1] ?? null;
   const latestConcept = currentKeyIdea ?? keyIdeas[keyIdeas.length - 1] ?? null;
   const notebookDate = useMemo(
@@ -139,29 +144,34 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
               </div>
             )}
 
-            {(liveText || busy) && (
+            {transcript && (
               <section className="lecture-live-block">
-                <div className="lecture-section-label">Now writing</div>
-                <p className="lecture-live-handwriting">{liveText || "Thinking through the next section..."}</p>
+                <div className="lecture-section-label">Now speaking</div>
+                <p className="lecture-live-handwriting">{transcript}</p>
               </section>
             )}
 
-            {notebookEmpty ? (
+            {showIdleState ? (
               <div className="lecture-idle-state">
                 <div className={`lecture-avatar-lg${agentThinking ? " lecture-avatar-pulse" : ""}`}>
                   {tutorInitials}
                 </div>
                 <div className="lecture-idle-label">
-                  {subject ? `Starting notes for ${subject}` : "Starting a fresh notebook page"}
+                  {agentThinking
+                    ? subject
+                      ? `Preparing your lecture on ${subject}`
+                      : "Preparing your lecture"
+                    : subject
+                      ? `Starting notes for ${subject}`
+                      : "Starting a fresh notebook page"}
                 </div>
               </div>
             ) : (
               <div className="lecture-notebook-stream">
-                {keyIdeas.map((idea, index) => (
+                {keyIdeas.map((idea) => (
                   <article
                     key={idea.id}
                     className={`lecture-note-entry${latestConcept?.id === idea.id ? " lecture-note-entry-active" : ""}`}
-                    style={{ transform: `rotate(${index % 2 === 0 ? -0.45 : 0.35}deg)` }}
                   >
                     <div className="lecture-note-marker" />
                     <div className="lecture-note-body">
@@ -191,7 +201,17 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
       </div>
 
       {error && (
-        <div className="lecture-error-bar">{error}</div>
+        <div className="lecture-error-bar">
+          <span>{error}</span>
+          <button
+            className="lecture-retry-btn"
+            disabled={agentThinking}
+            onClick={() => retry()}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
       )}
 
       <div className="lecture-input-bar">

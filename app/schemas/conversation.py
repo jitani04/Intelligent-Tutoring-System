@@ -8,6 +8,7 @@ from app.schemas.message import MessageRead
 
 class ConversationCreate(BaseModel):
     subject: str | None = None
+    is_lecture: bool = False
 
 
 class ConversationRead(BaseModel):
@@ -16,6 +17,7 @@ class ConversationRead(BaseModel):
     id: int
     user_id: int
     subject: str | None = None
+    is_lecture: bool = False
     created_at: datetime
     messages: list[MessageRead] = Field(default_factory=list)
     summary: dict[str, Any] | None = None

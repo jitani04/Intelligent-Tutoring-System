@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 
 import { skipQuizQuestion, submitQuizAttempt } from "../api";
 import type { AttemptResult, QuizData } from "../types";
@@ -59,8 +59,13 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
     : "quiz-result";
   const resultHeader = result?.is_correct ? "✓ Correct!" : skipped ? "Skipped" : "✗ Not quite";
 
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void handleSubmit();
+  }
+
   return (
-    <div className="quiz-card">
+    <form className="quiz-card" onSubmit={handleFormSubmit}>
       <div className="quiz-header">
         <span className="quiz-badge">Knowledge Check</span>
       </div>
@@ -95,6 +100,12 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
           className="quiz-input"
           disabled={submitted || isPending}
           onChange={(e) => setSelected(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
           placeholder="Type your answer…"
           rows={3}
           value={selected}
@@ -108,8 +119,7 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
           <button
             className="button button-primary quiz-submit"
             disabled={!selected.trim() || isPending}
-            onClick={() => void handleSubmit()}
-            type="button"
+            type="submit"
           >
             {pendingAction === "submit" ? "Checking…" : "Submit answer"}
           </button>
@@ -139,6 +149,6 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
           <div className="quiz-result-explanation">{result.explanation}</div>
         </div>
       )}
-    </div>
+    </form>
   );
 }

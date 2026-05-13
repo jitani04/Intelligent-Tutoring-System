@@ -2,9 +2,11 @@ import asyncio
 import re
 import tempfile
 import uuid
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from xml.etree import ElementTree
 
 from pypdf import PdfReader
 from sqlalchemy import delete, func, select
@@ -18,7 +20,7 @@ from app.services import s3_client
 from app.services.embedding_service import create_embedding_service
 from app.services.errors import MaterialNotFoundError
 
-SUPPORTED_SUFFIXES = {".pdf", ".txt", ".md"}
+SUPPORTED_SUFFIXES = {".pdf", ".pptx", ".txt", ".md"}
 
 
 @dataclass(slots=True)
@@ -48,7 +50,7 @@ def sanitize_filename(filename: str) -> str:
 def validate_material_filename(filename: str) -> None:
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
-        raise ValueError("Only PDF, TXT, and MD uploads are supported.")
+        raise ValueError("Only PDF, PPTX, TXT, and MD uploads are supported.")
 
 
 def build_user_key_prefix(user_id: int) -> str:
@@ -216,6 +218,8 @@ async def extract_material_blocks(path: Path) -> list[ExtractedBlock]:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         return await asyncio.to_thread(_extract_pdf_blocks, path)
+    if suffix == ".pptx":
+        return await asyncio.to_thread(_extract_pptx_blocks, path)
 
     content = await asyncio.to_thread(path.read_bytes)
     text = content.decode("utf-8", errors="ignore")
@@ -270,4 +274,45 @@ def _extract_pdf_blocks(path: Path) -> list[ExtractedBlock]:
         normalized = _normalize_text(page.extract_text() or "")
         if normalized:
             blocks.append(ExtractedBlock(text=normalized, page_number=index))
+    return blocks
+
+
+def _zip_member_sort_key(name: str) -> tuple[str, int]:
+    match = re.search(r"(\d+)(?=\.xml$)", name)
+    return (name.rsplit("/", 1)[0], int(match.group(1)) if match else 0)
+
+
+def _extract_text_from_xml(xml_bytes: bytes) -> str:
+    try:
+        root = ElementTree.fromstring(xml_bytes)
+    except ElementTree.ParseError:
+        return ""
+
+    text_parts = [
+        element.text or ""
+        for element in root.iter()
+        if element.tag.endswith("}t") and element.text
+    ]
+    return _normalize_text(" ".join(text_parts))
+
+
+def _extract_pptx_blocks(path: Path) -> list[ExtractedBlock]:
+    blocks: list[ExtractedBlock] = []
+    try:
+        with zipfile.ZipFile(path) as archive:
+            slide_names = sorted(
+                (
+                    name
+                    for name in archive.namelist()
+                    if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+                ),
+                key=_zip_member_sort_key,
+            )
+            for slide_number, slide_name in enumerate(slide_names, start=1):
+                text = _extract_text_from_xml(archive.read(slide_name))
+                if text:
+                    blocks.append(ExtractedBlock(text=text, page_number=slide_number))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Uploaded PPTX file is not readable.") from exc
+
     return blocks

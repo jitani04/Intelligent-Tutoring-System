@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import { createConversation, fetchSpeech, streamChat } from "./api";
+import { RateLimitError, createConversation, fetchSpeech, streamChat } from "./api";
 import type { ChatStreamEvent, DiagramData, KeyIdea } from "./types";
 
 interface SpeechChunk {
@@ -41,9 +41,22 @@ export function useLectureSession(subject: string | null) {
   const chunkQueueRef = useRef<SpeechChunk[]>([]);
   const isPlayingRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentAudioUrlRef = useRef<string | null>(null);
   const activeRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const lastPromptRef = useRef<string | null>(null);
   // Incremented on every send() call; stale handleEvent closures detect mismatch and exit early.
   const genRef = useRef(0);
+
+  function revokeQueuedUrls() {
+    for (const chunk of chunkQueueRef.current) {
+      void chunk.audioUrlPromise
+        .then((url) => {
+          if (url) URL.revokeObjectURL(url);
+        })
+        .catch(() => {});
+    }
+  }
 
   function stopAudio() {
     if (audioRef.current) {
@@ -52,8 +65,20 @@ export function useLectureSession(subject: string | null) {
       audioRef.current.onerror = null;
       audioRef.current = null;
     }
+    if (currentAudioUrlRef.current) {
+      URL.revokeObjectURL(currentAudioUrlRef.current);
+      currentAudioUrlRef.current = null;
+    }
+    revokeQueuedUrls();
     isPlayingRef.current = false;
     chunkQueueRef.current = [];
+  }
+
+  function abortInFlight() {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
   }
 
   function playNext() {
@@ -78,22 +103,35 @@ export function useLectureSession(subject: string | null) {
 
     chunk.audioUrlPromise
       .then((url) => {
-        if (!url || !isPlayingRef.current || !activeRef.current) {
+        if (!url) {
+          playNext();
+          return;
+        }
+        if (!isPlayingRef.current || !activeRef.current) {
+          URL.revokeObjectURL(url);
           playNext();
           return;
         }
         const audio = new Audio(url);
         audioRef.current = audio;
+        currentAudioUrlRef.current = url;
         audio.onended = () => {
           URL.revokeObjectURL(url);
+          if (currentAudioUrlRef.current === url) currentAudioUrlRef.current = null;
           audioRef.current = null;
           playNext();
         };
         audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          if (currentAudioUrlRef.current === url) currentAudioUrlRef.current = null;
           audioRef.current = null;
           playNext();
         };
-        void audio.play().catch(() => playNext());
+        void audio.play().catch(() => {
+          URL.revokeObjectURL(url);
+          if (currentAudioUrlRef.current === url) currentAudioUrlRef.current = null;
+          playNext();
+        });
       })
       .catch(() => playNext());
   }
@@ -103,13 +141,17 @@ export function useLectureSession(subject: string | null) {
     // mismatch and return early, preventing stale events from mixing into this new stream.
     const myGen = ++genRef.current;
 
+    abortInFlight();
     stopAudio();
+    lastPromptRef.current = message;
+    const controller = new AbortController();
+    abortRef.current = controller;
     setSession((s) => ({ ...s, agentThinking: true, agentSpeaking: false, transcript: "", error: null }));
 
     let convId = convIdRef.current;
     if (!convId) {
       try {
-        const conv = await createConversation(subject ?? undefined);
+        const conv = await createConversation(subject ?? undefined, { isLecture: true });
         if (genRef.current !== myGen) return;
         convId = conv.id;
         convIdRef.current = convId;
@@ -190,35 +232,54 @@ export function useLectureSession(subject: string | null) {
         }
         setSession((s) => ({ ...s, agentThinking: false }));
       } else if (event.event === "error") {
-        setSession((s) => ({ ...s, error: event.data.error, agentThinking: false }));
+        const friendly = event.data.rate_limited && event.data.retry_after_seconds
+          ? `AI is rate-limited. Try again in ~${event.data.retry_after_seconds}s.`
+          : event.data.error;
+        setSession((s) => ({ ...s, error: friendly, agentThinking: false }));
       }
     }
 
     try {
-      await streamChat(convId, { message }, handleEvent);
+      await streamChat(convId, { message }, handleEvent, controller.signal);
     } catch (err) {
       if (genRef.current !== myGen) return;
+      // AbortError on intentional cancellation — don't surface as an error.
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      const friendly = err instanceof RateLimitError
+        ? `AI is rate-limited. Try again in ~${err.retryAfterSeconds}s.`
+        : err instanceof Error ? err.message : "Stream failed.";
       setSession((s) => ({
         ...s,
-        error: err instanceof Error ? err.message : "Stream failed.",
+        error: friendly,
         agentThinking: false,
       }));
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
     }
+  }
+
+  function retry() {
+    const prompt = lastPromptRef.current;
+    if (!prompt) return;
+    void send(prompt);
   }
 
   function activate() {
     activeRef.current = true;
     convIdRef.current = null;
     genRef.current = 0;
+    lastPromptRef.current = null;
     setSession(EMPTY);
   }
 
   function deactivate() {
     activeRef.current = false;
     genRef.current++; // invalidate any in-flight stream
+    abortInFlight();
     stopAudio();
+    lastPromptRef.current = null;
     setSession(EMPTY);
   }
 
-  return { session, send, activate, deactivate };
+  return { session, send, retry, activate, deactivate };
 }

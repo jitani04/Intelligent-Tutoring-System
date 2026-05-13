@@ -31,3 +31,15 @@ frontend/.vite/
 
 # Local material uploads
 storage/uploads/
+
+# Eval run artifacts (regenerated on each run)
+evals/ragas_answers_checkpoint.json
+evals/ragas_results.csv
+evals/retrieval_results.csv
+evals/eval_corpus_map.json
+evals/tutoring_responses_checkpoint.json
+evals/tutoring_results.csv
+evals/ragas_scores_checkpoint.json
+
+# Vendored upstream pgvector checkout (not part of this repo)
+pgvector/

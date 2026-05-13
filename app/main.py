@@ -1,6 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
+
+from app.core.llm_errors import is_llm_quota_error, retry_after_from_message
 
 from app.api.routes.artifacts import router as artifacts_router
 from app.api.routes.auth import router as auth_router
@@ -68,3 +71,19 @@ app.include_router(tts_router)
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.exception_handler(Exception)
+async def llm_quota_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    if not is_llm_quota_error(exc):
+        raise exc
+    retry_after = retry_after_from_message(str(exc))
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "This AI feature is rate-limited right now. Please try again in a moment.",
+            "retry_after_seconds": retry_after,
+            "rate_limited": True,
+        },
+        headers={"Retry-After": str(retry_after)},
+    )

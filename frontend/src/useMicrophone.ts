@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import { transcribeAudio } from "./api";
+import { RateLimitError, transcribeAudio } from "./api";
 
 export function useMicrophone(onTranscript: (text: string) => void) {
   const [recording, setRecording] = useState(false);
@@ -35,8 +35,12 @@ export function useMicrophone(onTranscript: (text: string) => void) {
       try {
         const text = await transcribeAudio(blob, `recording.${ext}`);
         onTranscript(text);
-      } catch {
-        setError("Transcription failed. Try again.");
+      } catch (err) {
+        if (err instanceof RateLimitError) {
+          setError(`Voice transcription is rate-limited. Try again in ~${err.retryAfterSeconds}s.`);
+        } else {
+          setError("Transcription failed. Try again.");
+        }
       } finally {
         setLoading(false);
       }

@@ -8,6 +8,8 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
+const MATERIAL_ACCEPT = ".pdf,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/x-markdown";
+
 export function MaterialsPage() {
   const { subject } = useParams<{ subject: string }>();
   const decodedSubject = decodeURIComponent(subject ?? "");
@@ -85,8 +87,8 @@ export function MaterialsPage() {
         <label className="upload-zone">
           <div className="upload-zone-icon">📄</div>
           <div className="upload-zone-label">Drop files or click to browse</div>
-          <div className="upload-zone-sub">PDF, TXT, MD · max 10 MB each</div>
-          <input type="file" multiple style={{ display: "none" }} onChange={handleFiles} />
+          <div className="upload-zone-sub">PDF, PPTX, TXT, MD · max 10 MB each</div>
+          <input type="file" multiple accept={MATERIAL_ACCEPT} style={{ display: "none" }} onChange={handleFiles} />
         </label>
         {uploadError ? <p className="error-text" style={{ marginTop: "0.5rem" }}>{uploadError}</p> : null}
       </div>

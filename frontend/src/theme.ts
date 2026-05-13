@@ -4,7 +4,11 @@ const THEME_KEY = "kp-theme";
 
 export function getStoredTheme(): ThemeMode {
   const stored = window.localStorage.getItem(THEME_KEY);
-  return stored === "light" || stored === "dark" ? stored : "dark";
+  if (stored === "light" || stored === "dark") return stored;
+  if (typeof window !== "undefined" && window.matchMedia) {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  return "light";
 }
 
 export function applyTheme(theme: ThemeMode): void {

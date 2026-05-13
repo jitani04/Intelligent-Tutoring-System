@@ -22,17 +22,48 @@ function buildHeaders(extraHeaders?: HeadersInit): Headers {
   return headers;
 }
 
+export class RateLimitError extends Error {
+  retryAfterSeconds: number;
+  constructor(message: string, retryAfterSeconds: number) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+function _parseRetryAfter(response: Response, body: { retry_after_seconds?: unknown } | null): number {
+  const fromBody = body && typeof body.retry_after_seconds === "number" ? body.retry_after_seconds : null;
+  if (fromBody && fromBody > 0) return fromBody;
+  const header = response.headers.get("Retry-After");
+  if (header) {
+    const n = Number(header);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 60;
+}
+
+interface ErrorBody {
+  detail?: string;
+  retry_after_seconds?: number;
+  rate_limited?: boolean;
+}
+
 async function parseJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
-
+    let body: ErrorBody | null = null;
     try {
-      const body = (await response.json()) as { detail?: string };
-      if (body.detail) {
-        detail = body.detail;
-      }
+      body = (await response.json()) as ErrorBody;
+      if (body.detail) detail = body.detail;
     } catch {
       // Keep the default error detail.
+    }
+
+    if (response.status === 503 && body?.rate_limited) {
+      throw new RateLimitError(detail, _parseRetryAfter(response, body));
+    }
+    if (response.status === 429) {
+      throw new RateLimitError(detail, _parseRetryAfter(response, body));
     }
 
     throw new Error(detail);
@@ -105,11 +136,17 @@ export async function listConversations(): Promise<Conversation[]> {
   return parseJson(response);
 }
 
-export async function createConversation(subject?: string): Promise<Conversation> {
+export async function createConversation(
+  subject?: string,
+  options?: { isLecture?: boolean },
+): Promise<Conversation> {
   const response = await fetch(`${API_BASE_URL}/conversations`, {
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ subject: subject ?? null }),
+    body: JSON.stringify({
+      subject: subject ?? null,
+      is_lecture: options?.isLecture ?? false,
+    }),
   });
   return parseJson(response);
 }
@@ -119,6 +156,16 @@ export async function getConversation(conversationId: number): Promise<Conversat
     headers: buildHeaders(),
   });
   return parseJson(response);
+}
+
+export async function deleteConversation(conversationId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Delete failed: ${response.status} ${response.statusText}`);
+  }
 }
 
 export async function listMaterials(subject?: string): Promise<Material[]> {
@@ -428,6 +475,7 @@ export async function streamChat(
   conversationId: number,
   request: ChatRequest,
   onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/chat/${conversationId}`, {
     method: "POST",
@@ -436,6 +484,7 @@ export async function streamChat(
       Accept: "text/event-stream",
     }),
     body: JSON.stringify(request),
+    signal,
   });
 
   if (!response.ok) {

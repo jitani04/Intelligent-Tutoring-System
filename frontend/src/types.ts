@@ -12,6 +12,7 @@ export interface Conversation {
   id: number;
   user_id: number;
   subject: string | null;
+  is_lecture: boolean;
   created_at: string;
   messages: Message[];
   summary: SessionSummary | null;
@@ -104,6 +105,8 @@ export interface ChatErrorEvent {
   event: "error";
   data: {
     error: string;
+    rate_limited?: boolean;
+    retry_after_seconds?: number;
   };
 }
 

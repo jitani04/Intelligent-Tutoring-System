@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
 import { Link, Navigate, useNavigate } from "react-router-dom";
@@ -6,6 +6,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { login, loginWithGoogle, register } from "../api";
 import { isAuthenticated, setToken } from "../auth";
 import type { AuthResult } from "../types";
+import { ShaderWallpaper } from "./ShaderWallpaper";
 import { ThemeToggle } from "./ThemeToggle";
 
 const FEATURES = [
@@ -48,120 +49,6 @@ const STEPS = [
 ];
 
 type ModalMode = "signin" | "signup";
-
-type WaveLayer = {
-  components: { amp: number; freq: number; speed: number; phase: number }[];
-  yOffset: number;
-  rgba: [number, number, number, number];
-};
-
-const AURORA_LAYERS: WaveLayer[] = [
-  {
-    components: [
-      { amp: 0.13, freq: 1.2, speed: 0.00042, phase: 0.0 },
-      { amp: 0.05, freq: 2.9, speed: 0.00080, phase: 1.4 },
-    ],
-    yOffset: 0.52,
-    rgba: [115, 147, 179, 0.28],
-  },
-  {
-    components: [
-      { amp: 0.16, freq: 0.9, speed: 0.00031, phase: 2.2 },
-      { amp: 0.06, freq: 3.4, speed: 0.00110, phase: 0.7 },
-    ],
-    yOffset: 0.63,
-    rgba: [158, 183, 207, 0.22],
-  },
-  {
-    components: [
-      { amp: 0.11, freq: 1.6, speed: 0.00055, phase: 1.0 },
-      { amp: 0.04, freq: 4.2, speed: 0.00140, phase: 3.1 },
-    ],
-    yOffset: 0.74,
-    rgba: [90, 120, 152, 0.18],
-  },
-  {
-    components: [
-      { amp: 0.18, freq: 0.6, speed: 0.00022, phase: 3.8 },
-      { amp: 0.07, freq: 2.1, speed: 0.00065, phase: 2.6 },
-    ],
-    yOffset: 0.82,
-    rgba: [140, 165, 195, 0.14],
-  },
-];
-
-function AuroraCanvas() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const el: HTMLCanvasElement = canvas;
-    const c: CanvasRenderingContext2D = ctx;
-
-    let raf = 0;
-    let w = 0;
-    let h = 0;
-
-    function resize() {
-      const dpr = window.devicePixelRatio || 1;
-      w = el.offsetWidth;
-      h = el.offsetHeight;
-      el.width = w * dpr;
-      el.height = h * dpr;
-      c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-
-    function sampleY(layer: WaveLayer, time: number, x: number): number {
-      return (
-        h * layer.yOffset +
-        layer.components.reduce((acc, comp) => {
-          return acc + Math.sin((x / w) * Math.PI * 2 * comp.freq + comp.phase + time * comp.speed) * h * comp.amp;
-        }, 0)
-      );
-    }
-
-    function draw(time: number) {
-      c.clearRect(0, 0, w, h);
-
-      for (const layer of AURORA_LAYERS) {
-        const [r, g, b, a] = layer.rgba;
-        const grad = c.createLinearGradient(0, 0, 0, h);
-        grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
-        grad.addColorStop(0.35, `rgba(${r},${g},${b},${a})`);
-        grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
-
-        c.beginPath();
-        c.moveTo(0, sampleY(layer, time, 0));
-        for (let x = 1; x <= w; x += 3) {
-          c.lineTo(x, sampleY(layer, time, x));
-        }
-        c.lineTo(w, h);
-        c.lineTo(0, h);
-        c.closePath();
-        c.fillStyle = grad;
-        c.fill();
-      }
-
-      raf = requestAnimationFrame(draw);
-    }
-
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(el);
-    raf = requestAnimationFrame(draw);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      observer.disconnect();
-    };
-  }, []);
-
-  return <canvas className="bb-constellation-canvas" ref={canvasRef} />;
-}
 
 export function LandingPage() {
   const navigate = useNavigate();
@@ -249,7 +136,7 @@ export function LandingPage() {
         <div className="bb-nav-inner">
           <Link className="bb-nav-logo" to="/">
             <span className="bb-logo-mark">◎</span>
-            <span>BrainBoost AI</span>
+            <span>Sapient</span>
           </Link>
           <div className="bb-nav-links">
             <a href="#features">Features</a>
@@ -262,10 +149,52 @@ export function LandingPage() {
         </div>
       </nav>
 
-      <header className="bb-hero landing-hero">
-        <div className="bb-hero-inner bb-hero-inner-visual-only">
-          <div className="bb-hero-visual motion-reveal motion-scale" aria-hidden="true">
-            <AuroraCanvas />
+      <header className="os-hero">
+        <ShaderWallpaper />
+        <div className="os-hero-overlay" aria-hidden="true" />
+        <div className="os-hero-grid" aria-hidden="true" />
+
+        <div className="os-hero-corner os-hero-corner-tl" aria-hidden="true">
+          <span className="os-corner-dot" />
+          <span>SYS · SAPIENT v1.0</span>
+        </div>
+        <div className="os-hero-corner os-hero-corner-tr" aria-hidden="true">
+          <span>{new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
+          <span className="os-corner-dot os-corner-dot-pulse" />
+        </div>
+        <div className="os-hero-corner os-hero-corner-bl" aria-hidden="true">
+          <span>◇ move cursor to warp · click to ripple</span>
+        </div>
+        <div className="os-hero-corner os-hero-corner-br" aria-hidden="true">
+          <span>◎ active learning runtime</span>
+        </div>
+
+        <div className="os-hero-stage">
+          <div className="os-hero-content">
+            <span className="os-hero-eyebrow">◎ Sapient OS · online</span>
+            <h1 className="os-hero-title">Sapient</h1>
+            <div className="os-hero-define" aria-label="Definition of Sapient">
+              <span className="os-define-word">sa·pi·ent</span>
+              <span className="os-define-ipa">/ˈseɪ.pi.ənt/</span>
+              <span className="os-define-pos">adjective</span>
+              <span className="os-define-gloss">
+                possessing wisdom; able to think, reason, and learn —
+                from Latin <em>sapiēns</em>, "wise, knowing."
+              </span>
+            </div>
+            <p className="os-hero-body">
+              An adaptive Socratic tutor that grounds every answer in your own materials.
+              Upload notes, work through guided questions, build concept maps, and watch your
+              progress compound. The wallpaper reacts to you; so does the tutor.
+            </p>
+            <div className="os-hero-actions">
+              <button className="bb-btn bb-btn-primary bb-btn-xl" onClick={() => openModal("signup")} type="button">
+                Boot up →
+              </button>
+              <button className="bb-btn bb-btn-ghost" onClick={() => openModal("signin")} type="button">
+                Sign in
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -317,7 +246,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      <footer className="bb-footer">© 2026 BrainBoost AI.</footer>
+      <footer className="bb-footer">© 2026 Sapient.</footer>
 
       {mode !== null && (
         <div className="landing-modal-backdrop" onClick={() => setMode(null)} role="presentation">

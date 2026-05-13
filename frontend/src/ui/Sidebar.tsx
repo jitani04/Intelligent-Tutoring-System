@@ -1,8 +1,21 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PointerEvent, useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MouseEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  LayoutGrid,
+  Layers,
+  FolderOpen,
+  StickyNote,
+  Search,
+  History,
+  User,
+  Settings,
+  LogOut,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
-import { getDueFlashcards, listConversations } from "../api";
+import { deleteConversation, getDueFlashcards, listConversations } from "../api";
 import { clearToken } from "../auth";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -46,6 +59,27 @@ export function Sidebar() {
     queryKey: ["conversations"],
     queryFn: listConversations,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteConversation,
+    onSuccess: (_data, conversationId) => {
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.removeQueries({ queryKey: ["conversation", conversationId] });
+      queryClient.removeQueries({ queryKey: ["conversation-quizzes", conversationId] });
+      queryClient.removeQueries({ queryKey: ["key-ideas", conversationId] });
+      if (location.pathname === `/sessions/${conversationId}`) {
+        navigate("/dashboard");
+      }
+    },
+  });
+
+  function handleDeleteChat(event: MouseEvent<HTMLButtonElement>, conversationId: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (deleteMutation.isPending) return;
+    if (!window.confirm("Delete this study session? This can't be undone.")) return;
+    deleteMutation.mutate(conversationId);
+  }
 
   const { data: flashcardData } = useQuery({
     queryKey: ["flashcards-due", activeProjectSubject],
@@ -139,7 +173,7 @@ export function Sidebar() {
       </div>
 
       <Link to="/sessions/new" className="sidebar-new-btn">
-        <span>+</span>
+        <Plus size={16} strokeWidth={2.2} />
         <span>New study session</span>
       </Link>
 
@@ -148,8 +182,17 @@ export function Sidebar() {
           to="/dashboard"
           className={`sidebar-item ${location.pathname === "/dashboard" ? "active" : ""}`}
         >
-          <em className="sidebar-item-icon">⊞</em>
+          <span className="sidebar-item-icon"><LayoutGrid size={16} strokeWidth={1.8} /></span>
           <span className="sidebar-item-label">Dashboard</span>
+        </Link>
+
+        <Link
+          to="/search"
+          className={`sidebar-item ${isActive("/search") ? "active" : ""}`}
+        >
+          <span className="sidebar-item-icon"><Search size={16} strokeWidth={1.8} /></span>
+          <span className="sidebar-item-label">Search</span>
+          <span className="sidebar-shortcut">⌘K</span>
         </Link>
 
         {projects.length > 0 && (
@@ -177,14 +220,23 @@ export function Sidebar() {
                 <Link
                   key={c.id}
                   to={`/sessions/${c.id}`}
-                  className={`sidebar-item ${location.pathname === `/sessions/${c.id}` ? "active" : ""}`}
+                  className={`sidebar-item sidebar-chat-item sidebar-item-deletable ${location.pathname === `/sessions/${c.id}` ? "active" : ""}`}
                   title={`${project} · Study session #${c.id}`}
                 >
-                  <em className="sidebar-item-icon">◎</em>
                   <span className="sidebar-item-label">
                     {recentChatLabel(c)}
                     <span className="sidebar-item-sub">{project}</span>
                   </span>
+                  <button
+                    aria-label={`Delete ${recentChatLabel(c)}`}
+                    className="sidebar-item-delete"
+                    disabled={deleteMutation.isPending}
+                    onClick={(e) => handleDeleteChat(e, c.id)}
+                    title="Delete chat"
+                    type="button"
+                  >
+                    <Trash2 size={14} strokeWidth={1.8} />
+                  </button>
                 </Link>
               );
             })}
@@ -200,7 +252,7 @@ export function Sidebar() {
               to={`${activeProjectPath}/flashcards`}
               className={`sidebar-item ${isActive(`${activeProjectPath}/flashcards`) ? "active" : ""}`}
             >
-              <em className="sidebar-item-icon">⬡</em>
+              <span className="sidebar-item-icon"><Layers size={16} strokeWidth={1.8} /></span>
               <span className="sidebar-item-label">Flashcards</span>
               {dueCount > 0 && <span className="sidebar-badge">{dueCount}</span>}
             </Link>
@@ -209,7 +261,7 @@ export function Sidebar() {
               to={`${activeProjectPath}/materials`}
               className={`sidebar-item ${isActive(`${activeProjectPath}/materials`) ? "active" : ""}`}
             >
-              <em className="sidebar-item-icon">📂</em>
+              <span className="sidebar-item-icon"><FolderOpen size={16} strokeWidth={1.8} /></span>
               <span className="sidebar-item-label">Materials</span>
             </Link>
             <div className="sidebar-divider" />
@@ -220,24 +272,15 @@ export function Sidebar() {
           to="/notes"
           className={`sidebar-item ${isActive("/notes") ? "active" : ""}`}
         >
-          <em className="sidebar-item-icon">✦</em>
+          <span className="sidebar-item-icon"><StickyNote size={16} strokeWidth={1.8} /></span>
           <span className="sidebar-item-label">Notes</span>
-        </Link>
-
-        <Link
-          to="/search"
-          className={`sidebar-item ${isActive("/search") ? "active" : ""}`}
-        >
-          <em className="sidebar-item-icon">⌕</em>
-          <span className="sidebar-item-label">Search</span>
-          <span className="sidebar-shortcut">⌘K</span>
         </Link>
 
         <Link
           to="/history"
           className={`sidebar-item ${isActive("/history") ? "active" : ""}`}
         >
-          <em className="sidebar-item-icon">◷</em>
+          <span className="sidebar-item-icon"><History size={16} strokeWidth={1.8} /></span>
           <span className="sidebar-item-label">History</span>
         </Link>
       </div>
@@ -247,7 +290,7 @@ export function Sidebar() {
           to="/profile"
           className={`sidebar-item ${isActive("/profile") ? "active" : ""}`}
         >
-          <em className="sidebar-item-icon">◉</em>
+          <span className="sidebar-item-icon"><User size={16} strokeWidth={1.8} /></span>
           <span className="sidebar-item-label">Profile</span>
         </Link>
 
@@ -255,13 +298,13 @@ export function Sidebar() {
           to="/settings"
           className={`sidebar-item ${isActive("/settings") ? "active" : ""}`}
         >
-          <em className="sidebar-item-icon">⚙</em>
+          <span className="sidebar-item-icon"><Settings size={16} strokeWidth={1.8} /></span>
           <span className="sidebar-item-label">Settings</span>
         </Link>
 
         <ThemeToggle />
         <button className="sidebar-item" onClick={handleSignOut} type="button" style={{ width: "100%" }}>
-          <em className="sidebar-item-icon">↩</em>
+          <span className="sidebar-item-icon"><LogOut size={16} strokeWidth={1.8} /></span>
           <span className="sidebar-item-label">Sign out</span>
         </button>
       </div>

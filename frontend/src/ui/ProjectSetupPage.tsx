@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { generateMindMap, getProjectProfile, searchProjectCoverImages, setupProject } from "../api";
+import { RateLimitError, generateMindMap, getProjectProfile, searchProjectCoverImages, setupProject } from "../api";
 import type { ProjectCoverImageOption } from "../types";
 
 const LEVELS = [
@@ -89,14 +89,31 @@ export function ProjectSetupPage() {
         trimmedCoverImageUrl ? coverImagePhotographerUrl : null,
       );
 
+      let mindmapError: string | null = null;
       if (!profile?.mind_map || levelChanged || goalsChanged) {
-        await generateMindMap(decoded);
+        try {
+          await generateMindMap(decoded);
+        } catch (err) {
+          if (err instanceof RateLimitError) {
+            mindmapError = `AI is rate-limited (retry in ~${err.retryAfterSeconds}s).`;
+          } else {
+            mindmapError = err instanceof Error ? err.message : "Mind map generation failed.";
+          }
+        }
       }
+      return { mindmapError };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["project-profile", decoded] });
       await queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
-      navigate(destination, { replace: true });
+      if (result?.mindmapError) {
+        const params = new URLSearchParams();
+        params.set("warning", "mindmap_unavailable");
+        const sep = destination.includes("?") ? "&" : "?";
+        navigate(`${destination}${sep}${params.toString()}`, { replace: true });
+      } else {
+        navigate(destination, { replace: true });
+      }
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Something went wrong. You can still continue to the subject."),
   });

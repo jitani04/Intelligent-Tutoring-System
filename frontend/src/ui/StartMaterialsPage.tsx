@@ -4,6 +4,8 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
 
+const MATERIAL_ACCEPT = ".pdf,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/x-markdown";
+
 export function StartMaterialsPage() {
   const navigate = useNavigate();
   const pendingContext = getPendingStudyContext();
@@ -60,9 +62,9 @@ export function StartMaterialsPage() {
         <p className="flow-subcopy">{subtitle}</p>
 
         <label className="upload-dropzone">
-          <span>Drop PDFs, lecture notes, or syllabi here</span>
-          <small>Supported formats: PDF, TXT, and MD.</small>
-          <input multiple onChange={handleFilesChange} type="file" />
+          <span>Drop PDFs, slide decks, lecture notes, or syllabi here</span>
+          <small>Supported formats: PDF, PPTX, TXT, and MD.</small>
+          <input multiple accept={MATERIAL_ACCEPT} onChange={handleFilesChange} type="file" />
         </label>
 
         {selectedFiles.length > 0 ? (

@@ -191,13 +191,6 @@ export function SettingsPage() {
               </button>
             </div>
           </form>
-
-          <div className="content-card">
-            <div className="content-card-title">Tutor behavior</div>
-            <p className="settings-copy">
-              {tutorName || "Your tutor"} is still configured to ask first, scaffold with hints, and ground answers in uploaded materials when available.
-            </p>
-          </div>
         </div>
       )}
 

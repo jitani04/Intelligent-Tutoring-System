@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { createConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listMaterials, streamChat, uploadMaterial } from "../api";
+import { RateLimitError, createConversation, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listMaterials, streamChat, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
 import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, KeyIdea, Material, Message, QuizData, RetrievedSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
@@ -58,7 +58,8 @@ const POMODORO_INTERVAL_SECONDS = 25 * 60;
 
 const ATTACHMENT_READY_TIMEOUT_MS = 25_000;
 const ATTACHMENT_POLL_INTERVAL_MS = 1_500;
-const SUPPORTED_ATTACHMENT_SUFFIXES = [".pdf", ".txt", ".md"];
+const SUPPORTED_ATTACHMENT_SUFFIXES = [".pdf", ".pptx", ".txt", ".md"];
+const SUPPORTED_ATTACHMENT_ACCEPT = ".pdf,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/x-markdown";
 
 type AttachmentStatus = "queued" | "uploading" | "processing" | "ready" | "failed";
 
@@ -124,8 +125,10 @@ export function ChatPage() {
   const threadRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeConversationIdRef = useRef<number | null>(null);
+  const conversationLifecycleRef = useRef<Record<number, { messageCount: number; isStreaming: boolean }>>({});
 
-  const { speakingId, loadingId, speak } = useSpeech();
+  const { speakingId, loadingId, error: speechError, speak } = useSpeech();
   const { recording: micRecording, loading: micLoading, error: micError, toggle: toggleMic } = useMicrophone((text) => {
     setDraft((prev) => prev ? `${prev} ${text}` : text);
     setTimeout(() => textareaRef.current?.focus(), 0);
@@ -204,6 +207,46 @@ export function ChatPage() {
   const messages = conversation?.messages ?? [];
 
   useEffect(() => {
+    if (conversationId === null || !conversationQuery.isFetched || !conversation) return;
+
+    conversationLifecycleRef.current[conversationId] = {
+      messageCount: messages.length,
+      isStreaming,
+    };
+  }, [conversationId, conversationQuery.isFetched, conversation, messages.length, isStreaming]);
+
+  useEffect(() => {
+    activeConversationIdRef.current = conversationId;
+    const cleanupConversationId = conversationId;
+
+    return () => {
+      if (activeConversationIdRef.current === cleanupConversationId) {
+        activeConversationIdRef.current = null;
+      }
+      if (cleanupConversationId === null) return;
+
+      window.setTimeout(() => {
+        if (activeConversationIdRef.current === cleanupConversationId) return;
+
+        const lifecycle = conversationLifecycleRef.current[cleanupConversationId];
+        if (!lifecycle || lifecycle.messageCount > 0 || lifecycle.isStreaming) return;
+
+        delete conversationLifecycleRef.current[cleanupConversationId];
+        void deleteConversation(cleanupConversationId)
+          .then(() => {
+            queryClient.removeQueries({ queryKey: ["conversation", cleanupConversationId] });
+            queryClient.removeQueries({ queryKey: ["conversation-quizzes", cleanupConversationId] });
+            queryClient.removeQueries({ queryKey: ["key-ideas", cleanupConversationId] });
+            void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          })
+          .catch(() => {
+            // Empty chat cleanup is best-effort; listing queries already hide these rows.
+          });
+      }, 0);
+    };
+  }, [conversationId, queryClient]);
+
+  useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
@@ -240,7 +283,7 @@ export function ChatPage() {
     const unsupportedCount = files.length - supported.length;
     setAttachmentError(
       unsupportedCount > 0
-        ? "Only PDF, TXT, and MD attachments are supported."
+        ? "Only PDF, PPTX, TXT, and MD attachments are supported."
         : null,
     );
 
@@ -361,7 +404,11 @@ export function ChatPage() {
       } else {
         setAttachments([]);
       }
-      setStreamError(err instanceof Error ? err.message : "Streaming failed.");
+      if (err instanceof RateLimitError) {
+        setStreamError(`AI is rate-limited. Try again in ~${err.retryAfterSeconds}s.`);
+      } else {
+        setStreamError(err instanceof Error ? err.message : "Streaming failed.");
+      }
       if (target) {
         await queryClient.invalidateQueries({ queryKey: ["conversation", target.id] });
       }
@@ -417,7 +464,13 @@ export function ChatPage() {
       setShowNotes(true);
       return;
     }
-    if (event.event === "error") { setStreamError(event.data.error); }
+    if (event.event === "error") {
+      if (event.data.rate_limited && event.data.retry_after_seconds) {
+        setStreamError(`AI is rate-limited. Try again in ~${event.data.retry_after_seconds}s.`);
+      } else {
+        setStreamError(event.data.error);
+      }
+    }
   }
 
   function setDraftAndFocus(text: string) {
@@ -569,7 +622,7 @@ export function ChatPage() {
               {isStreaming && (
                 <div className="agent-step">
                   <div className="agent-step-dot">⟳</div>
-                  <span className="agent-step-text">{tutorName} is selecting the best approach…</span>
+                  <span className="agent-step-text">I am selecting the best approach…</span>
                 </div>
               )}
 
@@ -593,6 +646,13 @@ export function ChatPage() {
                 </div>
               )}
 
+              {speechError && (
+                <div className="agent-step">
+                  <div className="agent-step-dot">!</div>
+                  <span className="agent-step-text" style={{ color: "var(--error)" }}>{speechError}</span>
+                </div>
+              )}
+
               {(() => {
                 const sseIds = new Set(sseQuizzes.map((q) => q.quiz_id));
                 const allQuizzes = [
@@ -600,10 +660,13 @@ export function ChatPage() {
                   ...sseQuizzes,
                 ];
                 return allQuizzes.map((q) => (
-                  <div key={q.quiz_id} className="msg">
+                  <div key={q.quiz_id} className="msg msg-artifact msg-artifact-quiz">
                     <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
                     <div className="msg-body">
-                      <div className="msg-sender">{tutorName}</div>
+                      <div className="msg-sender msg-artifact-label">
+                        <span className="msg-artifact-tag">Quiz</span>
+                        <span className="msg-artifact-source">from {tutorName}</span>
+                      </div>
                       <QuizCard quiz={q} onAnswered={handleQuizAnswered} onSkipped={handleQuizSkipped} />
                     </div>
                   </div>
@@ -611,10 +674,13 @@ export function ChatPage() {
               })()}
 
               {sseDiagrams.map((d) => (
-                <div key={d.id} className="msg">
+                <div key={d.id} className="msg msg-artifact msg-artifact-diagram">
                   <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
                   <div className="msg-body">
-                    <div className="msg-sender">{tutorName}</div>
+                    <div className="msg-sender msg-artifact-label">
+                      <span className="msg-artifact-tag">Diagram</span>
+                      <span className="msg-artifact-source">from {tutorName}</span>
+                    </div>
                     <DiagramCard diagram={d} />
                   </div>
                 </div>
@@ -677,7 +743,7 @@ export function ChatPage() {
               </svg>
             </button>
             <input
-              accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown,text/x-markdown"
+              accept={SUPPORTED_ATTACHMENT_ACCEPT}
               hidden
               multiple
               onChange={handleAttachmentChange}
@@ -694,7 +760,7 @@ export function ChatPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  void submitDraft();
+                  e.currentTarget.form?.requestSubmit();
                 }
               }}
             />

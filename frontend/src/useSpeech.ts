@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from "react";
-import { fetchSpeech } from "./api";
+import { RateLimitError, fetchSpeech } from "./api";
 
 export function useSpeech() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobUrlRef = useRef<string | null>(null);
 
@@ -30,6 +31,7 @@ export function useSpeech() {
 
     stop();
     setLoadingId(id);
+    setError(null);
 
     try {
       const url = await fetchSpeech(text);
@@ -53,11 +55,16 @@ export function useSpeech() {
       setSpeakingId(id);
       setLoadingId(null);
       await audio.play();
-    } catch {
+    } catch (err) {
       setSpeakingId(null);
       setLoadingId(null);
+      if (err instanceof RateLimitError) {
+        setError(`Audio is rate-limited. Try again in ~${err.retryAfterSeconds}s.`);
+      } else {
+        setError("Audio generation failed. Try again.");
+      }
     }
   }, [speakingId, loadingId, stop]);
 
-  return { speakingId, loadingId, speak, stop };
+  return { speakingId, loadingId, error, speak, stop };
 }

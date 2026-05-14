@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { FileQuestion } from "lucide-react";
 
 import { deleteMaterial, getMaterialPreviewUrl, listConversations, listMaterials } from "../api";
 import { normalizeSubject } from "../subjects";
@@ -38,7 +39,7 @@ export function MaterialDetailPage() {
   const decodedSubject = decodeURIComponent(subject ?? "");
   const parsedMaterialId = Number(materialId);
   const projectMaterialsPath = decodedSubject
-    ? `/projects/${encodeURIComponent(decodedSubject)}/materials`
+    ? `/projects/${encodeURIComponent(decodedSubject)}?tab=materials`
     : "/dashboard";
 
   const materialsQuery = useQuery({
@@ -108,7 +109,7 @@ export function MaterialDetailPage() {
     return (
       <div className="page-shell">
         <div className="empty-state">
-          <div className="empty-state-icon">?</div>
+          <div className="empty-state-icon"><FileQuestion size={26} strokeWidth={1.6} /></div>
           <h3>Material not found</h3>
           <p>This material link is not valid.</p>
           <Link className="button button-primary" to={projectMaterialsPath}>Back to materials</Link>
@@ -120,7 +121,7 @@ export function MaterialDetailPage() {
   if (materialsQuery.isLoading) {
     return (
       <div className="page-shell">
-        <p className="muted">Loading material...</p>
+        <p className="muted">Loading material…</p>
       </div>
     );
   }
@@ -129,7 +130,7 @@ export function MaterialDetailPage() {
     return (
       <div className="page-shell">
         <div className="empty-state">
-          <div className="empty-state-icon">?</div>
+          <div className="empty-state-icon"><FileQuestion size={26} strokeWidth={1.6} /></div>
           <h3>Material not found</h3>
           <p>It may have been deleted, or you may not have access to it.</p>
           <Link className="button button-primary" to={projectMaterialsPath}>Back to materials</Link>
@@ -154,7 +155,7 @@ export function MaterialDetailPage() {
           onClick={() => void deleteMutation.mutateAsync(material.id)}
           type="button"
         >
-          {deleteMutation.isPending ? "Deleting..." : "Delete"}
+          {deleteMutation.isPending ? "Deleting…" : "Delete"}
         </button>
       </div>
 

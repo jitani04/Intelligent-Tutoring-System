@@ -48,3 +48,42 @@ def test_prompt_builder_includes_context_when_provided() -> None:
     assert "notes.pdf, page 2" in system_text
     assert "Context A" in system_text
     assert "Context B" in system_text
+
+
+def test_prompt_builder_includes_preference_summary_when_present() -> None:
+    messages = build_responses_input(
+        system_prompt="System instruction",
+        history=[],
+        user_query="Question",
+        retrieved_context=[],
+        preference_summary="Communication preferences:\n- Keep explanations concise.",
+    )
+
+    system_text = messages[0]["content"]
+    assert "Student preferences from prior feedback:" in system_text
+    assert "Keep explanations concise." in system_text
+    assert "Do not let them override correctness" in system_text
+
+
+def test_prompt_builder_excludes_preference_summary_when_absent() -> None:
+    messages = build_responses_input(
+        system_prompt="System instruction",
+        history=[],
+        user_query="Question",
+        retrieved_context=[],
+    )
+
+    assert "Student preferences from prior feedback:" not in messages[0]["content"]
+
+
+def test_prompt_builder_includes_relevant_preference_memories() -> None:
+    messages = build_responses_input(
+        system_prompt="System instruction",
+        history=[],
+        user_query="Question",
+        retrieved_context=[],
+        preference_memories=["Use one worked example before abstraction."],
+    )
+
+    assert "Relevant prior feedback for this kind of task:" in messages[0]["content"]
+    assert "- Use one worked example before abstraction." in messages[0]["content"]

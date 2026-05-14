@@ -1,9 +1,9 @@
 export type FontSize = "small" | "medium" | "large";
 export type FontFamily = "sans" | "serif" | "mono";
 
-const FONT_SIZE_KEY = "kp-font-size";
-const FONT_FAMILY_KEY = "kp-font-family";
-const BIONIC_KEY = "kp-bionic";
+const FONT_SIZE_KEY = "sapient-font-size";
+const FONT_FAMILY_KEY = "sapient-font-family";
+const BIONIC_KEY = "sapient-bionic";
 
 const FONT_SIZE_VALUES: Record<FontSize, string> = {
   small: "14px",

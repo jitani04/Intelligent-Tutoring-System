@@ -3,8 +3,22 @@ from app.models.key_idea import KeyIdea
 from app.models.material import Material
 from app.models.material_chunk import MaterialChunk
 from app.models.message import Message
+from app.models.message_feedback import MessageFeedback
+from app.models.preference_memory import PreferenceMemory
 from app.models.project_profile import ProjectProfile
 from app.models.quiz import Quiz, QuizAttempt
 from app.models.user import User
 
-__all__ = ["User", "Conversation", "Message", "Material", "MaterialChunk", "Quiz", "QuizAttempt", "ProjectProfile", "KeyIdea"]
+__all__ = [
+    "User",
+    "Conversation",
+    "Message",
+    "MessageFeedback",
+    "PreferenceMemory",
+    "Material",
+    "MaterialChunk",
+    "Quiz",
+    "QuizAttempt",
+    "ProjectProfile",
+    "KeyIdea",
+]

@@ -143,7 +143,7 @@ export function LandingPage() {
             <a href="#how">How it works</a>
             <a href="#start">Get started</a>
           </div>
-          <ThemeToggle compact />
+          <ThemeToggle variant="icon" />
           <button className="bb-btn bb-btn-ghost" onClick={() => openModal("signin")} type="button">Sign in</button>
           <button className="bb-btn bb-btn-primary" onClick={() => openModal("signup")} type="button">Sign up</button>
         </div>

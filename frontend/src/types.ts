@@ -8,6 +8,39 @@ export interface Message {
   created_at: string;
 }
 
+export type FeedbackRating = "thumbs_up" | "thumbs_down";
+
+export interface FeedbackRequest {
+  message_id: number;
+  conversation_id: number;
+  rating: FeedbackRating;
+  feedback_text?: string | null;
+  correction?: string | null;
+  latency_ms?: number | null;
+  retrieved_chunk_ids?: number[] | null;
+  tool_trace?: Record<string, unknown>[] | null;
+}
+
+export interface FeedbackResponse {
+  id: number;
+  user_id: number;
+  message_id: number;
+  conversation_id: number;
+  rating: FeedbackRating;
+  feedback_text: string | null;
+  correction: string | null;
+  llm_reason_category: string | null;
+  llm_feedback_summary: string | null;
+  llm_derived_preference: string | null;
+  task_type: string | null;
+  prompt_version: string | null;
+  model_name: string | null;
+  retrieved_chunk_ids: number[] | null;
+  tool_trace: Record<string, unknown>[] | null;
+  latency_ms: number | null;
+  created_at: string;
+}
+
 export interface Conversation {
   id: number;
   user_id: number;
@@ -111,7 +144,16 @@ export interface ChatEndEvent {
   data: {
     assistant_message_id: number;
     usage?: Record<string, unknown> | null;
+    latency_ms?: number;
+    retrieved_chunk_ids?: number[];
+    tool_trace?: Record<string, unknown>[];
   };
+}
+
+export interface MessageTrace {
+  latency_ms: number | null;
+  retrieved_chunk_ids: number[] | null;
+  tool_trace: Record<string, unknown>[] | null;
 }
 
 export interface ChatErrorEvent {
@@ -139,6 +181,7 @@ export interface ProjectProfile {
   level: string | null;
   goals: string | null;
   cover_image_url: string | null;
+  cover_image_storage_key: string | null;
   cover_image_source: string | null;
   cover_image_source_url: string | null;
   cover_image_photographer: string | null;

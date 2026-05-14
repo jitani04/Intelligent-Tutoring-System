@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { CheckCircle2 } from "lucide-react";
 import { createConversation, getDueFlashcards, reviewFlashcard } from "../api";
 import type { Flashcard } from "../types";
 
@@ -18,9 +19,8 @@ function intervalLabel(days: number): string {
   return `${Math.round(days / 30)} month${Math.round(days / 30) !== 1 ? "s" : ""}`;
 }
 
-export function FlashcardsPage() {
-  const { subject } = useParams<{ subject: string }>();
-  const decodedSubject = decodeURIComponent(subject ?? "");
+export function FlashcardsView({ subject }: { subject: string }) {
+  const decodedSubject = subject;
   const encodedSubject = encodeURIComponent(decodedSubject);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -47,19 +47,6 @@ export function FlashcardsPage() {
   const cards: Flashcard[] = data?.cards ?? [];
   const total = cards.length;
   const current = cards[index] ?? null;
-
-  if (!decodedSubject) {
-    return (
-      <div className="page-shell">
-        <div className="empty-state">
-          <div className="empty-state-icon">?</div>
-          <h3>Subject not found</h3>
-          <p>Open flashcards from a specific subject.</p>
-          <Link className="button button-primary" to="/dashboard">Back to dashboard</Link>
-        </div>
-      </div>
-    );
-  }
 
   async function handleRate(quality: number) {
     if (!current || submitting) return;
@@ -90,40 +77,34 @@ export function FlashcardsPage() {
   }
 
   if (isLoading) {
-    return (
-      <div className="page-shell flash-center">
-        <p className="muted">Loading your cards…</p>
-      </div>
-    );
+    return <p className="muted" style={{ marginTop: "1.5rem" }}>Loading your cards…</p>;
   }
 
   if (sessionDone || total === 0) {
     return (
-      <div className="page-shell flash-center">
-        <div className="flash-done">
-          <div className="flash-done-icon">✦</div>
-          <h2>All caught up!</h2>
-          {sessionDone && sessionDone.reviewed > 0 ? (
-            <p>You reviewed {sessionDone.reviewed} card{sessionDone.reviewed !== 1 ? "s" : ""} this study session.</p>
-          ) : (
-            <p>No {decodedSubject} cards are due right now. Keep studying to build your deck.</p>
-          )}
-          <div className="flash-done-actions">
-            {sessionDone && (
-              <button className="button button-secondary" onClick={handleRestart} type="button">
-                Check for more
-              </button>
-            )}
-            <Link className="button button-secondary" to={`/projects/${encodedSubject}`}>Open subject</Link>
-            <button
-              className="button button-primary"
-              disabled={newSessionMutation.isPending}
-              onClick={() => newSessionMutation.mutate()}
-              type="button"
-            >
-              {newSessionMutation.isPending ? "Creating…" : "Start a study session"}
+      <div className="flash-done" style={{ marginTop: "1rem" }}>
+        <div className="flash-done-icon"><CheckCircle2 size={28} strokeWidth={1.6} /></div>
+        <h2>All caught up!</h2>
+        {sessionDone && sessionDone.reviewed > 0 ? (
+          <p>You reviewed {sessionDone.reviewed} card{sessionDone.reviewed !== 1 ? "s" : ""} this study session.</p>
+        ) : (
+          <p>No {decodedSubject} cards are due right now. Keep studying to build your deck.</p>
+        )}
+        <div className="flash-done-actions">
+          {sessionDone && (
+            <button className="button button-secondary" onClick={handleRestart} type="button">
+              Check for more
             </button>
-          </div>
+          )}
+          <Link className="button button-secondary" to={`/projects/${encodedSubject}`}>Open subject</Link>
+          <button
+            className="button button-primary"
+            disabled={newSessionMutation.isPending}
+            onClick={() => newSessionMutation.mutate()}
+            type="button"
+          >
+            {newSessionMutation.isPending ? "Creating…" : "Start a study session"}
+          </button>
         </div>
       </div>
     );
@@ -132,16 +113,7 @@ export function FlashcardsPage() {
   const progress = (index / total) * 100;
 
   return (
-    <div className="page-shell">
-      <div className="page-header">
-        <div className="page-header-text">
-          <h1 className="page-title">Flashcards</h1>
-          <p className="page-subtitle">
-            {decodedSubject} · {total - index} card{total - index !== 1 ? "s" : ""} remaining · {total} due today
-          </p>
-        </div>
-      </div>
-
+    <>
       <div className="flash-progress-bar">
         <div className="flash-progress-fill" style={{ width: `${progress}%` }} />
       </div>
@@ -196,6 +168,15 @@ export function FlashcardsPage() {
       </div>
 
       <div className="flash-counter">{index + 1} / {total}</div>
-    </div>
+    </>
   );
+}
+
+export function FlashcardsPage() {
+  const { subject } = useParams<{ subject: string }>();
+  const decodedSubject = decodeURIComponent(subject ?? "");
+  if (!decodedSubject) {
+    return <Navigate replace to="/dashboard" />;
+  }
+  return <Navigate replace to={`/projects/${encodeURIComponent(decodedSubject)}?tab=flashcards`} />;
 }

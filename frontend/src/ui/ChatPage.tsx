@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowUp, FileText, FolderOpen, Pause, Play, Plus, RotateCcw } from "lucide-react";
 
-import { RateLimitError, createConversation, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listMaterials, streamChat, uploadMaterial } from "../api";
+import { RateLimitError, createConversation, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listMaterials, streamChat, submitFeedback, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
-import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, ImageData, KeyIdea, Material, Message, QuizData, RetrievedSource } from "../types";
+import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, Material, Message, MessageTrace, QuizData, RetrievedSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
@@ -14,6 +16,7 @@ import { QuizCard } from "./QuizCard";
 import { useSpeech } from "../useSpeech";
 import { useMicrophone } from "../useMicrophone";
 import { useSessionTimer, formatTimer } from "../useSessionTimer";
+import { useStreamSmoothing } from "../useStreamSmoothing";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -41,6 +44,159 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+interface FeedbackDraft {
+  rating: FeedbackRating;
+  feedbackText: string;
+  correction: string;
+  saved: boolean;
+  saving: boolean;
+  error: string | null;
+}
+
+interface FeedbackButtonsProps {
+  message: Message;
+  draft: FeedbackDraft | undefined;
+  onRate: (message: Message, rating: FeedbackRating) => void;
+}
+
+function FeedbackButtons({ message, draft, onRate }: FeedbackButtonsProps) {
+  const rating = draft?.rating ?? null;
+  return (
+    <>
+      <button
+        className={`feedback-rate-btn${rating === "thumbs_up" ? " active" : ""}`}
+        disabled={draft?.saving}
+        onClick={() => onRate(message, "thumbs_up")}
+        type="button"
+        aria-label="Thumbs up"
+        title="Thumbs up"
+      >
+        <svg
+          fill={rating === "thumbs_up" ? "currentColor" : "none"}
+          height="14"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          viewBox="0 0 24 24"
+          width="14"
+        >
+          <path d="M7 10v12" />
+          <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H7V10l4.42-7.78A1.5 1.5 0 0 1 14 3a1 1 0 0 1 1 1z" />
+        </svg>
+      </button>
+      <button
+        className={`feedback-rate-btn${rating === "thumbs_down" ? " active" : ""}`}
+        disabled={draft?.saving}
+        onClick={() => onRate(message, "thumbs_down")}
+        type="button"
+        aria-label="Thumbs down"
+        title="Thumbs down"
+      >
+        <svg
+          fill={rating === "thumbs_down" ? "currentColor" : "none"}
+          height="14"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          viewBox="0 0 24 24"
+          width="14"
+        >
+          <path d="M17 14V2" />
+          <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H17v12l-4.42 7.78A1.5 1.5 0 0 1 10 21a1 1 0 0 1-1-1z" />
+        </svg>
+      </button>
+    </>
+  );
+}
+
+interface FeedbackModalProps {
+  message: Message;
+  draft: FeedbackDraft;
+  onChange: (messageId: number, patch: Partial<FeedbackDraft>) => void;
+  onSaveDetails: (message: Message) => void;
+  onClose: () => void;
+}
+
+function FeedbackModal({ message, draft, onChange, onSaveDetails, onClose }: FeedbackModalProps) {
+  const isDown = draft.rating === "thumbs_down";
+  const title = isDown ? "Tell us what went wrong" : "Tell us what worked";
+  const prompt = isDown ? "What should be improved?" : "What was helpful?";
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="modal-box feedback-modal-box" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modal-head">
+          <h2 className="feedback-modal-title">{title}</h2>
+          <button
+            aria-label="Close feedback dialog"
+            className="modal-close-btn"
+            onClick={onClose}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+        <p className="settings-copy" style={{ margin: 0 }}>
+          Your {draft.rating === "thumbs_up" ? "thumbs up" : "thumbs down"} is already saved.
+          A short note helps the tutor learn what to do differently next time.
+        </p>
+        <label className="feedback-field">
+          <span>{prompt}</span>
+          <textarea
+            autoFocus
+            disabled={draft.saving}
+            maxLength={1000}
+            onChange={(event) => onChange(message.id, { feedbackText: event.target.value })}
+            placeholder="Optional short note"
+            rows={3}
+            value={draft.feedbackText}
+          />
+        </label>
+        {isDown ? (
+          <label className="feedback-field">
+            <span>What would a better answer include?</span>
+            <textarea
+              disabled={draft.saving}
+              maxLength={1000}
+              onChange={(event) => onChange(message.id, { correction: event.target.value })}
+              placeholder="Optional correction or missing point"
+              rows={3}
+              value={draft.correction}
+            />
+          </label>
+        ) : null}
+        <div className="feedback-detail-actions">
+          {draft.error ? <span className="feedback-error">{draft.error}</span> : null}
+          <button
+            className="feedback-save-btn"
+            disabled={draft.saving}
+            onClick={() => onSaveDetails(message)}
+            type="button"
+          >
+            {draft.saving ? "Submitting…" : "Submit"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 const SESSION_CONTROLS = [
   { label: "Hint", prompt: "I'm stuck. Give me one targeted hint without revealing the answer." },
   { label: "Explain differently", prompt: "Explain this differently using a simple analogy." },
@@ -54,8 +210,17 @@ const QUICK_PROMPTS = [
   "Give me a hint and wait for my attempt.",
 ];
 
-const POMODORO_KEY = "kp-pomodoro";
-const POMODORO_INTERVAL_SECONDS = 25 * 60;
+const POMODORO_KEY = "sapient-pomodoro";
+const POMODORO_DURATION_KEY = "sapient-pomodoro-duration";
+const DEFAULT_POMODORO_MINUTES = 25;
+
+function readPomodoroDurationSeconds(): number {
+  if (typeof window === "undefined") return DEFAULT_POMODORO_MINUTES * 60;
+  const raw = window.localStorage.getItem(POMODORO_DURATION_KEY);
+  const parsed = raw == null ? NaN : Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_POMODORO_MINUTES * 60;
+  return Math.min(180, Math.max(1, Math.floor(parsed))) * 60;
+}
 
 const ATTACHMENT_READY_TIMEOUT_MS = 25_000;
 const ATTACHMENT_POLL_INTERVAL_MS = 1_500;
@@ -77,7 +242,7 @@ function formatTime(value: string): string {
 
 function initialsForName(value: string): string {
   const words = value.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "KP";
+  if (words.length === 0) return "SA";
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
@@ -136,13 +301,14 @@ export function ChatPage() {
   });
 
   const conversationId = params.conversationId ? Number(params.conversationId) : null;
-  const timer = useSessionTimer(conversationId);
   const [pomodoroEnabled] = useState(() => localStorage.getItem(POMODORO_KEY) === "true");
-  const [dismissedIntervals, setDismissedIntervals] = useState(() => new Set<number>());
-  const pomodoroInterval = Math.floor(timer.elapsed / POMODORO_INTERVAL_SECONDS);
-  const showPomodoroPrompt = pomodoroEnabled && timer.active && pomodoroInterval > 0 && !dismissedIntervals.has(pomodoroInterval);
+  const [pomodoroDurationSeconds] = useState(() => readPomodoroDurationSeconds());
+  const timer = useSessionTimer(conversationId, pomodoroDurationSeconds);
+  const [breakDismissed, setBreakDismissed] = useState(false);
+  const showPomodoroPrompt = pomodoroEnabled && timer.expired && !breakDismissed;
   const [draft, setDraft] = useState("");
-  const [streamedText, setStreamedText] = useState("");
+  const streamSmoothing = useStreamSmoothing();
+  const streamedText = streamSmoothing.text;
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sources, setSources] = useState<RetrievedSource[]>([]);
@@ -152,10 +318,14 @@ export function ChatPage() {
   const [sseDiagrams, setSseDiagrams] = useState<DiagramData[]>([]);
   const [sseImages, setSseImages] = useState<ImageData[]>([]);
   const [showNotes, setShowNotes] = useState(false);
+  const [showMaterials, setShowMaterials] = useState(false);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [pendingContext] = useState(() => getPendingStudyContext());
   const [lectureOpen, setLectureOpen] = useState(false);
+  const [feedbackDrafts, setFeedbackDrafts] = useState<Record<number, FeedbackDraft>>({});
+  const [feedbackModalFor, setFeedbackModalFor] = useState<number | null>(null);
+  const messageTracesRef = useRef<Record<number, MessageTrace>>({});
 
   const userQuery = useQuery({
     queryKey: ["me"],
@@ -207,6 +377,16 @@ export function ChatPage() {
     [conversation, pendingContext],
   );
   const messages = conversation?.messages ?? [];
+
+  const subjectMaterialsQuery = useQuery({
+    queryKey: ["materials", context?.subject ?? null],
+    queryFn: () => listMaterials(context?.subject),
+    enabled: Boolean(context?.subject),
+    staleTime: 30_000,
+    refetchInterval: (q) =>
+      q.state.data?.some((m) => m.status === "processing") ? 3000 : false,
+  });
+  const subjectMaterials = subjectMaterialsQuery.data ?? [];
 
   useEffect(() => {
     if (conversationId === null || !conversationQuery.isFetched || !conversation) return;
@@ -362,10 +542,10 @@ export function ChatPage() {
   async function send(message: string, attachmentSnapshot: ComposerAttachment[] = []) {
     if ((!message.trim() && attachmentSnapshot.length === 0) || isStreaming) return;
 
-    timer.start();
+    if (pomodoroEnabled) timer.start();
     setStreamError(null);
     setAttachmentError(null);
-    setStreamedText("");
+    streamSmoothing.reset();
     setSources([]);
     setShowSources(false);
     setIsStreaming(true);
@@ -416,7 +596,7 @@ export function ChatPage() {
       }
     } finally {
       setIsStreaming(false);
-      setStreamedText("");
+      streamSmoothing.reset();
     }
   }
 
@@ -446,7 +626,7 @@ export function ChatPage() {
   }
 
   function handleEvent(event: ChatStreamEvent) {
-    if (event.event === "token") { setStreamedText((t) => t + event.data.delta); return; }
+    if (event.event === "token") { streamSmoothing.push(event.data.delta); return; }
     if (event.event === "sources") { setSources(event.data.sources); return; }
     if (event.event === "quiz") { setSseQuizzes((q) => [...q, event.data]); return; }
     if (event.event === "diagram") {
@@ -470,7 +650,17 @@ export function ChatPage() {
       setShowNotes(true);
       return;
     }
+    if (event.event === "end") {
+      messageTracesRef.current[event.data.assistant_message_id] = {
+        latency_ms: event.data.latency_ms ?? null,
+        retrieved_chunk_ids: event.data.retrieved_chunk_ids ?? null,
+        tool_trace: event.data.tool_trace ?? null,
+      };
+      streamSmoothing.finish();
+      return;
+    }
     if (event.event === "error") {
+      streamSmoothing.flush();
       if (event.data.rate_limited && event.data.retry_after_seconds) {
         setStreamError(`AI is rate-limited. Try again in ~${event.data.retry_after_seconds}s.`);
       } else {
@@ -479,13 +669,104 @@ export function ChatPage() {
     }
   }
 
+  function updateFeedbackDraft(messageId: number, patch: Partial<FeedbackDraft>) {
+    setFeedbackDrafts((current) => {
+      const existing = current[messageId];
+      if (!existing) return current;
+      const textChanged = "feedbackText" in patch || "correction" in patch;
+      return {
+        ...current,
+        [messageId]: { ...existing, ...patch, saved: textChanged ? false : patch.saved ?? existing.saved },
+      };
+    });
+  }
+
+  async function saveFeedback(message: Message, rating: FeedbackRating, feedbackText = "", correction = "") {
+    setFeedbackDrafts((current) => ({
+      ...current,
+      [message.id]: {
+        rating,
+        feedbackText,
+        correction,
+        saved: false,
+        saving: true,
+        error: null,
+      },
+    }));
+
+    try {
+      const trace = messageTracesRef.current[message.id];
+      await submitFeedback({
+        message_id: message.id,
+        conversation_id: message.conversation_id,
+        rating,
+        feedback_text: feedbackText.trim() || null,
+        correction: rating === "thumbs_down" ? correction.trim() || null : null,
+        latency_ms: trace?.latency_ms ?? null,
+        retrieved_chunk_ids: trace?.retrieved_chunk_ids ?? null,
+        tool_trace: trace?.tool_trace ?? null,
+      });
+      setFeedbackDrafts((current) => ({
+        ...current,
+        [message.id]: {
+          ...(current[message.id] ?? { rating, feedbackText, correction }),
+          rating,
+          saved: true,
+          saving: false,
+          error: null,
+        },
+      }));
+    } catch (error) {
+      setFeedbackDrafts((current) => ({
+        ...current,
+        [message.id]: {
+          ...(current[message.id] ?? { rating, feedbackText, correction, saved: false }),
+          rating,
+          saving: false,
+          error: error instanceof Error ? error.message : "Feedback failed to save.",
+        },
+      }));
+    }
+  }
+
+  function handleFeedbackRating(message: Message, rating: FeedbackRating) {
+    const existing = feedbackDrafts[message.id];
+    setFeedbackModalFor(message.id);
+    void saveFeedback(
+      message,
+      rating,
+      existing?.feedbackText ?? "",
+      rating === "thumbs_down" ? existing?.correction ?? "" : "",
+    );
+  }
+
+  async function handleFeedbackDetails(message: Message) {
+    const draft = feedbackDrafts[message.id];
+    if (!draft) return;
+    await saveFeedback(message, draft.rating, draft.feedbackText, draft.correction);
+    setFeedbackDrafts((current) => {
+      const after = current[message.id];
+      if (after && after.saved && !after.error) {
+        setFeedbackModalFor((open) => (open === message.id ? null : open));
+      }
+      return current;
+    });
+  }
+
   function setDraftAndFocus(text: string) {
     setDraft(text);
     textareaRef.current?.focus();
   }
 
   const title = context?.subject ?? (conversation ? `Study session #${conversation.id}` : "New study session");
-  const subtitle = context?.subject ?? "General study";
+  const subtitleParts: string[] = [];
+  if (context?.subject) {
+    if (conversation) subtitleParts.push(`Session #${conversation.id}`);
+    else subtitleParts.push("New study session");
+  } else {
+    subtitleParts.push("General study");
+  }
+  const subtitle = subtitleParts.join(" · ");
   const tutorName = userQuery.data?.tutor_name || "Sapient";
   const tutorInitials = initialsForName(tutorName);
 
@@ -498,8 +779,49 @@ export function ChatPage() {
             <div className="thread-topbar-sub">{subtitle}</div>
           </div>
           <div className="thread-topbar-actions">
-            {timer.active && (
-              <span className="thread-timer" title="Session duration">{formatTimer(timer.elapsed)}</span>
+            {pomodoroEnabled && (
+              <div className="focus-timer" role="group" aria-label="Focus timer">
+                <span
+                  className={`focus-timer-display ${timer.expired ? "expired" : timer.running ? "running" : "paused"}`}
+                  title={timer.expired ? "Time is up" : timer.running ? "Counting down" : "Paused"}
+                >
+                  {formatTimer(timer.remaining)}
+                </span>
+                {timer.running ? (
+                  <button
+                    type="button"
+                    className="focus-timer-btn"
+                    onClick={() => timer.pause()}
+                    title="Pause timer"
+                    aria-label="Pause timer"
+                  >
+                    <Pause size={13} strokeWidth={2} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="focus-timer-btn"
+                    onClick={() => timer.start()}
+                    title={timer.expired ? "Reset to start again" : "Start timer"}
+                    aria-label={timer.expired ? "Reset to start again" : "Start timer"}
+                    disabled={timer.expired}
+                  >
+                    <Play size={13} strokeWidth={2} fill="currentColor" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="focus-timer-btn"
+                  onClick={() => {
+                    timer.reset();
+                    setBreakDismissed(false);
+                  }}
+                  title="Reset timer"
+                  aria-label="Reset timer"
+                >
+                  <RotateCcw size={13} strokeWidth={2} />
+                </button>
+              </div>
             )}
             <button
               className="thread-action-btn"
@@ -507,7 +829,8 @@ export function ChatPage() {
               title="Start a voice lecture on this topic"
               type="button"
             >
-              ▶ Lecture
+              <Play size={13} strokeWidth={2} fill="currentColor" style={{ marginRight: "0.3rem", verticalAlign: "-2px" }} />
+              Lecture
             </button>
             <button
               className="thread-action-btn"
@@ -516,10 +839,29 @@ export function ChatPage() {
             >
               Quiz
             </button>
+            {context?.subject && (
+              <button
+                className={`thread-action-btn ${showMaterials ? "active" : ""}`}
+                onClick={() => {
+                  setShowMaterials((m) => !m);
+                  if (showNotes) setShowNotes(false);
+                  if (showSources) setShowSources(false);
+                }}
+                title={`Materials attached to ${context.subject}`}
+                type="button"
+              >
+                <FolderOpen size={13} strokeWidth={2} style={{ marginRight: "0.3rem", verticalAlign: "-2px" }} />
+                Materials{subjectMaterials.length > 0 ? ` (${subjectMaterials.length})` : ""}
+              </button>
+            )}
             {conversationId !== null && (
               <button
                 className={`thread-action-btn ${showNotes ? "active" : ""}`}
-                onClick={() => { setShowNotes((n) => !n); if (showSources) setShowSources(false); }}
+                onClick={() => {
+                  setShowNotes((n) => !n);
+                  if (showSources) setShowSources(false);
+                  if (showMaterials) setShowMaterials(false);
+                }}
                 type="button"
               >
                 Notes{allKeyIdeas.length > 0 ? ` (${allKeyIdeas.length})` : ""}
@@ -528,7 +870,11 @@ export function ChatPage() {
             {sources.length > 0 && (
               <button
                 className={`thread-action-btn ${showSources ? "active" : ""}`}
-                onClick={() => { setShowSources((s) => !s); if (showNotes) setShowNotes(false); }}
+                onClick={() => {
+                  setShowSources((s) => !s);
+                  if (showNotes) setShowNotes(false);
+                  if (showMaterials) setShowMaterials(false);
+                }}
                 type="button"
               >
                 Sources ({sources.length})
@@ -539,12 +885,15 @@ export function ChatPage() {
 
         {showPomodoroPrompt && (
           <div className="pomodoro-prompt">
-            <span>⏸ Time for a 5-minute break! You've been studying for {pomodoroInterval * 25} minutes.</span>
+            <span><Pause size={13} strokeWidth={2} style={{ verticalAlign: "-2px", marginRight: "0.4rem" }} />Time's up — take a 5-minute break. You focused for {Math.round(timer.durationSeconds / 60)} minutes.</span>
             <button
-              onClick={() => setDismissedIntervals((d) => { const next = new Set(d); next.add(pomodoroInterval); return next; })}
+              onClick={() => {
+                timer.reset();
+                setBreakDismissed(true);
+              }}
               type="button"
             >
-              Dismiss
+              Reset & dismiss
             </button>
           </div>
         )}
@@ -552,7 +901,6 @@ export function ChatPage() {
         <div className="thread-body" ref={threadRef}>
           {conversationId === null || (conversationQuery.isFetched && messages.length === 0 && !isStreaming) ? (
             <div className="thread-empty">
-              <div className="thread-empty-glyph">◎</div>
               <h2>{context?.subject ?? "What should we work on?"}</h2>
               <p>
                 {context
@@ -577,8 +925,13 @@ export function ChatPage() {
 
           {messages.length > 0 || streamedText ? (
             <div className="messages">
-              {messages.map((msg) =>
-                msg.role === "user" ? (
+              {messages.map((msg, idx) => {
+                const isLastAssistant =
+                  msg.role === "assistant" &&
+                  !streamedText &&
+                  !isStreaming &&
+                  !messages.slice(idx + 1).some((m) => m.role === "assistant");
+                return msg.role === "user" ? (
                   <div key={`${msg.id}-${msg.created_at}`} className="msg-user-row">
                     <div className="msg-user-bubble">{msg.content}</div>
                     <CopyButton text={msg.content} />
@@ -589,46 +942,57 @@ export function ChatPage() {
                     <div className="msg-body">
                       <div className="msg-sender">{tutorName} · {formatTime(msg.created_at)}</div>
                       <MarkdownText className="msg-text" children={msg.content} />
-                      <div className="msg-actions">
+                      <div className={`msg-actions${isLastAssistant ? " msg-actions-pinned" : ""}`}>
                         <CopyButton text={msg.content} />
+                        <FeedbackButtons
+                          message={msg}
+                          draft={feedbackDrafts[msg.id]}
+                          onRate={handleFeedbackRating}
+                        />
                         <button
                           className={`msg-listen-btn${speakingId === String(msg.id) ? " active" : ""}`}
                           onClick={() => void speak(String(msg.id), msg.content)}
                           type="button"
+                          title={
+                            loadingId === String(msg.id)
+                              ? "Loading audio…"
+                              : speakingId === String(msg.id)
+                              ? "Stop playback"
+                              : "Read aloud"
+                          }
+                          aria-label={
+                            loadingId === String(msg.id)
+                              ? "Loading audio"
+                              : speakingId === String(msg.id)
+                              ? "Stop reading aloud"
+                              : "Read aloud"
+                          }
                         >
                           {loadingId === String(msg.id) ? (
-                            <>
-                              <svg fill="currentColor" height="13" viewBox="0 0 24 24" width="13">
-                                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-                              </svg>
-                              Loading…
-                            </>
+                            <svg className="msg-listen-spinner" fill="none" height="14" stroke="currentColor" strokeLinecap="round" strokeWidth="2" viewBox="0 0 24 24" width="14">
+                              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                            </svg>
                           ) : speakingId === String(msg.id) ? (
-                            <>
-                              <svg fill="currentColor" height="13" viewBox="0 0 24 24" width="13">
-                                <path d="M6 6h12v12H6z"/>
-                              </svg>
-                              Stop
-                            </>
+                            <svg fill="currentColor" height="13" viewBox="0 0 24 24" width="13">
+                              <path d="M6 6h12v12H6z" />
+                            </svg>
                           ) : (
-                            <>
-                              <svg fill="currentColor" height="13" viewBox="0 0 24 24" width="13">
-                                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                              </svg>
-                              Read aloud
-                            </>
+                            <svg fill="currentColor" height="13" viewBox="0 0 24 24" width="13">
+                              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                            </svg>
                           )}
                         </button>
                       </div>
                     </div>
                   </div>
-                )
-              )}
+                );
+              })}
 
-              {isStreaming && (
-                <div className="agent-step">
-                  <div className="agent-step-dot">⟳</div>
-                  <span className="agent-step-text">I am selecting the best approach…</span>
+              {isStreaming && !streamedText && (
+                <div className="agent-thinking" aria-live="polite" aria-label="Thinking">
+                  <span className="agent-thinking-dot" />
+                  <span className="agent-thinking-dot" />
+                  <span className="agent-thinking-dot" />
                 </div>
               )}
 
@@ -756,10 +1120,7 @@ export function ChatPage() {
               title={context?.subject ? `Attach to ${context.subject}` : "Attach file"}
               type="button"
             >
-              <svg aria-hidden="true" fill="none" height="17" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" viewBox="0 0 24 24" width="17">
-                <path d="M12 5v14" />
-                <path d="M5 12h14" />
-              </svg>
+              <Plus size={17} strokeWidth={2.2} />
             </button>
             <input
               accept={SUPPORTED_ATTACHMENT_ACCEPT}
@@ -802,11 +1163,15 @@ export function ChatPage() {
                 </svg>
               )}
             </button>
-            <button className="composer-send" disabled={(!draft.trim() && attachments.length === 0) || isStreaming} type="submit">
-              ↑
+            <button
+              aria-label="Send message"
+              className="composer-send"
+              disabled={(!draft.trim() && attachments.length === 0) || isStreaming}
+              type="submit"
+            >
+              <ArrowUp size={16} strokeWidth={2.4} />
             </button>
           </div>
-          <div className="composer-hint">Press Enter to send · Shift+Enter for new line</div>
         </form>
       </div>
 
@@ -831,6 +1196,58 @@ export function ChatPage() {
         </div>
       )}
 
+      {showMaterials && context?.subject && (
+        <div className="sources-panel">
+          <div className="sources-header">
+            <span className="sources-title">
+              Materials{subjectMaterials.length > 0 ? ` (${subjectMaterials.length})` : ""}
+            </span>
+            <button className="sources-close" onClick={() => setShowMaterials(false)} type="button">×</button>
+          </div>
+          <div className="sources-body">
+            {subjectMaterialsQuery.isLoading ? (
+              <p className="muted" style={{ padding: "0.5rem 0" }}>Loading…</p>
+            ) : subjectMaterials.length === 0 ? (
+              <div style={{ padding: "0.5rem 0" }}>
+                <p className="muted" style={{ marginBottom: "0.75rem" }}>No materials attached yet.</p>
+                <Link
+                  to={`/projects/${encodeURIComponent(context.subject)}?tab=materials`}
+                  className="button button-secondary"
+                  style={{ fontSize: "0.78rem", padding: "0.4rem 0.7rem" }}
+                >
+                  Upload material
+                </Link>
+              </div>
+            ) : (
+              <>
+                {subjectMaterials.map((m) => (
+                  <Link
+                    key={m.id}
+                    to={`/projects/${encodeURIComponent(context.subject)}/materials/${m.id}`}
+                    className="source-item materials-panel-item"
+                  >
+                    <div className="materials-panel-item-row">
+                      <FileText size={14} strokeWidth={1.7} />
+                      <span className="materials-panel-item-name">{m.filename}</span>
+                      <span className={`status-dot status-dot-${m.status}`} />
+                    </div>
+                    {m.error_message ? (
+                      <div className="source-item-meta" style={{ color: "var(--error)" }}>{m.error_message}</div>
+                    ) : null}
+                  </Link>
+                ))}
+                <Link
+                  to={`/projects/${encodeURIComponent(context.subject)}?tab=materials`}
+                  className="materials-panel-manage"
+                >
+                  Manage materials →
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {showNotes && conversationId !== null && (
         <ArtifactsPanel
           conversationId={conversationId}
@@ -851,6 +1268,20 @@ export function ChatPage() {
           onClose={() => setLectureOpen(false)}
         />
       )}
+
+      {feedbackModalFor !== null && feedbackDrafts[feedbackModalFor] && (() => {
+        const target = messages.find((m) => m.id === feedbackModalFor);
+        if (!target) return null;
+        return (
+          <FeedbackModal
+            message={target}
+            draft={feedbackDrafts[feedbackModalFor]}
+            onChange={updateFeedbackDraft}
+            onSaveDetails={handleFeedbackDetails}
+            onClose={() => setFeedbackModalFor(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

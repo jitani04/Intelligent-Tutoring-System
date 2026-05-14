@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { ArrowRight, BookOpen, Plus } from "lucide-react";
 
 import { getCurrentUser, listConversations, listProjectProfiles } from "../api";
 import { normalizeSubject } from "../subjects";
@@ -143,15 +144,16 @@ export function DashboardPage() {
             <span className="dashboard-collection-title">Your subjects</span>
           </div>
           <Link to="/start/topic" className="button button-primary dashboard-collection-action">
-            + New subject
+            <Plus size={15} strokeWidth={2.2} />
+            New subject
           </Link>
         </div>
 
         {projects.length === 0 ? (
           <div className="dashboard-empty-state">
-            <div className="dashboard-empty-state-icon">📚</div>
+            <div className="dashboard-empty-state-icon"><BookOpen size={28} strokeWidth={1.6} /></div>
             <h3>No subjects yet</h3>
-            <p>Start your first study session to create a visual subject card here. Your study sessions, review topics, and study momentum will appear automatically.</p>
+            <p>Start your first session to create a subject.</p>
             <Link to="/start/topic" className="button button-primary">Start a study session</Link>
           </div>
         ) : (
@@ -170,11 +172,12 @@ export function DashboardPage() {
                 <div className="dashboard-showcase-body">
                   <div className="dashboard-showcase-copy">
                     <h3>{subject}</h3>
-                    <p>Continue studying this subject with your tutor.</p>
                   </div>
                   <div className="dashboard-showcase-footer">
                     <span>Updated {formatDate(lastActive)}</span>
-                    <span className="dashboard-showcase-arrow" aria-hidden="true">›</span>
+                    <span className="dashboard-showcase-arrow" aria-hidden="true">
+                      <ArrowRight size={16} strokeWidth={2} />
+                    </span>
                   </div>
                 </div>
               </Link>

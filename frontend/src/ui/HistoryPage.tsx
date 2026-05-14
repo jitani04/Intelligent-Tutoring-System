@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { Clock } from "lucide-react";
 
 import { listConversations } from "../api";
 import { normalizeSubject } from "../subjects";
@@ -67,7 +68,7 @@ export function HistoryPage() {
 
       {groups.length === 0 && !isLoading ? (
         <div className="empty-state">
-          <div className="empty-state-icon">◷</div>
+          <div className="empty-state-icon"><Clock size={26} strokeWidth={1.6} /></div>
           <h3>No study sessions yet</h3>
           <p>Your past study sessions will appear here.</p>
           <Link to="/sessions/new" className="button button-primary">Start a study session</Link>

@@ -109,7 +109,7 @@ export function ProfilePage() {
 
           <div className="flow-actions">
             <button className="button button-primary" disabled={saving || isLoading || !useCase} type="submit">
-              {saving ? "Saving..." : "Save profile"}
+              {saving ? "Saving…" : "Save profile"}
             </button>
           </div>
         </form>
@@ -118,7 +118,7 @@ export function ProfilePage() {
           <div className="content-card-title">Account</div>
           <div className="settings-row">
             <span>Email</span>
-            <strong>{user?.email ?? "Loading..."}</strong>
+            <strong>{user?.email ?? "Loading…"}</strong>
           </div>
           <div className="settings-row">
             <span>Onboarding</span>

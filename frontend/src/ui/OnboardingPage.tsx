@@ -102,7 +102,7 @@ export function OnboardingPage() {
 
           <div className="flow-actions">
             <button className="button button-primary" disabled={loading || !useCase} type="submit">
-              {loading ? "Saving..." : "Continue"}
+              {loading ? "Saving…" : "Continue"}
             </button>
           </div>
         </form>

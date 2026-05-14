@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy import Boolean, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -21,6 +21,8 @@ class User(Base):
     tutor_style: Mapped[str] = mapped_column(String(120), default="Socratic guide", server_default="Socratic guide", nullable=False)
     tutor_instructions: Mapped[str] = mapped_column(String(1000), default="", server_default="", nullable=False)
     tutor_voice: Mapped[str] = mapped_column(String(32), default="nova", server_default="nova", nullable=False)
+    preference_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preference_summary_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="user")

@@ -1,5 +1,5 @@
 import { getToken } from "./auth";
-import type { AttemptResult, AuthResult, ChatRequest, ChatStreamEvent, Conversation, Flashcard, FlashcardDueResponse, KeyIdea, Material, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, SearchResponse, SessionSummary, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
+import type { AttemptResult, AuthResult, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, Material, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, SearchResponse, SessionSummary, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -158,6 +158,15 @@ export async function getConversation(conversationId: number): Promise<Conversat
   return parseJson(response);
 }
 
+export async function submitFeedback(request: FeedbackRequest): Promise<FeedbackResponse> {
+  const response = await fetch(`${API_BASE_URL}/feedback`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(request),
+  });
+  return parseJson(response);
+}
+
 export async function deleteConversation(conversationId: number): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
     method: "DELETE",
@@ -252,6 +261,16 @@ export async function listProjectProfiles(): Promise<ProjectProfile[]> {
   return parseJson(response);
 }
 
+export async function deleteProjectSubject(subject: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    await parseJson(response);
+  }
+}
+
 export async function searchProjectCoverImages(query: string): Promise<ProjectCoverImageOption[]> {
   const response = await fetch(`${API_BASE_URL}/projects/cover-images/search?query=${encodeURIComponent(query)}`, {
     headers: buildHeaders(),
@@ -259,11 +278,54 @@ export async function searchProjectCoverImages(query: string): Promise<ProjectCo
   return parseJson(response);
 }
 
+export interface CoverImageUploadResult {
+  storage_key: string;
+  cover_image_url: string;
+}
+
+interface CoverImagePresignResponse {
+  upload_url: string;
+  storage_key: string;
+  expires_in: number;
+  max_bytes: number;
+  required_headers: Record<string, string>;
+}
+
+export async function uploadProjectCoverImage(file: File): Promise<CoverImageUploadResult> {
+  const mimeType = file.type || "application/octet-stream";
+
+  const presignResp = await fetch(`${API_BASE_URL}/projects/cover-images/presign`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ filename: file.name, mime_type: mimeType }),
+  });
+  const presigned = await parseJson<CoverImagePresignResponse>(presignResp);
+
+  if (file.size > presigned.max_bytes) {
+    throw new Error(`Image exceeds the ${(presigned.max_bytes / (1024 * 1024)).toFixed(0)}MB limit.`);
+  }
+
+  const putResp = await fetch(presigned.upload_url, {
+    method: "PUT",
+    headers: presigned.required_headers,
+    body: file,
+  });
+  if (!putResp.ok) {
+    throw new Error(`Upload failed (${putResp.status} ${putResp.statusText}).`);
+  }
+
+  return {
+    storage_key: presigned.storage_key,
+    cover_image_url: URL.createObjectURL(file),
+  };
+}
+
 export async function setupProject(
   subject: string,
   level: string | null,
   goals: string | null,
   coverImageUrl: string | null,
+  coverImageStorageKey: string | null = null,
   coverImageSource: string | null = null,
   coverImageSourceUrl: string | null = null,
   coverImagePhotographer: string | null = null,
@@ -276,11 +338,12 @@ export async function setupProject(
       subject,
       level,
       goals,
-      cover_image_url: coverImageUrl,
-      cover_image_source: coverImageSource,
-      cover_image_source_url: coverImageSourceUrl,
-      cover_image_photographer: coverImagePhotographer,
-      cover_image_photographer_url: coverImagePhotographerUrl,
+      cover_image_url: coverImageStorageKey ? null : coverImageUrl,
+      cover_image_storage_key: coverImageStorageKey,
+      cover_image_source: coverImageStorageKey ? "upload" : coverImageSource,
+      cover_image_source_url: coverImageStorageKey ? null : coverImageSourceUrl,
+      cover_image_photographer: coverImageStorageKey ? null : coverImagePhotographer,
+      cover_image_photographer_url: coverImageStorageKey ? null : coverImagePhotographerUrl,
     }),
   });
   return parseJson(response);

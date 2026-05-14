@@ -56,8 +56,7 @@ export function StartMaterialsPage() {
         <div className="flow-step">Step 2 of 3</div>
         <h1>Upload course material</h1>
         <p className="flow-copy">
-          Optional, but recommended. Adding course material helps the tutor stay aligned with your
-          class, notes, and terminology.
+          Optional. Uploads keep answers grounded in your actual material.
         </p>
         <p className="flow-subcopy">{subtitle}</p>
 

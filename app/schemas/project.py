@@ -9,6 +9,7 @@ class ProjectSetupRequest(BaseModel):
     level: str | None = None
     goals: str | None = None
     cover_image_url: HttpUrl | None = None
+    cover_image_storage_key: str | None = None
     cover_image_source: str | None = None
     cover_image_source_url: HttpUrl | None = None
     cover_image_photographer: str | None = None
@@ -23,12 +24,19 @@ class ProjectProfileRead(BaseModel):
     level: str | None = None
     goals: str | None = None
     cover_image_url: str | None = None
+    cover_image_storage_key: str | None = None
     cover_image_source: str | None = None
     cover_image_source_url: str | None = None
     cover_image_photographer: str | None = None
     cover_image_photographer_url: str | None = None
     mind_map: dict[str, Any] | None = None
     created_at: datetime
+
+
+class ProjectCoverImageUploadResponse(BaseModel):
+    storage_key: str
+    image_url: str
+    expires_in: int
 
 
 class ProjectCoverImageOption(BaseModel):

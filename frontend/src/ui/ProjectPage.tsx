@@ -1,14 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, MessageCircle, Pencil, Play, StickyNote, Trash2 } from "lucide-react";
 
-import { RateLimitError, createConversation, deleteConversation, generateMindMap, generateSummary, generateWeakQuiz, getCurrentUser, getProjectProfile, getProjectProgress, listConversations } from "../api";
+import { RateLimitError, createConversation, deleteConversation, deleteKeyIdea, deleteProjectSubject, generateMindMap, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getProjectProfile, getProjectProgress, listAllKeyIdeas, listConversations, listMaterials, promoteKeyIdea } from "../api";
 import { normalizeSubject } from "../subjects";
 import type { Conversation, PracticeQuizItem, SessionSummary } from "../types";
+import { FlashcardsView } from "./FlashcardsPage";
 import { LectureModeOverlay } from "./LectureModeOverlay";
+import { MaterialsView } from "./MaterialsPage";
+import { NoteCard } from "./NoteCard";
 import { WeakQuizModal } from "./WeakQuizModal";
+
+type ProjectTab = "overview" | "notes" | "materials" | "flashcards";
+
+const PROJECT_TABS: ProjectTab[] = ["overview", "notes", "materials", "flashcards"];
+
+function parseProjectTab(value: string | null): ProjectTab {
+  if (value && (PROJECT_TABS as string[]).includes(value)) return value as ProjectTab;
+  return "overview";
+}
+
+const TAB_LABEL: Record<ProjectTab, string> = {
+  overview: "Overview",
+  notes: "Notes",
+  materials: "Materials",
+  flashcards: "Flashcards",
+};
 
 function SectionToggle({ open, onClick, label }: { open: boolean; onClick: () => void; label: string }) {
   return (
@@ -43,6 +62,24 @@ function formatTimestamp(value: string): string {
 function lastAssistantMessageTimestamp(conversation: Conversation): string | null {
   const lastAssistantMessage = [...conversation.messages].reverse().find((message) => message.role === "assistant");
   return lastAssistantMessage?.created_at ?? null;
+}
+
+function truncateSessionTitle(value: string, maxLength = 92): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 3).trimEnd()}...` : value;
+}
+
+function getSessionTitle(conversation: Conversation, subject: string): string {
+  const firstUserMessage = conversation.messages.find((message) => message.role === "user")?.content.trim();
+  if (firstUserMessage) {
+    return truncateSessionTitle(firstUserMessage.replace(/\s+/g, " "));
+  }
+
+  const firstSummaryTopic = conversation.summary?.covered?.find((topic) => topic.trim())?.trim();
+  if (firstSummaryTopic) {
+    return truncateSessionTitle(firstSummaryTopic);
+  }
+
+  return `${subject} chat`;
 }
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -140,7 +177,19 @@ export function ProjectPage() {
   const [weakQuizError, setWeakQuizError] = useState<string | null>(null);
   const [lectureOpen, setLectureOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab: ProjectTab = parseProjectTab(searchParams.get("tab"));
   const showMindmapWarning = searchParams.get("warning") === "mindmap_unavailable";
+  const [noteSearch, setNoteSearch] = useState("");
+  const [deletingNoteId, setDeletingNoteId] = useState<number | null>(null);
+  const [promotingNoteId, setPromotingNoteId] = useState<number | null>(null);
+  const [deleteSubjectError, setDeleteSubjectError] = useState<string | null>(null);
+
+  function setActiveTab(next: ProjectTab) {
+    const params = new URLSearchParams(searchParams);
+    if (next === "overview") params.delete("tab");
+    else params.set("tab", next);
+    setSearchParams(params, { replace: true });
+  }
   const [retryingMindmap, setRetryingMindmap] = useState(false);
   const [mindmapRetryError, setMindmapRetryError] = useState<string | null>(null);
   const [sectionVisibility, setSectionVisibility] = useState<ProjectSectionVisibility>(() => (
@@ -164,6 +213,58 @@ export function ProjectPage() {
     queryFn: () => getProjectProgress(decoded),
   });
 
+  const { data: subjectNotes = [], isLoading: notesLoading } = useQuery({
+    queryKey: ["key-ideas-subject", decoded],
+    queryFn: () => listAllKeyIdeas(decoded),
+    enabled: Boolean(decoded),
+    staleTime: 30_000,
+  });
+
+  const { data: subjectMaterials = [] } = useQuery({
+    queryKey: ["materials", decoded],
+    queryFn: () => listMaterials(decoded),
+    enabled: Boolean(decoded),
+    staleTime: 30_000,
+  });
+
+  const { data: dueFlashcards } = useQuery({
+    queryKey: ["flashcards-due", decoded],
+    queryFn: () => getDueFlashcards(decoded),
+    enabled: Boolean(decoded),
+    staleTime: 30_000,
+  });
+  const dueCount = dueFlashcards?.total_due ?? 0;
+
+  const filteredNotes = useMemo(() => {
+    const q = noteSearch.trim().toLowerCase();
+    if (!q) return subjectNotes;
+    return subjectNotes.filter(
+      (n) => n.concept.toLowerCase().includes(q) || n.summary.toLowerCase().includes(q),
+    );
+  }, [subjectNotes, noteSearch]);
+
+  async function handleDeleteNote(id: number) {
+    setDeletingNoteId(id);
+    try {
+      await deleteKeyIdea(id);
+      await queryClient.invalidateQueries({ queryKey: ["key-ideas-subject", decoded] });
+      await queryClient.invalidateQueries({ queryKey: ["key-ideas-all"] });
+    } finally {
+      setDeletingNoteId(null);
+    }
+  }
+
+  async function handlePromoteNote(id: number) {
+    setPromotingNoteId(id);
+    try {
+      await promoteKeyIdea(id);
+      await queryClient.invalidateQueries({ queryKey: ["key-ideas-subject", decoded] });
+      await queryClient.invalidateQueries({ queryKey: ["key-ideas-all"] });
+    } finally {
+      setPromotingNoteId(null);
+    }
+  }
+
   const sessions = conversations
     .filter((c) => normalizeSubject(c.subject) === normalizedSubject)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -186,10 +287,41 @@ export function ProjectPage() {
     },
   });
 
+  const deleteSubjectMutation = useMutation({
+    mutationFn: () => deleteProjectSubject(decoded),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+        queryClient.invalidateQueries({ queryKey: ["project-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["materials", decoded] }),
+        queryClient.invalidateQueries({ queryKey: ["key-ideas-subject", decoded] }),
+        queryClient.invalidateQueries({ queryKey: ["key-ideas-all"] }),
+        queryClient.invalidateQueries({ queryKey: ["flashcards-due", decoded] }),
+      ]);
+      queryClient.removeQueries({ queryKey: ["project-profile", decoded] });
+      queryClient.removeQueries({ queryKey: ["project-progress", decoded] });
+      window.localStorage.removeItem(projectSectionStorageKey(decoded));
+      navigate("/dashboard", { replace: true });
+    },
+    onError: (err) => {
+      setDeleteSubjectError(err instanceof Error ? err.message : "Failed to delete subject.");
+    },
+  });
+
   function handleDeleteSession(conversationId: number) {
     if (deleteSessionMutation.isPending) return;
     if (!window.confirm("Delete this study session? This can't be undone.")) return;
     deleteSessionMutation.mutate(conversationId);
+  }
+
+  function handleDeleteSubject() {
+    if (deleteSubjectMutation.isPending) return;
+    const confirmed = window.confirm(
+      `Delete "${decoded}"? This will permanently delete its study sessions, notes, flashcards, and uploaded materials.`,
+    );
+    if (!confirmed) return;
+    setDeleteSubjectError(null);
+    deleteSubjectMutation.mutate();
   }
 
   function toggleExpanded(id: number) {
@@ -289,36 +421,39 @@ export function ProjectPage() {
     <div className="page-shell">
       <div className="page-header">
         <div className="page-header-text">
-          <h1 className="page-title">{decoded}</h1>
+          <h1 className="page-title">
+            {decoded}
+            {activeTab !== "overview" && (
+              <span style={{ color: "var(--text-muted)", fontWeight: 500 }}> · {TAB_LABEL[activeTab]}</span>
+            )}
+          </h1>
           <p className="page-subtitle">
-            {profile?.level ? LEVEL_LABELS[profile.level] ?? profile.level : null}
-            {profile?.level && " · "}
-            {sessions.length} study session{sessions.length !== 1 ? "s" : ""}
+            {activeTab === "overview" && (
+              <>
+                {profile?.level ? LEVEL_LABELS[profile.level] ?? profile.level : null}
+                {profile?.level && " · "}
+                {sessions.length} study session{sessions.length !== 1 ? "s" : ""}
+              </>
+            )}
+            {activeTab === "notes" &&
+              `${subjectNotes.length} saved idea${subjectNotes.length !== 1 ? "s" : ""}`}
+            {activeTab === "materials" &&
+              `${subjectMaterials.length} file${subjectMaterials.length !== 1 ? "s" : ""} attached to ${decoded}`}
+            {activeTab === "flashcards" &&
+              `${dueCount} card${dueCount !== 1 ? "s" : ""} due today`}
           </p>
         </div>
         <div className="page-header-actions">
-          <button
-            className="button button-secondary"
-            onClick={() => setAllSectionsVisibility(!allSectionsVisible)}
-            style={{ fontSize: "0.8rem", padding: "0.45rem 0.875rem" }}
-            type="button"
-          >
-            {allSectionsVisible ? "Collapse all" : "Expand all"}
-          </button>
-          <Link
-            to={`/projects/${encodeURIComponent(decoded)}/materials`}
-            className="button button-secondary"
-            style={{ fontSize: "0.8rem", padding: "0.45rem 0.875rem" }}
-          >
-            Materials
-          </Link>
-          <Link
-            to={`/projects/${encodeURIComponent(decoded)}/flashcards`}
-            className="button button-secondary"
-            style={{ fontSize: "0.8rem", padding: "0.45rem 0.875rem" }}
-          >
-            Flashcards
-          </Link>
+          {activeTab === "overview" && (
+            <button
+              className="button button-secondary"
+              onClick={() => setAllSectionsVisibility(!allSectionsVisible)}
+              style={{ fontSize: "0.8rem", padding: "0.45rem 0.875rem" }}
+              type="button"
+            >
+              {allSectionsVisible ? "Collapse all" : "Expand all"}
+            </button>
+          )}
           <Link
             to={`/projects/${encodeURIComponent(decoded)}/setup`}
             className="button button-secondary"
@@ -332,7 +467,23 @@ export function ProjectPage() {
             style={{ fontSize: "0.8rem", padding: "0.45rem 0.875rem" }}
             type="button"
           >
-            ▶ Lecture mode
+            <Play size={13} strokeWidth={2} fill="currentColor" style={{ marginRight: "0.35rem", verticalAlign: "-2px" }} />
+            Lecture mode
+          </button>
+          <button
+            className="button button-secondary"
+            disabled={deleteSubjectMutation.isPending}
+            onClick={handleDeleteSubject}
+            style={{
+              borderColor: "var(--error, #e55)",
+              color: "var(--error, #e55)",
+              fontSize: "0.8rem",
+              padding: "0.45rem 0.875rem",
+            }}
+            type="button"
+          >
+            <Trash2 size={13} strokeWidth={2} style={{ marginRight: "0.35rem", verticalAlign: "-2px" }} />
+            {deleteSubjectMutation.isPending ? "Deleting..." : "Delete subject"}
           </button>
           <button
             className="button button-primary"
@@ -340,10 +491,12 @@ export function ProjectPage() {
             onClick={() => newSessionMutation.mutate()}
             type="button"
           >
-            {newSessionMutation.isPending ? "Creating…" : "+ New study session"}
+            {newSessionMutation.isPending ? "Creating…" : "New study session"}
           </button>
         </div>
       </div>
+
+      {deleteSubjectError ? <p className="error-text">{deleteSubjectError}</p> : null}
 
       {showMindmapWarning && (
         <div
@@ -388,6 +541,85 @@ export function ProjectPage() {
         />
       )}
 
+      <div className="settings-tabs" role="tablist">
+        {PROJECT_TABS.map((tab) => {
+          const badge =
+            tab === "notes" && subjectNotes.length > 0
+              ? ` (${subjectNotes.length})`
+              : tab === "materials" && subjectMaterials.length > 0
+              ? ` (${subjectMaterials.length})`
+              : tab === "flashcards" && dueCount > 0
+              ? ` (${dueCount})`
+              : "";
+          return (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
+              className={`settings-tab ${activeTab === tab ? "active" : ""}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {TAB_LABEL[tab]}{badge}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === "materials" && <MaterialsView subject={decoded} />}
+      {activeTab === "flashcards" && <FlashcardsView subject={decoded} />}
+
+      {activeTab === "notes" && (
+        <section>
+          <div className="notes-controls">
+            <div className="notes-search-wrap">
+              <svg fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15" className="notes-search-icon">
+                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                className="notes-search"
+                onChange={(e) => setNoteSearch(e.target.value)}
+                placeholder="Filter notes…"
+                type="search"
+                value={noteSearch}
+              />
+            </div>
+          </div>
+
+          {notesLoading && <p className="muted" style={{ marginTop: "1.5rem" }}>Loading notes…</p>}
+
+          {!notesLoading && filteredNotes.length === 0 && (
+            <div className="empty-state" style={{ marginTop: "1.5rem" }}>
+              <div className="empty-state-icon"><StickyNote size={26} strokeWidth={1.6} /></div>
+              <h3>{subjectNotes.length === 0 ? "No notes yet" : "No matching notes"}</h3>
+              <p>
+                {subjectNotes.length === 0
+                  ? `Key ideas from your ${decoded} sessions will collect here.`
+                  : "Try a different search term."}
+              </p>
+            </div>
+          )}
+
+          {filteredNotes.length > 0 && (
+            <div className="notes-grid">
+              {filteredNotes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  deleting={deletingNoteId === note.id}
+                  promoting={promotingNoteId === note.id}
+                  showSubject={false}
+                  onDelete={() => void handleDeleteNote(note.id)}
+                  onPromote={() => void handlePromoteNote(note.id)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {activeTab === "overview" && (
+        <>
       {profile?.goals && (
         <section className="project-section-shell">
           <div className="project-section-header">
@@ -599,7 +831,7 @@ export function ProjectPage() {
             )}
             {sessions.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-state-icon">💬</div>
+                <div className="empty-state-icon"><MessageCircle size={26} strokeWidth={1.6} /></div>
                 <h3>No study sessions yet</h3>
                 <p>Start your first study session for this subject.</p>
                 <button className="button button-primary" onClick={() => newSessionMutation.mutate()} type="button">
@@ -613,11 +845,14 @@ export function ProjectPage() {
                   const isExpanded = expandedIds.has(c.id);
                   const hasSummary = !!c.summary;
                   const lastAssistantAt = lastAssistantMessageTimestamp(c);
+                  const sessionTitle = getSessionTitle(c, decoded);
                   return (
                     <div key={c.id} className="project-session-wrap">
                       <div className="project-session-row" style={{ borderTop: i === 0 ? "none" : undefined }}>
                         <div className="project-session-info">
-                          <div className="project-session-num">Study Session {sessionNum}</div>
+                          <Link className="project-session-num" to={`/sessions/${c.id}`}>
+                            {sessionTitle}
+                          </Link>
                           <div className="project-session-meta">
                             {lastAssistantAt ? formatTimestamp(lastAssistantAt) : "No tutor reply yet"}
                             {hasSummary && <span className="session-summary-badge">Summary</span>}
@@ -632,16 +867,21 @@ export function ProjectPage() {
                                 type="button"
                                 style={{ fontSize: "0.78rem", padding: "0.4rem 0.8rem" }}
                               >
-                                {isExpanded ? "Hide summary ↑" : "View summary ↓"}
+                                {isExpanded ? (
+                                  <>Hide summary <ChevronUp size={13} strokeWidth={2} style={{ verticalAlign: "-2px" }} /></>
+                                ) : (
+                                  <>View summary <ChevronDown size={13} strokeWidth={2} style={{ verticalAlign: "-2px" }} /></>
+                                )}
                               </button>
                               <button
                                 className="button button-secondary session-download-btn"
                                 onClick={() => downloadSummary(decoded, sessionNum, c)}
                                 title="Download summary as text file"
+                                aria-label="Download summary"
                                 type="button"
-                                style={{ fontSize: "0.8rem", padding: "0.4rem 0.65rem" }}
+                                style={{ fontSize: "0.8rem", padding: "0.4rem 0.55rem" }}
                               >
-                                ↓
+                                <Download size={14} strokeWidth={2} />
                               </button>
                             </>
                           ) : (
@@ -664,7 +904,7 @@ export function ProjectPage() {
                             {c.messages.length === 0 ? "Open" : "Resume"}
                           </Link>
                           <button
-                            aria-label={`Delete Study Session ${sessionNum}`}
+                            aria-label={`Delete ${sessionTitle}`}
                             className="project-session-delete"
                             disabled={deleteSessionMutation.isPending}
                             onClick={() => handleDeleteSession(c.id)}
@@ -708,6 +948,8 @@ export function ProjectPage() {
           </>
         )}
       </section>
+        </>
+      )}
       {weakQuizzes && (
         <WeakQuizModal quizzes={weakQuizzes} onClose={() => setWeakQuizzes(null)} />
       )}

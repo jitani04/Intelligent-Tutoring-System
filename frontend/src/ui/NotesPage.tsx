@@ -1,23 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { StickyNote } from "lucide-react";
 
 import { deleteKeyIdea, listAllKeyIdeas, promoteKeyIdea } from "../api";
-import type { KeyIdea } from "../types";
-
-function isDue(idea: KeyIdea): boolean {
-  return new Date(idea.sr_due_date) <= new Date();
-}
-
-function reviewLabel(idea: KeyIdea): string {
-  if (idea.sr_repetitions === 0) return "Not yet reviewed";
-  if (isDue(idea)) return "Due for review";
-  const d = new Date(idea.sr_due_date);
-  return `Next: ${d.toLocaleDateString([], { month: "short", day: "numeric" })}`;
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-}
+import { NoteCard } from "./NoteCard";
 
 export function NotesPage() {
   const queryClient = useQueryClient();
@@ -121,11 +107,11 @@ export function NotesPage() {
 
       {!isLoading && filtered.length === 0 && (
         <div className="empty-state" style={{ marginTop: "2rem" }}>
-          <div className="empty-state-icon">✦</div>
+          <div className="empty-state-icon"><StickyNote size={26} strokeWidth={1.6} /></div>
           <h3>{allNotes.length === 0 ? "No notes yet" : "No matching notes"}</h3>
           <p>
             {allNotes.length === 0
-              ? "Start a session and the tutor will save key ideas as you learn."
+              ? "Key ideas from your sessions will collect here."
               : "Try a different search or subject filter."}
           </p>
         </div>
@@ -145,58 +131,6 @@ export function NotesPage() {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-interface NoteCardProps {
-  note: KeyIdea;
-  deleting: boolean;
-  promoting: boolean;
-  onDelete: () => void;
-  onPromote: () => void;
-}
-
-function NoteCard({ note, deleting, promoting, onDelete, onPromote }: NoteCardProps) {
-  const due = isDue(note);
-  const label = reviewLabel(note);
-
-  return (
-    <div className="note-card">
-      <div className="note-card-header">
-        {note.subject && <span className="note-subject-tag">{note.subject}</span>}
-        <button
-          aria-label="Delete note"
-          className="note-delete-btn"
-          disabled={deleting}
-          onClick={onDelete}
-          title="Delete"
-          type="button"
-        >
-          {deleting ? "…" : "✕"}
-        </button>
-      </div>
-
-      <div className="note-concept">{note.concept}</div>
-      <div className="note-summary">{note.summary}</div>
-
-      <div className="note-card-footer">
-        <span className="note-date">{formatDate(note.created_at)}</span>
-        <div className="note-review-status">
-          <span className={`note-review-label ${due ? "note-review-label-due" : ""}`}>{label}</span>
-          {!due && (
-            <button
-              className="note-promote-btn"
-              disabled={promoting}
-              onClick={onPromote}
-              title="Schedule for review today"
-              type="button"
-            >
-              {promoting ? "…" : "Review now"}
-            </button>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

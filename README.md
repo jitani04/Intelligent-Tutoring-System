@@ -214,6 +214,12 @@ Notes:
 - `GET /conversations/{conversation_id}`
 - `POST /chat/{conversation_id}` — SSE stream
 
+### Feedback Personalization
+
+- `POST /feedback` saves thumbs up/down feedback for an assistant message. Optional short free-text fields are `feedback_text` and, for thumbs down, `correction`; category labels are generated server-side by the LLM.
+- `GET /feedback/analytics` returns rating, reason-category, prompt-version, task-type, model, and summary-pattern counts for the current user.
+- `ENABLE_FEEDBACK_PREFERENCES=true` enables user-level preference summary updates after text/correction thumbs-down feedback. `ENABLE_PREFERENCE_MEMORY=true` additionally enables pgvector-backed derived-preference memory; raw complaints are not embedded.
+
 ### Session Artifacts
 
 - `GET /conversations/{conversation_id}/key-ideas`

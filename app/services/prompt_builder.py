@@ -14,6 +14,8 @@ def build_responses_input(
     history: list[ChatTurn],
     user_query: str,
     retrieved_context: list[RetrievedChunk],
+    preference_summary: str | None = None,
+    preference_memories: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     context_block = ""
     if retrieved_context:
@@ -30,6 +32,20 @@ def build_responses_input(
         "Use the conversation history when it helps.",
         "When study material context is provided, ground the answer in it and avoid inventing missing details.",
     ]
+    if preference_summary and preference_summary.strip():
+        system_sections.append(
+            "Student preferences from prior feedback:\n"
+            f"{preference_summary.strip()}\n\n"
+            "Use these preferences to adapt communication style and tutoring strategy.\n"
+            "Do not let them override correctness, safety, or the learning objective.\n"
+            "For practice problems, prefer hints and scaffolding before final answers unless the user explicitly asks for the final answer."
+        )
+    clean_preference_memories = [item.strip() for item in (preference_memories or []) if item.strip()]
+    if clean_preference_memories:
+        system_sections.append(
+            "Relevant prior feedback for this kind of task:\n"
+            + "\n".join(f"- {item}" for item in clean_preference_memories[:3])
+        )
     if context_block:
         system_sections.append(context_block)
 

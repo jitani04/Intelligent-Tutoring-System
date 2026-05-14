@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -17,10 +18,12 @@ from app.schemas.chat import ChatRequest
 from app.services.chat_service import SseEvent, stream_chat
 from app.services.conversation_service import get_conversation_for_user
 from app.services.errors import ConversationNotFoundError
+from app.services.feedback_service import retrieve_preference_memories
 from app.services.llm_service import LLMService
 from app.services.web_image_service import WebImageService
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/chat",
     tags=["chat"],
@@ -83,6 +86,20 @@ async def stream_chat_endpoint(
     if conversation.subject:
         system_prompt = f"The student is studying: {conversation.subject}.\n\n{system_prompt}"
     system_prompt = f"{system_prompt}\n\n{_build_tutor_customization_prompt(user)}"
+    try:
+        preference_memories = await retrieve_preference_memories(
+            session=session,
+            user_id=user_id,
+            query=request.message,
+            task_type=conversation.subject,
+            settings=settings,
+        )
+    except Exception as exc:  # noqa: BLE001 - preference memory must not block tutoring.
+        logger.warning(
+            "Preference memory retrieval failed",
+            extra={"conversation_id": conversation_id, "user_id": user_id, "error": str(exc)},
+        )
+        preference_memories = []
 
     llm_service = LLMService(
         api_key=settings.llm_api_key,
@@ -101,6 +118,8 @@ async def stream_chat_endpoint(
                 user_message=request.message,
                 system_prompt=system_prompt,
                 image_service=image_service,
+                preference_summary=user.preference_summary,
+                preference_memories=preference_memories,
             )
             async for payload in _with_keepalive(source, settings.keepalive_seconds):
                 yield payload

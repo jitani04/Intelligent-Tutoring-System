@@ -1,8 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { RateLimitError, generateMindMap, getProjectProfile, searchProjectCoverImages, setupProject } from "../api";
+import {
+  RateLimitError,
+  generateMindMap,
+  getProjectProfile,
+  searchProjectCoverImages,
+  setupProject,
+  uploadProjectCoverImage,
+} from "../api";
 import type { ProjectCoverImageOption } from "../types";
 
 const LEVELS = [
@@ -22,6 +29,7 @@ export function ProjectSetupPage() {
   const [level, setLevel] = useState<string | null>(null);
   const [goals, setGoals] = useState("");
   const [coverImageUrl, setCoverImageUrl] = useState("");
+  const [coverImageStorageKey, setCoverImageStorageKey] = useState<string | null>(null);
   const [coverImageSource, setCoverImageSource] = useState<string | null>(null);
   const [coverImageSourceUrl, setCoverImageSourceUrl] = useState<string | null>(null);
   const [coverImagePhotographer, setCoverImagePhotographer] = useState<string | null>(null);
@@ -29,8 +37,11 @@ export function ProjectSetupPage() {
   const [coverSearchQuery, setCoverSearchQuery] = useState("");
   const [coverSearchResults, setCoverSearchResults] = useState<ProjectCoverImageOption[]>([]);
   const [coverSearchError, setCoverSearchError] = useState<string | null>(null);
+  const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   const sessionId = searchParams.get("session");
   const destination = sessionId ? `/sessions/${sessionId}` : `/projects/${encodeURIComponent(decoded)}`;
@@ -46,6 +57,7 @@ export function ProjectSetupPage() {
     setLevel(profile.level);
     setGoals(profile.goals ?? "");
     setCoverImageUrl(profile.cover_image_url ?? "");
+    setCoverImageStorageKey(profile.cover_image_storage_key ?? null);
     setCoverImageSource(profile.cover_image_source ?? null);
     setCoverImageSourceUrl(profile.cover_image_source_url ?? null);
     setCoverImagePhotographer(profile.cover_image_photographer ?? null);
@@ -53,6 +65,15 @@ export function ProjectSetupPage() {
     setCoverSearchQuery(profile.subject);
     setHydrated(true);
   }, [profile, hydrated]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (hydrated) return;
@@ -71,10 +92,28 @@ export function ProjectSetupPage() {
     },
   });
 
+  const coverUploadMutation = useMutation({
+    mutationFn: async (file: File) => uploadProjectCoverImage(file),
+    onSuccess: (result) => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = result.cover_image_url;
+      setCoverImageUrl(result.cover_image_url);
+      setCoverImageStorageKey(result.storage_key);
+      setCoverImageSource("upload");
+      setCoverImageSourceUrl(null);
+      setCoverImagePhotographer(null);
+      setCoverImagePhotographerUrl(null);
+      setCoverUploadError(null);
+    },
+    onError: (err) => {
+      setCoverUploadError(err instanceof Error ? err.message : "Image upload failed.");
+    },
+  });
+
   const setupMutation = useMutation({
     mutationFn: async () => {
       const trimmedGoals = goals.trim() || null;
-      const trimmedCoverImageUrl = coverImageUrl.trim() || null;
+      const trimmedCoverImageUrl = coverImageStorageKey ? null : (coverImageUrl.trim() || null);
       const levelChanged = (profile?.level ?? null) !== level;
       const goalsChanged = (profile?.goals ?? null) !== trimmedGoals;
 
@@ -83,6 +122,7 @@ export function ProjectSetupPage() {
         level,
         trimmedGoals,
         trimmedCoverImageUrl,
+        coverImageStorageKey,
         trimmedCoverImageUrl ? coverImageSource : null,
         trimmedCoverImageUrl ? coverImageSourceUrl : null,
         trimmedCoverImageUrl ? coverImagePhotographer : null,
@@ -122,20 +162,43 @@ export function ProjectSetupPage() {
     navigate(destination, { replace: true });
   }
 
-  function handleCoverUrlChange(value: string) {
-    setCoverImageUrl(value);
+  function handleCoverFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setCoverUploadError("Please choose a JPEG, PNG, WebP, or GIF image.");
+      return;
+    }
+    coverUploadMutation.mutate(file);
+  }
+
+  function handleClearCoverImage() {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setCoverImageUrl("");
+    setCoverImageStorageKey(null);
     setCoverImageSource(null);
     setCoverImageSourceUrl(null);
     setCoverImagePhotographer(null);
     setCoverImagePhotographerUrl(null);
+    setCoverUploadError(null);
   }
 
   function handleSelectCoverImage(option: ProjectCoverImageOption) {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
     setCoverImageUrl(option.image_url);
+    setCoverImageStorageKey(null);
     setCoverImageSource(option.source);
     setCoverImageSourceUrl(option.source_url);
     setCoverImagePhotographer(option.photographer);
     setCoverImagePhotographerUrl(option.photographer_url);
+    setCoverUploadError(null);
   }
 
   return (
@@ -149,7 +212,6 @@ export function ProjectSetupPage() {
               starting from and what you're hoping to achieve. This helps me pitch the right level
               of questions and build a learning map for you.
             </p>
-            <p className="setup-agent-sub">This only takes a minute — or skip if you'd rather jump straight in.</p>
           </div>
         </div>
 
@@ -194,13 +256,39 @@ export function ProjectSetupPage() {
               <div className="setup-cover-placeholder">No custom cover yet</div>
             )}
             <input
-              className="form-input"
-              placeholder="https://example.com/cover-image.jpg"
-              value={coverImageUrl}
-              onChange={(e) => handleCoverUrlChange(e.target.value)}
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              style={{ display: "none" }}
+              onChange={handleCoverFileChange}
             />
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={coverUploadMutation.isPending}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {coverUploadMutation.isPending
+                  ? "Uploading…"
+                  : coverImageUrl.trim()
+                  ? "Replace image"
+                  : "Upload image"}
+              </button>
+              {coverImageUrl.trim() && (
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={handleClearCoverImage}
+                  disabled={coverUploadMutation.isPending}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            {coverUploadError && <p className="error-text">{coverUploadError}</p>}
             <p className="setup-cover-help">
-              Paste a public image URL or use the Pexels search below to override the default dashboard card image for this subject.
+              Upload a JPEG, PNG, WebP, or GIF (max 5 MB), or pick from Pexels below.
             </p>
             <div className="setup-cover-search">
               <div className="setup-cover-search-row">
@@ -270,7 +358,7 @@ export function ProjectSetupPage() {
             onClick={() => setupMutation.mutate()}
             type="button"
           >
-            {setupMutation.isPending ? "Setting up…" : "Set up subject →"}
+            {setupMutation.isPending ? "Setting up…" : "Set up subject"}
           </button>
         </div>
       </div>

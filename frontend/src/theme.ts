@@ -1,6 +1,6 @@
 export type ThemeMode = "dark" | "light";
 
-const THEME_KEY = "kp-theme";
+const THEME_KEY = "sapient-theme";
 
 export function getStoredTheme(): ThemeMode {
   const stored = window.localStorage.getItem(THEME_KEY);

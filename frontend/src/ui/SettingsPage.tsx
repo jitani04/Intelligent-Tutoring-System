@@ -9,7 +9,18 @@ import { useReadingPrefs } from "../ReadingPrefsContext";
 import type { FontSize, FontFamily } from "../readingPrefs";
 import type { TutorVoice } from "../types";
 
-const POMODORO_KEY = "kp-pomodoro";
+const POMODORO_KEY = "sapient-pomodoro";
+const POMODORO_DURATION_KEY = "sapient-pomodoro-duration";
+const DEFAULT_POMODORO_MINUTES = 25;
+const POMODORO_MINUTE_PRESETS = [15, 25, 50] as const;
+
+function readPomodoroMinutes(): number {
+  if (typeof window === "undefined") return DEFAULT_POMODORO_MINUTES;
+  const raw = window.localStorage.getItem(POMODORO_DURATION_KEY);
+  const parsed = raw == null ? NaN : Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_POMODORO_MINUTES;
+  return Math.min(180, Math.max(1, Math.floor(parsed)));
+}
 
 const TONE_OPTIONS = ["Supportive", "Direct", "Encouraging", "Calm", "Playful"];
 const STYLE_OPTIONS = ["Socratic guide", "Step-by-step coach", "Exam prep trainer", "Subject mentor", "Concept explainer"];
@@ -39,6 +50,29 @@ const FONT_FAMILY_OPTIONS: { label: string; value: FontFamily }[] = [
 
 type Tab = "tutor" | "preferences";
 
+function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`switch ${checked ? "on" : ""}`}
+      onClick={onChange}
+      type="button"
+    >
+      <span className="switch-thumb" />
+    </button>
+  );
+}
+
 export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -51,11 +85,18 @@ export function SettingsPage() {
   const [tutorVoice, setTutorVoice] = useState<TutorVoice>("nova");
   const { fontSize, setFontSize, fontFamily, setFontFamily, bionic, setBionic } = useReadingPrefs();
   const [pomodoroEnabled, setPomodoroEnabled] = useState(() => localStorage.getItem(POMODORO_KEY) === "true");
+  const [pomodoroMinutes, setPomodoroMinutesState] = useState(() => readPomodoroMinutes());
 
   function togglePomodoro() {
     const next = !pomodoroEnabled;
     setPomodoroEnabled(next);
     localStorage.setItem(POMODORO_KEY, String(next));
+  }
+
+  function setPomodoroMinutes(next: number) {
+    const safe = Math.min(180, Math.max(1, Math.floor(next)));
+    setPomodoroMinutesState(safe);
+    localStorage.setItem(POMODORO_DURATION_KEY, String(safe));
   }
   const [customizationStatus, setCustomizationStatus] = useState<string | null>(null);
   const [customizationError, setCustomizationError] = useState<string | null>(null);
@@ -222,7 +263,7 @@ export function SettingsPage() {
 
             <div className="settings-actions">
               <button className="button button-primary" disabled={savingCustomization} type="submit">
-                {savingCustomization ? "Saving..." : "Save tutor"}
+                {savingCustomization ? "Saving…" : "Save tutor"}
               </button>
             </div>
           </form>
@@ -233,15 +274,13 @@ export function SettingsPage() {
         <div className="settings-grid">
           <div className="content-card">
             <div className="content-card-title">Appearance</div>
-            <p className="settings-copy">Switch between dark and light mode. Your preference is saved on this device.</p>
             <div className="settings-control">
-              <ThemeToggle />
+              <ThemeToggle variant="icon" />
             </div>
           </div>
 
           <div className="content-card">
             <div className="content-card-title">Reading</div>
-            <p className="settings-copy">Customize how text looks and reads across the app. Preferences are saved on this device.</p>
 
             <div className="flow-field">
               <span>Font size</span>
@@ -282,14 +321,7 @@ export function SettingsPage() {
                   Bolds the first half of each word to help your eyes move faster across text.
                 </p>
               </div>
-              <button
-                className={`settings-choice ${bionic ? "selected" : ""}`}
-                onClick={() => setBionic(!bionic)}
-                style={{ flexShrink: 0 }}
-                type="button"
-              >
-                {bionic ? "On" : "Off"}
-              </button>
+              <Switch checked={bionic} onChange={() => setBionic(!bionic)} label="Toggle bionic reading" />
             </div>
           </div>
 
@@ -299,25 +331,51 @@ export function SettingsPage() {
               <div>
                 <span style={{ fontWeight: 500 }}>Pomodoro timer</span>
                 <p className="settings-copy" style={{ marginTop: "0.2rem" }}>
-                  Show a break reminder every 25 minutes during a study session.
+                  Countdown timer pinned to each study session. When it hits zero, you get a break reminder.
                 </p>
               </div>
-              <button
-                className={`settings-choice ${pomodoroEnabled ? "selected" : ""}`}
-                onClick={togglePomodoro}
-                style={{ flexShrink: 0 }}
-                type="button"
-              >
-                {pomodoroEnabled ? "On" : "Off"}
-              </button>
+              <Switch checked={pomodoroEnabled} onChange={togglePomodoro} label="Toggle pomodoro timer" />
             </div>
+            {pomodoroEnabled && (
+              <div className="settings-row" style={{ alignItems: "flex-start", gap: "1rem", marginTop: "0.75rem" }}>
+                <div>
+                  <span style={{ fontWeight: 500 }}>Duration</span>
+                  <p className="settings-copy" style={{ marginTop: "0.2rem" }}>
+                    How long each focus block lasts. The timer in the study session header counts down from this.
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", flexShrink: 0, alignItems: "center" }}>
+                  {POMODORO_MINUTE_PRESETS.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`settings-choice ${pomodoroMinutes === m ? "selected" : ""}`}
+                      onClick={() => setPomodoroMinutes(m)}
+                    >
+                      {m} min
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min={1}
+                    max={180}
+                    value={pomodoroMinutes}
+                    onChange={(e) => setPomodoroMinutes(Number(e.target.value))}
+                    className="form-input"
+                    style={{ width: "5.5rem", padding: "0.4rem 0.6rem" }}
+                    aria-label="Custom pomodoro duration in minutes"
+                  />
+                  <span className="settings-copy" style={{ margin: 0 }}>min</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="content-card">
             <div className="content-card-title">Account</div>
             <div className="settings-row">
               <span>Signed in as</span>
-              <strong>{user?.email ?? "Loading..."}</strong>
+              <strong>{user?.email ?? "Loading…"}</strong>
             </div>
             <div className="settings-row">
               <span>Display name</span>

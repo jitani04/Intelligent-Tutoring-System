@@ -1,6 +1,7 @@
 import { ChangeEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
+import { FileText, Upload } from "lucide-react";
 
 import { deleteMaterial, listMaterials, uploadMaterial } from "../api";
 
@@ -10,10 +11,9 @@ function formatDate(value: string): string {
 
 const MATERIAL_ACCEPT = ".pdf,.pptx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/x-markdown";
 
-export function MaterialsPage() {
-  const { subject } = useParams<{ subject: string }>();
-  const decodedSubject = decodeURIComponent(subject ?? "");
-  const projectMaterialsPath = `/projects/${encodeURIComponent(decodedSubject)}/materials`;
+export function MaterialsView({ subject }: { subject: string }) {
+  const decodedSubject = subject;
+  const projectMaterialsPath = `/projects/${encodeURIComponent(decodedSubject)}`;
   const queryClient = useQueryClient();
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -32,19 +32,6 @@ export function MaterialsPage() {
   });
 
   const materials = materialsQuery.data ?? [];
-
-  if (!decodedSubject) {
-    return (
-      <div className="page-shell">
-        <div className="empty-state">
-          <div className="empty-state-icon">?</div>
-          <h3>Subject not found</h3>
-          <p>Open materials from a specific subject.</p>
-          <Link className="button button-primary" to="/dashboard">Back to dashboard</Link>
-        </div>
-      </div>
-    );
-  }
 
   async function handleFiles(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -69,23 +56,14 @@ export function MaterialsPage() {
   };
 
   return (
-    <div className="page-shell">
-      <div className="page-header">
-        <div className="page-header-text">
-          <h1 className="page-title">Materials</h1>
-          <p className="page-subtitle">
-            {decodedSubject} subject files for grounded tutoring, retrieval, and study support.
-          </p>
-        </div>
-      </div>
-
+    <>
       <div className="content-card">
         <div className="content-card-title">Upload</div>
         <p className="settings-copy" style={{ marginBottom: "0.875rem" }}>
           Uploading here automatically attaches each file to <strong>{decodedSubject}</strong>.
         </p>
         <label className="upload-zone">
-          <div className="upload-zone-icon">📄</div>
+          <div className="upload-zone-icon"><Upload size={22} strokeWidth={1.6} /></div>
           <div className="upload-zone-label">Drop files or click to browse</div>
           <div className="upload-zone-sub">PDF, PPTX, TXT, MD · max 10 MB each</div>
           <input type="file" multiple accept={MATERIAL_ACCEPT} style={{ display: "none" }} onChange={handleFiles} />
@@ -102,7 +80,7 @@ export function MaterialsPage() {
         <div className="material-list">
           {uploadingNames.map((name) => (
             <div key={name} className="material-row">
-              <div className="material-row-icon">📄</div>
+              <div className="material-row-icon"><FileText size={18} strokeWidth={1.6} /></div>
               <div className="material-row-info">
                 <div className="material-row-name">{name}</div>
                 <div className="material-row-meta">Uploading…</div>
@@ -117,9 +95,9 @@ export function MaterialsPage() {
 
           {materials.map((m) => (
             <div key={m.id} className="material-row">
-              <div className="material-row-icon">📄</div>
+              <div className="material-row-icon"><FileText size={18} strokeWidth={1.6} /></div>
               <div className="material-row-info">
-                <Link className="material-row-name material-row-link" to={`${projectMaterialsPath}/${m.id}`}>
+                <Link className="material-row-name material-row-link" to={`${projectMaterialsPath}/materials/${m.id}`}>
                   {m.filename}
                 </Link>
                 <div className="material-row-meta">
@@ -141,6 +119,15 @@ export function MaterialsPage() {
           ))}
         </div>
       </div>
-    </div>
+    </>
   );
+}
+
+export function MaterialsPage() {
+  const { subject } = useParams<{ subject: string }>();
+  const decodedSubject = decodeURIComponent(subject ?? "");
+  if (!decodedSubject) {
+    return <Navigate replace to="/dashboard" />;
+  }
+  return <Navigate replace to={`/projects/${encodeURIComponent(decodedSubject)}?tab=materials`} />;
 }

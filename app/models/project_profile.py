@@ -16,6 +16,7 @@ class ProjectProfile(Base):
     level: Mapped[str | None] = mapped_column(String(50), nullable=True)
     goals: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cover_image_storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_image_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
     cover_image_source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_image_photographer: Mapped[str | None] = mapped_column(String(255), nullable=True)

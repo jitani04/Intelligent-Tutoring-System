@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { FileText, MessageCircle, StickyNote } from "lucide-react";
 
 import { searchAll } from "../api";
 import type { SearchMaterialResult, SearchNoteResult, SearchResponse, SearchSessionResult } from "../types";
@@ -141,7 +142,7 @@ function SearchSection({ title, count, children }: { title: string; count: numbe
 function SessionResultRow({ result, query }: { result: SearchSessionResult; query: string }) {
   return (
     <Link className="search-result-row" to={`/sessions/${result.conversation_id}`}>
-      <div className="search-result-icon">💬</div>
+      <div className="search-result-icon"><MessageCircle size={18} strokeWidth={1.6} /></div>
       <div className="search-result-body">
         <div className="search-result-title">
           {result.subject ?? "General"}
@@ -156,7 +157,7 @@ function SessionResultRow({ result, query }: { result: SearchSessionResult; quer
 function NoteResultRow({ result, query }: { result: SearchNoteResult; query: string }) {
   return (
     <div className="search-result-row search-result-row-static">
-      <div className="search-result-icon">✦</div>
+      <div className="search-result-icon"><StickyNote size={18} strokeWidth={1.6} /></div>
       <div className="search-result-body">
         <div className="search-result-title">
           {highlight(result.concept, query)}
@@ -171,7 +172,7 @@ function NoteResultRow({ result, query }: { result: SearchNoteResult; query: str
 function MaterialResultRow({ result, query }: { result: SearchMaterialResult; query: string }) {
   return (
     <div className="search-result-row search-result-row-static">
-      <div className="search-result-icon">📄</div>
+      <div className="search-result-icon"><FileText size={18} strokeWidth={1.6} /></div>
       <div className="search-result-body">
         <div className="search-result-title">
           {result.filename}

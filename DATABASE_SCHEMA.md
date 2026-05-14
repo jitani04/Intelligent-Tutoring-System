@@ -152,6 +152,7 @@ Stores account identity and tutoring preferences.
   - `tutor_tone`
   - `tutor_style`
   - `tutor_instructions`
+- Feedback-derived personalization is stored as `preference_summary` plus `preference_summary_updated_at`.
 
 These values are appended to the tutoring prompt on each streamed chat request.
 
@@ -179,6 +180,22 @@ Stores user and assistant turns for a conversation.
 
 - `role` uses the `message_role` enum.
 - Full message history is loaded for tutoring context and summary generation.
+
+### `message_feedback`
+
+Stores thumbs up/down ratings for assistant messages and optional short-answer feedback.
+
+- `feedback_text` and `correction` are free text from the student; no user-facing reason category is stored.
+- `llm_reason_category`, `llm_feedback_summary`, `llm_derived_preference`, `llm_should_update_user_preferences`, `llm_stability`, and `llm_caveat` are generated server-side.
+- Metadata columns such as `prompt_version`, `model_name`, `task_type`, `retrieved_chunk_ids`, `tool_trace`, and `latency_ms` are nullable so feedback still saves when run metadata is unavailable.
+
+### `preference_memories`
+
+Optional pgvector-backed memory for cleaned derived preferences, gated by `ENABLE_PREFERENCE_MEMORY`.
+
+- Stores `derived_preference`, not raw complaints.
+- References the source `message_feedback` row.
+- `expires_at` is nullable and ignored unless set.
 
 ### `materials`
 
@@ -273,3 +290,5 @@ Those behaviors are derived at runtime from conversations, material chunks, and 
 | `20260502_000011_add_project_profile_cover_image` | `project_profiles.cover_image_url` |
 | `20260502_000012_add_flashcard_sr_fields` | SM-2 fields on `key_ideas` |
 | `20260502_000013_add_project_cover_image_attribution` | photographer attribution fields on `project_profiles` |
+| `20260514_000017_add_message_feedback` | initial `message_feedback` table |
+| `20260514_000018_expand_message_feedback` | free-text feedback personalization, user preference summaries, optional preference memory |

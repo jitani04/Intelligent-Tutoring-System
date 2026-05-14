@@ -74,7 +74,7 @@ export function WeakQuizModal({ quizzes, onClose }: Props) {
       )}
       {answeredCurrent && (
         <button className="button button-primary wq-next-btn" onClick={handleNext} type="button">
-          {index + 1 < total ? "Next question →" : "See results →"}
+          {index + 1 < total ? "Next question" : "See results"}
         </button>
       )}
     </>

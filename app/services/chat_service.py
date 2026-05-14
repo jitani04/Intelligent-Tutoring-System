@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -234,7 +235,10 @@ async def stream_chat(
     user_message: str,
     system_prompt: str,
     image_service: WebImageService | None = None,
+    preference_summary: str | None = None,
+    preference_memories: list[str] | None = None,
 ) -> AsyncIterator[SseEvent]:
+    turn_start_ms = time.monotonic() * 1000
     conv = await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)
     subject = conv.subject
 
@@ -269,6 +273,8 @@ async def stream_chat(
         history=history_turns,
         user_query=user_message,
         retrieved_context=retrieved_context,
+        preference_summary=preference_summary,
+        preference_memories=preference_memories,
     )
 
     yield SseEvent(event="start", data={"conversation_id": conversation_id, "message_id": None})
@@ -459,9 +465,25 @@ async def stream_chat(
         await session.commit()
         await session.refresh(assistant_msg)
 
+        latency_ms = int(time.monotonic() * 1000 - turn_start_ms)
+        retrieved_chunk_ids = [c.chunk_id for c in retrieved_context]
+        tool_trace = [
+            {
+                "name": tc.get("name"),
+                "args": tc.get("args"),
+            }
+            for tc in tool_calls_data
+        ]
+
         yield SseEvent(
             event="end",
-            data={"assistant_message_id": assistant_msg.id, "usage": usage},
+            data={
+                "assistant_message_id": assistant_msg.id,
+                "usage": usage,
+                "latency_ms": latency_ms,
+                "retrieved_chunk_ids": retrieved_chunk_ids,
+                "tool_trace": tool_trace,
+            },
         )
 
     except Exception as exc:

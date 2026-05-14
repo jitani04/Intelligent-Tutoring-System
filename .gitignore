@@ -28,6 +28,7 @@ frontend/.vite/
 
 # OS / editor noise
 .DS_Store
+.playwright-mcp/
 
 # Local material uploads
 storage/uploads/

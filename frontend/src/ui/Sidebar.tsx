@@ -3,11 +3,7 @@ import { MouseEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutGrid,
-  Layers,
-  FolderOpen,
-  StickyNote,
   Search,
-  History,
   User,
   Settings,
   LogOut,
@@ -15,11 +11,11 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { deleteConversation, getDueFlashcards, listConversations } from "../api";
+import { deleteConversation, listConversations } from "../api";
 import { clearToken } from "../auth";
 import { ThemeToggle } from "./ThemeToggle";
 
-const SIDEBAR_WIDTH_KEY = "kp-sidebar-width";
+const SIDEBAR_WIDTH_KEY = "sapient-sidebar-width";
 const DEFAULT_SIDEBAR_WIDTH = 236;
 const MIN_SIDEBAR_WIDTH = 188;
 const MAX_SIDEBAR_WIDTH = 360;
@@ -49,12 +45,6 @@ export function Sidebar() {
   const dragStateRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(getStoredSidebarWidth);
   const [isResizing, setIsResizing] = useState(false);
-  const projectRouteMatch = location.pathname.match(/^\/projects\/([^/]+)/);
-  const activeProjectSubject = projectRouteMatch ? decodeURIComponent(projectRouteMatch[1]) : null;
-  const activeProjectPath = activeProjectSubject
-    ? `/projects/${encodeURIComponent(activeProjectSubject)}`
-    : null;
-
   const { data: conversations = [] } = useQuery({
     queryKey: ["conversations"],
     queryFn: listConversations,
@@ -80,14 +70,6 @@ export function Sidebar() {
     if (!window.confirm("Delete this study session? This can't be undone.")) return;
     deleteMutation.mutate(conversationId);
   }
-
-  const { data: flashcardData } = useQuery({
-    queryKey: ["flashcards-due", activeProjectSubject],
-    queryFn: () => getDueFlashcards(activeProjectSubject ?? undefined),
-    enabled: Boolean(activeProjectSubject),
-    staleTime: 60_000,
-  });
-  const dueCount = flashcardData?.total_due ?? 0;
 
   const projects = (() => {
     const map = new Map<string, { lastId: number }>();
@@ -210,46 +192,41 @@ export function Sidebar() {
           </>
         )}
 
-        <div className="sidebar-divider" />
-
-        {activeProjectSubject && activeProjectPath && (
+        {recentConversations.length > 0 && (
           <>
-            <div className="sidebar-section">Current subject</div>
-            <Link
-              to={`${activeProjectPath}/flashcards`}
-              className={`sidebar-item ${isActive(`${activeProjectPath}/flashcards`) ? "active" : ""}`}
-            >
-              <span className="sidebar-item-icon"><Layers size={16} strokeWidth={1.8} /></span>
-              <span className="sidebar-item-label">Flashcards</span>
-              {dueCount > 0 && <span className="sidebar-badge">{dueCount}</span>}
-            </Link>
-
-            <Link
-              to={`${activeProjectPath}/materials`}
-              className={`sidebar-item ${isActive(`${activeProjectPath}/materials`) ? "active" : ""}`}
-            >
-              <span className="sidebar-item-icon"><FolderOpen size={16} strokeWidth={1.8} /></span>
-              <span className="sidebar-item-label">Materials</span>
-            </Link>
             <div className="sidebar-divider" />
+            <div className="sidebar-section">Recent</div>
+            {recentConversations.map((c) => {
+              const project = c.subject ?? "General";
+              return (
+                <Link
+                  key={c.id}
+                  to={`/sessions/${c.id}`}
+                  className={`sidebar-item sidebar-chat-item sidebar-item-deletable ${location.pathname === `/sessions/${c.id}` ? "active" : ""}`}
+                  title={`${project} · Study session #${c.id}`}
+                >
+                  <span className="sidebar-item-label">
+                    {recentChatLabel(c)}
+                    <span className="sidebar-item-sub">{project}</span>
+                  </span>
+                  <button
+                    aria-label={`Delete ${recentChatLabel(c)}`}
+                    className="sidebar-item-delete"
+                    disabled={deleteMutation.isPending}
+                    onClick={(e) => handleDeleteChat(e, c.id)}
+                    title="Delete chat"
+                    type="button"
+                  >
+                    <Trash2 size={14} strokeWidth={1.8} />
+                  </button>
+                </Link>
+              );
+            })}
           </>
         )}
 
-        <Link
-          to="/notes"
-          className={`sidebar-item ${isActive("/notes") ? "active" : ""}`}
-        >
-          <span className="sidebar-item-icon"><StickyNote size={16} strokeWidth={1.8} /></span>
-          <span className="sidebar-item-label">Notes</span>
-        </Link>
+        <div className="sidebar-divider" />
 
-        <Link
-          to="/history"
-          className={`sidebar-item ${isActive("/history") ? "active" : ""}`}
-        >
-          <span className="sidebar-item-icon"><History size={16} strokeWidth={1.8} /></span>
-          <span className="sidebar-item-label">History</span>
-        </Link>
       </div>
 
       <div className="sidebar-footer">

@@ -27,24 +27,24 @@ export function StartMethodPage() {
     <div className="flow-page">
       <div className="flow-card">
         <div className="flow-step">Step 3 of 3</div>
-        <h1>How this tutor will work</h1>
+        <h1>How Sapient works</h1>
         <p className="flow-copy">
-          You should expect a guided study session: questions first, hints when needed, and fuller
-          explanations only after the system understands where you are getting stuck.
+          A direct teaching loop: explain the concept clearly, check understanding, give hints
+          when you're stuck. Examples for every principle.
         </p>
 
         <div className="method-principles">
           <div className="method-card">
-            <strong>Ask first</strong>
-            <span>The system should assess what you know before explaining.</span>
+            <strong>Explain, then check</strong>
+            <span>Concepts are taught with examples first, then a focused follow-up question.</span>
           </div>
           <div className="method-card">
-            <strong>Hint, then explain</strong>
-            <span>Use scaffolding and targeted hints before a full explanation.</span>
+            <strong>Hints on attempt</strong>
+            <span>When you're trying to solve something, you get a nudge — not the answer.</span>
           </div>
           <div className="method-card">
-            <strong>Stay grounded</strong>
-            <span>When materials exist, the tutor should reference them instead of improvising.</span>
+            <strong>Grounded in your material</strong>
+            <span>Uploaded readings are quoted directly when relevant, not paraphrased.</span>
           </div>
         </div>
 

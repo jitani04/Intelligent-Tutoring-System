@@ -393,13 +393,13 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
           <div className="lecture-current-text">
             {transcript || (
               agentThinking
-                ? "Instructor is adding the next line to the notebook..."
+                ? "Instructor is adding the next line to the notebook…"
                 : voiceSupported
                   ? voiceEnabled
                     ? recording
-                      ? "Listening..."
+                      ? "Listening…"
                       : transcribing
-                        ? "Transcribing..."
+                        ? "Transcribing…"
                         : listening
                           ? "Hands-free mode is live. Speak anytime to interrupt or redirect the lecture."
                           : "Hands-free mode is live and ready."

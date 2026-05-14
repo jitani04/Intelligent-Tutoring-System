@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     rag_chunk_size: int = Field(default=1200, alias="RAG_CHUNK_SIZE")
     rag_chunk_overlap: int = Field(default=200, alias="RAG_CHUNK_OVERLAP")
 
+    enable_feedback_preferences: bool = Field(default=False, alias="ENABLE_FEEDBACK_PREFERENCES")
+    enable_preference_memory: bool = Field(default=False, alias="ENABLE_PREFERENCE_MEMORY")
+    preference_summary_max_feedback_items: int = Field(default=25, alias="PREFERENCE_SUMMARY_MAX_FEEDBACK_ITEMS")
+    preference_memory_top_k: int = Field(default=3, alias="PREFERENCE_MEMORY_TOP_K")
+    prompt_version: str = Field(default="default", alias="PROMPT_VERSION")
+
     jwt_secret: str = Field(alias="JWT_SECRET")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     jwt_expire_minutes: int = Field(default=10080, alias="JWT_EXPIRE_MINUTES")

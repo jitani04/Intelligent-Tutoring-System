@@ -336,6 +336,24 @@ export async function getMaterialPreviewUrl(materialId: number): Promise<Materia
   return parseJson(response);
 }
 
+export interface MaterialTextChunk {
+  content: string;
+  page_number: number | null;
+}
+
+export interface MaterialTextResponse {
+  filename: string;
+  mime_type: string;
+  chunks: MaterialTextChunk[];
+}
+
+export async function getMaterialExtractedText(materialId: number): Promise<MaterialTextResponse> {
+  const response = await fetch(`${API_BASE_URL}/materials/${materialId}/text`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
 export async function getProjectProfile(subject: string): Promise<ProjectProfile> {
   const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}`, {
     headers: buildHeaders(),

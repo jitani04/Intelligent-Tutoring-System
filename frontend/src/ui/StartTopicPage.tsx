@@ -1,6 +1,9 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
+import { listProjectProfiles } from "../api";
+import { formatSubjectName } from "../subjects";
 import { getPendingStudyContext, setPendingStudyContext } from "../studyState";
 
 export function StartTopicPage() {
@@ -8,15 +11,41 @@ export function StartTopicPage() {
   const pendingContext = getPendingStudyContext();
   const [subject, setSubject] = useState(pendingContext?.subject ?? "");
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextSubject = subject.trim();
-    if (!nextSubject) return;
+  const profilesQuery = useQuery({
+    queryKey: ["project-profiles"],
+    queryFn: listProjectProfiles,
+    staleTime: 30_000,
+  });
+
+  const existingSubjects = useMemo(() => {
+    const all = (profilesQuery.data ?? [])
+      .map((profile) => profile.subject?.trim())
+      .filter((s): s is string => Boolean(s));
+    // Dedup case-insensitively while preserving original casing.
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const s of all) {
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(s);
+    }
+    return unique.sort((a, b) => a.localeCompare(b));
+  }, [profilesQuery.data]);
+
+  function startWithSubject(value: string) {
+    const next = value.trim();
+    if (!next) return;
     setPendingStudyContext({
-      subject: nextSubject,
+      subject: next,
       createdAt: pendingContext?.createdAt ?? new Date().toISOString(),
     });
     navigate("/start/materials");
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    startWithSubject(subject);
   }
 
   return (
@@ -25,12 +54,27 @@ export function StartTopicPage() {
         <div className="flow-step">Step 1 of 3</div>
         <h1>What are you studying?</h1>
         <p className="flow-copy">
-          The more specific you are, the better the first session will be.
+          Pick one of your existing subjects or start a new one.
         </p>
+
+        {existingSubjects.length > 0 && (
+          <div className="flow-subject-grid">
+            {existingSubjects.map((existing) => (
+              <button
+                key={existing}
+                className="flow-subject-chip"
+                onClick={() => startWithSubject(existing)}
+                type="button"
+              >
+                {formatSubjectName(existing)}
+              </button>
+            ))}
+          </div>
+        )}
 
         <form className="flow-form" onSubmit={handleSubmit}>
           <label className="flow-field">
-            <span>Subject</span>
+            <span>{existingSubjects.length > 0 ? "Or start a new subject" : "Subject"}</span>
             <input
               autoComplete="off"
               autoFocus

@@ -1,3 +1,4 @@
+import socket
 from datetime import timezone
 
 import pytest
@@ -23,7 +24,13 @@ def test_assert_public_url_blocks_unsafe_hosts(url: str) -> None:
         _assert_public_url(url)
 
 
-def test_assert_public_url_allows_public_hosts() -> None:
+def test_assert_public_url_allows_public_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_getaddrinfo(host: str, *args: object, **kwargs: object) -> list[tuple[object, ...]]:
+        assert host == "example.com"
+        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", 443))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
     _assert_public_url("https://example.com/cal.ics")
 
 

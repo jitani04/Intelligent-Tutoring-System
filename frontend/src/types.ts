@@ -119,6 +119,16 @@ export interface RetrievedSource {
   similarity_score: number;
 }
 
+export interface WebSource {
+  title: string;
+  url: string;
+  display_url?: string | null;
+  snippet: string;
+  summary?: string | null;
+  published_at?: string | null;
+  crawled_at?: string | null;
+}
+
 export interface ChatStartEvent {
   event: "start";
   data: {
@@ -138,6 +148,14 @@ export interface ChatSourcesEvent {
   event: "sources";
   data: {
     sources: RetrievedSource[];
+  };
+}
+
+export interface ChatWebSourcesEvent {
+  event: "web_sources";
+  data: {
+    query: string;
+    sources: WebSource[];
   };
 }
 
@@ -360,7 +378,7 @@ export interface ChatImageEvent {
   data: ImageData;
 }
 
-export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatConversationTitleEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent;
+export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatWebSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatConversationTitleEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent;
 
 export type KeyIdeaArtifactType = "text" | "diagram" | "image";
 

@@ -6,7 +6,7 @@ import { ArrowUp, Bookmark, BookmarkCheck, FileText, FolderOpen, Pause, Play, Pl
 
 import { RateLimitError, createConversation, createKeyIdea, deleteConversation, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listMaterials, streamChat, submitFeedback, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
-import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, QuizData, RetrievedSource } from "../types";
+import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, QuizData, RetrievedSource, WebSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
@@ -301,6 +301,17 @@ export function ChatPage() {
   });
 
   const conversationId = params.conversationId ? Number(params.conversationId) : null;
+
+  // Require a subject for new study sessions. If the user landed on /sessions/new
+  // without going through the /start flow, push them through subject selection.
+  useEffect(() => {
+    if (conversationId !== null) return;
+    const ctx = getPendingStudyContext();
+    if (!ctx?.subject?.trim()) {
+      navigate("/start/topic", { replace: true });
+    }
+  }, [conversationId, navigate]);
+
   const [pomodoroEnabled] = useState(() => localStorage.getItem(POMODORO_KEY) === "true");
   const [pomodoroDurationSeconds] = useState(() => readPomodoroDurationSeconds());
   const timer = useSessionTimer(conversationId, pomodoroDurationSeconds);
@@ -312,7 +323,9 @@ export function ChatPage() {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sources, setSources] = useState<RetrievedSource[]>([]);
+  const [webSources, setWebSources] = useState<WebSource[]>([]);
   const [showSources, setShowSources] = useState(false);
+  const sourceCount = sources.length + webSources.length;
   const [sseQuizzes, setSseQuizzes] = useState<QuizData[]>([]);
   const [sseKeyIdeas, setSseKeyIdeas] = useState<KeyIdea[]>([]);
   const [sseDiagrams, setSseDiagrams] = useState<DiagramData[]>([]);
@@ -447,6 +460,7 @@ export function ChatPage() {
 
   useEffect(() => {
     setSources([]);
+    setWebSources([]);
     setShowSources(false);
     setSseQuizzes([]);
     setSseKeyIdeas([]);
@@ -565,6 +579,7 @@ export function ChatPage() {
     setAttachmentError(null);
     streamSmoothing.reset();
     setSources([]);
+    setWebSources([]);
     setShowSources(false);
     setIsStreaming(true);
 
@@ -732,6 +747,7 @@ export function ChatPage() {
   function handleEvent(event: ChatStreamEvent) {
     if (event.event === "token") { streamSmoothing.push(event.data.delta); return; }
     if (event.event === "sources") { setSources(event.data.sources); return; }
+    if (event.event === "web_sources") { setWebSources(event.data.sources); return; }
     if (event.event === "conversation_title") {
       const activeId = conversationId;
       if (activeId !== null) {
@@ -1018,7 +1034,7 @@ export function ChatPage() {
                 Notes{allKeyIdeas.length > 0 ? ` (${allKeyIdeas.length})` : ""}
               </button>
             )}
-            {sources.length > 0 && (
+            {sourceCount > 0 && (
               <button
                 className={`thread-action-btn ${showSources ? "active" : ""}`}
                 onClick={() => {
@@ -1028,7 +1044,7 @@ export function ChatPage() {
                 }}
                 type="button"
               >
-                Sources ({sources.length})
+                Sources ({sourceCount})
               </button>
             )}
           </div>
@@ -1105,7 +1121,7 @@ export function ChatPage() {
                     <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
                     <div className="msg-body">
                       <div className="msg-sender">{tutorName} · {formatTime(msg.created_at)}</div>
-                      <MarkdownText className="msg-text" children={msg.content} />
+                      <MarkdownText className="msg-text" children={msg.content} webSources={webSources} />
                       <div className={`msg-actions${isLastAssistant ? " msg-actions-pinned" : ""}`}>
                         <CopyButton text={msg.content} />
                         <FeedbackButtons
@@ -1220,6 +1236,7 @@ export function ChatPage() {
                     <MarkdownText
                       className={`msg-text${streamedText && isStreaming ? " msg-text-streaming" : ""}`}
                       children={streamedText}
+                      webSources={webSources}
                     />
                   </div>
                 </div>
@@ -1399,10 +1416,10 @@ export function ChatPage() {
         </form>
       </div>
 
-      {showSources && sources.length > 0 && (
+      {showSources && sourceCount > 0 && (
         <div className="sources-panel">
           <div className="sources-header">
-            <span className="sources-title">Sources ({sources.length})</span>
+            <span className="sources-title">Sources ({sourceCount})</span>
             <button className="sources-close" onClick={() => setShowSources(false)} type="button">×</button>
           </div>
           <div className="sources-body">
@@ -1415,6 +1432,13 @@ export function ChatPage() {
                 <div className="source-item-snippet">{s.snippet}</div>
                 <div className="source-item-meta">{(s.similarity_score * 100).toFixed(0)}% match</div>
               </div>
+            ))}
+            {webSources.map((s, index) => (
+              <a key={`${s.url}-${index}`} className="source-item source-item-link" href={s.url} rel="noreferrer" target="_blank">
+                <div className="source-item-file">Web {index + 1}: {s.title}</div>
+                <div className="source-item-snippet">{s.summary || s.snippet}</div>
+                <div className="source-item-meta">{s.display_url || s.url}</div>
+              </a>
             ))}
           </div>
         </div>

@@ -9,6 +9,7 @@ from app.api.deps import get_user_id
 from app.core.config import get_settings
 from app.core.rate_limit import rate_limit_user
 from app.db.session import get_db_session
+from app.models.material_chunk import MaterialChunk
 from app.models.user import User
 from app.schemas.material import MaterialRead
 from app.services import s3_client
@@ -153,6 +154,44 @@ async def get_material_preview_url(
         expires_in=settings.preview_url_expires_seconds,
         mime_type=material.mime_type,
         filename=material.filename,
+    )
+
+
+class MaterialTextChunk(BaseModel):
+    content: str
+    page_number: int | None = None
+
+
+class MaterialTextResponse(BaseModel):
+    filename: str
+    mime_type: str
+    chunks: list[MaterialTextChunk]
+
+
+@router.get("/{material_id}/text", response_model=MaterialTextResponse)
+async def get_material_extracted_text(
+    material_id: int,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> MaterialTextResponse:
+    try:
+        material = await get_material_for_user(session=session, user_id=user_id, material_id=material_id)
+    except MaterialNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material not found.") from exc
+
+    result = await session.execute(
+        select(MaterialChunk)
+        .where(MaterialChunk.material_id == material_id)
+        .order_by(MaterialChunk.page_number.asc().nulls_first(), MaterialChunk.id.asc())
+    )
+    chunks = [
+        MaterialTextChunk(content=chunk.content, page_number=chunk.page_number)
+        for chunk in result.scalars()
+    ]
+    return MaterialTextResponse(
+        filename=material.filename,
+        mime_type=material.mime_type,
+        chunks=chunks,
     )
 
 

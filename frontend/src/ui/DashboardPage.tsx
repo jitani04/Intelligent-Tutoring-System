@@ -133,7 +133,10 @@ export function DashboardPage() {
   const projects = (() => {
     const map = new Map<string, { convs: Conversation[]; lastActive: string }>();
     for (const c of conversations) {
-      const subject = (c.subject?.trim() || "General");
+      const subject = c.subject?.trim();
+      // Only conversations explicitly tied to a subject become a "subject" tile.
+      // Skip subject-less chats so they don't materialize a phantom "General".
+      if (!subject) continue;
       const subjectKey = normalizeSubject(subject);
       const existing = map.get(subjectKey) ?? { convs: [], lastActive: c.created_at };
       existing.convs.push(c);
@@ -141,7 +144,7 @@ export function DashboardPage() {
       map.set(subjectKey, existing);
     }
     return Array.from(map.entries()).map(([subjectKey, { convs, lastActive }]) => {
-      const subject = convs.find((conversation) => conversation.subject?.trim())?.subject?.trim() ?? "General";
+      const subject = convs.find((conversation) => conversation.subject?.trim())?.subject?.trim() ?? "";
       return {
         subject,
         lastActive,

@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutGrid,
   CalendarDays,
+  PanelLeftClose,
   Search,
   User,
   Settings,
@@ -38,7 +39,11 @@ function recentChatLabel(conversation: { id: number; title: string | null; subje
   return `Study session #${conversation.id}`;
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  onCollapse?: () => void;
+}
+
+export function Sidebar({ onCollapse }: SidebarProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -152,9 +157,20 @@ export function Sidebar() {
       <div className="sidebar-brand">
         <div className="sidebar-logo">S</div>
         <span className="sidebar-name">Sapient</span>
+        {onCollapse && (
+          <button
+            aria-label="Collapse sidebar"
+            className="sidebar-collapse-btn"
+            onClick={onCollapse}
+            title="Collapse sidebar"
+            type="button"
+          >
+            <PanelLeftClose size={15} strokeWidth={2} />
+          </button>
+        )}
       </div>
 
-      <Link to="/sessions/new" className="sidebar-new-btn">
+      <Link to="/start/topic" className="sidebar-new-btn">
         <Plus size={16} strokeWidth={2.2} />
         <span>New study session</span>
       </Link>

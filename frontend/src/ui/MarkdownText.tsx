@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 import { useReadingPrefs } from "../ReadingPrefsContext";
+import type { WebSource } from "../types";
 
 function bionicify(text: string, keyPrefix: string): ReactNode[] {
   return text.split(/(\s+)/).map((token, i) => {
@@ -41,8 +42,28 @@ function makeBionicWrapper(tag: string) {
   };
 }
 
-export function MarkdownText({ children, className }: { children: string; className?: string }) {
+function linkWebCitations(text: string, webSources?: WebSource[]): string {
+  if (!webSources || webSources.length === 0) return text;
+  return text.replace(/\[Web\s+(\d+)\]/g, (_match, rawIndex) => {
+    const source = webSources[Number(rawIndex) - 1];
+    if (!source?.url) return `[source ${rawIndex}]`;
+    const title = source.title.trim() || source.display_url || `source ${rawIndex}`;
+    const shortTitle = title.length > 46 ? `${title.slice(0, 43).trim()}...` : title;
+    return `[${shortTitle.replace(/[[\]]/g, "")}](${source.url})`;
+  });
+}
+
+export function MarkdownText({
+  children,
+  className,
+  webSources,
+}: {
+  children: string;
+  className?: string;
+  webSources?: WebSource[];
+}) {
   const { bionic } = useReadingPrefs();
+  const renderedText = useMemo(() => linkWebCitations(children, webSources), [children, webSources]);
 
   const components = useMemo<Components>(() => {
     const base: Components = {
@@ -72,7 +93,7 @@ export function MarkdownText({ children, className }: { children: string; classN
   return (
     <div className={className}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {children}
+        {renderedText}
       </ReactMarkdown>
     </div>
   );

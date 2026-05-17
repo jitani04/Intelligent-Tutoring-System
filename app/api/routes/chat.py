@@ -25,6 +25,7 @@ from app.services.feedback_service import retrieve_preference_memories
 from app.services.knowledge_tracing_service import mastery_to_learning_status
 from app.services.llm_service import LLMService
 from app.services.web_image_service import WebImageService
+from app.services.web_search_service import create_web_search_service
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -39,6 +40,9 @@ TEACHING_PACING_PROMPT = (
     "Teaching pacing rule: introduce or define at most 2 new concepts, terms, or principles at a time. "
     "If the student asks for a broad list, teach the 2 most important ideas first, then offer to continue "
     "with the next 2. You may connect to already-known concepts, but do not dump 4+ new definitions in one turn."
+    "\n\nWeb search rule: when a web_search tool is available, use it for current/latest information, outside references, "
+    "or when the student asks you to search the web. Cite web-sourced claims with the [Web N] labels returned by the tool. "
+    "If the tool is not available, say you can use study materials and general model knowledge, but cannot browse live web sources."
 )
 
 
@@ -298,6 +302,7 @@ async def stream_chat_endpoint(
         timeout_seconds=settings.llm_timeout_seconds,
     )
     image_service = WebImageService()
+    web_search_service = create_web_search_service()
 
     async def event_stream() -> AsyncIterator[str]:
         try:
@@ -309,6 +314,7 @@ async def stream_chat_endpoint(
                 user_message=request.message,
                 system_prompt=system_prompt,
                 image_service=image_service,
+                web_search_service=web_search_service,
                 preference_summary=user.preference_summary,
                 preference_memories=preference_memories,
             )
@@ -323,5 +329,7 @@ async def stream_chat_endpoint(
                     "retry_after_seconds": retry_after_from_message(str(exc)),
                 }
             yield _format_sse_event(SseEvent(event="error", data=payload))
+        finally:
+            await session.close()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

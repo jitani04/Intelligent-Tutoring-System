@@ -17,6 +17,7 @@ from app.services.conversation_service import get_conversation_for_user
 from app.services.llm_service import LLMService
 from app.services.prompt_builder import ChatTurn, build_responses_input
 from app.services.web_image_service import WebImageError, WebImageService
+from app.services.web_search_service import LangSearchWebSearch, WebSearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,34 @@ AGENT_TOOLS = [
     },
 ]
 
+WEB_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "web_search",
+        "description": (
+            "Search the public web for outside or current information. "
+            "Use this when the student explicitly asks to search the web, asks for current/latest facts, "
+            "or asks for examples or references beyond uploaded study materials. "
+            "Do not use this for questions fully answered by the student's study materials or conversation context."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "A focused search query.",
+                },
+                "freshness": {
+                    "type": "string",
+                    "enum": ["oneDay", "oneWeek", "oneMonth", "oneYear", "noLimit"],
+                    "description": "Optional time filter. Use noLimit unless recency matters.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
 
 @dataclass(slots=True)
 class SseEvent:
@@ -232,6 +261,74 @@ async def _save_key_idea(
     return idea
 
 
+def _format_web_search_results(results: list[WebSearchResult]) -> str:
+    if not results:
+        return "No web search results were found. Say that clearly and answer from study materials or general knowledge only if appropriate."
+
+    lines = [
+        "Web search results. Use only these results for web-sourced claims, cite sources inline as [Web 1], [Web 2], etc., and do not overstate snippets as complete evidence.",
+    ]
+    for index, result in enumerate(results, start=1):
+        content = result.summary or result.snippet
+        date_bits = []
+        if result.published_at:
+            date_bits.append(f"published {result.published_at}")
+        if result.crawled_at:
+            date_bits.append(f"crawled {result.crawled_at}")
+        dates = f" ({'; '.join(date_bits)})" if date_bits else ""
+        lines.append(
+            f"[Web {index}] {result.title}{dates}\n"
+            f"URL: {result.url}\n"
+            f"Snippet: {content}"
+        )
+    return "\n\n".join(lines)
+
+
+def _extract_explicit_web_search_query(message: str) -> str | None:
+    clean = " ".join(message.strip().split())
+    lowered = clean.lower()
+    prefixes = [
+        "search the web for ",
+        "search web for ",
+        "web search for ",
+        "look up ",
+        "google ",
+    ]
+    if lowered in {"search the web", "web search", "look this up"}:
+        return clean
+    for prefix in prefixes:
+        if lowered.startswith(prefix):
+            return clean[len(prefix) :].strip() or clean
+    if "search the web" in lowered or "look it up" in lowered:
+        return clean
+    return None
+
+
+def _freshness_for_query(query: str) -> str:
+    lowered = query.lower()
+    if any(term in lowered for term in ["latest", "current", "today", "recent", "newest", "now"]):
+        return "oneMonth"
+    return "noLimit"
+
+
+def _render_web_search_answer(query: str, results: list[WebSearchResult]) -> str:
+    if not results:
+        return (
+            f"I searched the web for \"{query}\", but I couldn't find usable results from the search provider. "
+            "Try a narrower query or check the web-search API key/configuration."
+        )
+
+    lines = [f"I searched the web for \"{query}\". The most relevant results I found are:"]
+    for index, result in enumerate(results[:3], start=1):
+        snippet = result.summary or result.snippet
+        snippet = " ".join(snippet.split())
+        if len(snippet) > 260:
+            snippet = f"{snippet[:257].rstrip()}..."
+        lines.append(f"{index}. {result.title} [Web {index}]\n   {snippet}")
+    lines.append("Use the Sources panel to open the web results.")
+    return "\n\n".join(lines)
+
+
 async def _save_quiz(
     *,
     session: AsyncSession,
@@ -267,6 +364,7 @@ async def stream_chat(
     user_message: str,
     system_prompt: str,
     image_service: WebImageService | None = None,
+    web_search_service: LangSearchWebSearch | None = None,
     preference_summary: str | None = None,
     preference_memories: list[str] | None = None,
 ) -> AsyncIterator[SseEvent]:
@@ -339,9 +437,103 @@ async def stream_chat(
     ai_message_chunk = None
     tool_calls_data: list[dict[str, Any]] = []
     quiz_ids_this_turn: list[int] = []
+    explicit_web_query = _extract_explicit_web_search_query(user_message)
+    web_search_fallback_query: str | None = None
+    web_search_fallback_results: list[WebSearchResult] = []
 
     try:
-        async for event in llm_service.stream_with_tools(input_messages=input_messages, tools=AGENT_TOOLS):
+        if explicit_web_query and web_search_service is not None and web_search_service.is_configured:
+            web_results = await web_search_service.search(
+                query=explicit_web_query,
+                freshness=_freshness_for_query(explicit_web_query),
+            )
+            web_search_fallback_query = explicit_web_query
+            web_search_fallback_results = web_results
+            if web_results:
+                yield SseEvent(event="web_sources", data={
+                    "query": explicit_web_query,
+                    "sources": [
+                        {
+                            "title": result.title,
+                            "url": result.url,
+                            "display_url": result.display_url,
+                            "snippet": result.snippet,
+                            "summary": result.summary,
+                            "published_at": result.published_at,
+                            "crawled_at": result.crawled_at,
+                        }
+                        for result in web_results
+                    ],
+                })
+
+            web_input_messages = [dict(message) for message in input_messages]
+            web_input_messages[0]["content"] = (
+                f"{web_input_messages[0]['content']}\n\n"
+                f"{_format_web_search_results(web_results)}\n\n"
+                "Answer the student's web-search request directly and cite web results inline as [Web 1], [Web 2], etc."
+            )
+            async for event in llm_service.stream_response(input_messages=web_input_messages):
+                if event.type == "token" and event.delta:
+                    assistant_parts.append(event.delta)
+                    yield SseEvent(event="token", data={"delta": event.delta})
+                elif event.type == "completed":
+                    usage = event.usage
+
+            if not "".join(assistant_parts).strip():
+                fallback = _render_web_search_answer(explicit_web_query, web_results)
+                assistant_parts.append(fallback)
+                yield SseEvent(event="token", data={"delta": fallback})
+
+            assistant_content = "".join(assistant_parts).strip()
+            assistant_msg = Message(
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT,
+                content=assistant_content,
+            )
+            session.add(assistant_msg)
+            await session.commit()
+            await session.refresh(assistant_msg)
+
+            generated_title: str | None = None
+            if should_generate_title:
+                generated_title = await _generate_conversation_title(
+                    llm_service=llm_service,
+                    subject=subject,
+                    user_message=user_message,
+                    assistant_message=assistant_content,
+                )
+                if generated_title:
+                    conv.title = generated_title
+                    await session.commit()
+                    yield SseEvent(event="conversation_title", data={"title": generated_title})
+
+            latency_ms = int(time.monotonic() * 1000 - turn_start_ms)
+            yield SseEvent(
+                event="end",
+                data={
+                    "assistant_message_id": assistant_msg.id,
+                    "usage": usage,
+                    "latency_ms": latency_ms,
+                    "retrieved_chunk_ids": [c.chunk_id for c in retrieved_context],
+                    "tool_trace": [
+                        {
+                            "name": "web_search",
+                            "args": {
+                                "query": explicit_web_query,
+                                "freshness": _freshness_for_query(explicit_web_query),
+                                "result_count": len(web_results),
+                            },
+                        }
+                    ],
+                },
+            )
+            return
+
+        available_tools = [*AGENT_TOOLS]
+        if web_search_service is not None and web_search_service.is_configured:
+            available_tools.append(WEB_SEARCH_TOOL)
+
+        async for event in llm_service.stream_with_tools(input_messages=input_messages, tools=available_tools):
             if event.type == "token" and event.delta:
                 assistant_parts.append(event.delta)
                 yield SseEvent(event="token", data={"delta": event.delta})
@@ -478,6 +670,40 @@ async def stream_chat(
                         "summary": idea.summary,
                     })
 
+                elif tc["name"] == "web_search":
+                    args = tc["args"]
+                    query = str(args.get("query", "")).strip()
+                    freshness = str(args.get("freshness") or "noLimit")
+                    results = (
+                        await web_search_service.search(query=query, freshness=freshness)
+                        if web_search_service is not None and query
+                        else []
+                    )
+                    web_search_fallback_query = query
+                    web_search_fallback_results = results
+                    lc_tool_messages.append(
+                        LCToolMessage(
+                            content=_format_web_search_results(results),
+                            tool_call_id=tc["id"],
+                        )
+                    )
+                    if results:
+                        yield SseEvent(event="web_sources", data={
+                            "query": query,
+                            "sources": [
+                                {
+                                    "title": result.title,
+                                    "url": result.url,
+                                    "display_url": result.display_url,
+                                    "snippet": result.snippet,
+                                    "summary": result.summary,
+                                    "published_at": result.published_at,
+                                    "crawled_at": result.crawled_at,
+                                }
+                                for result in results
+                            ],
+                        })
+
             # Second pass: stream follow-up text, then emit quiz cards
             original_lc = llm_service.to_langchain_messages(input_messages)
             second_pass = original_lc + [ai_message_chunk] + lc_tool_messages
@@ -491,6 +717,11 @@ async def stream_chat(
 
             for quiz_data in pending_quiz_events:
                 yield SseEvent(event="quiz", data=quiz_data)
+
+        if not "".join(assistant_parts).strip() and web_search_fallback_query:
+            fallback = _render_web_search_answer(web_search_fallback_query, web_search_fallback_results)
+            assistant_parts.append(fallback)
+            yield SseEvent(event="token", data={"delta": fallback})
 
         assistant_content = "".join(assistant_parts).strip() or "(No response content)"
 

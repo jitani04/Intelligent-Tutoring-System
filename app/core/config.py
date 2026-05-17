@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     langsearch_api_key: str = Field(default="", alias="LANGSEARCH_API_KEY")
     langsearch_api_base_url: str = Field(default="https://api.langsearch.com", alias="LANGSEARCH_API_BASE_URL")
     langsearch_rerank_model: str = Field(default="langsearch-reranker-v1", alias="LANGSEARCH_RERANK_MODEL")
+    web_search_enabled: bool = Field(default=True, alias="WEB_SEARCH_ENABLED")
+    web_search_result_count: int = Field(default=5, alias="WEB_SEARCH_RESULT_COUNT")
+    web_search_timeout_seconds: float = Field(default=8.0, alias="WEB_SEARCH_TIMEOUT_SECONDS")
 
     enable_feedback_preferences: bool = Field(default=False, alias="ENABLE_FEEDBACK_PREFERENCES")
     enable_preference_memory: bool = Field(default=False, alias="ENABLE_PREFERENCE_MEMORY")

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { FileQuestion } from "lucide-react";
 
-import { deleteMaterial, getMaterialPreviewUrl, listConversations, listMaterials } from "../api";
+import { deleteMaterial, getMaterialExtractedText, getMaterialPreviewUrl, listConversations, listMaterials } from "../api";
 import { normalizeSubject } from "../subjects";
 import { MarkdownText } from "./MarkdownText";
 
@@ -13,6 +13,11 @@ function isMarkdownMime(mime: string): boolean {
 
 function isPlainTextMime(mime: string): boolean {
   return mime.toLowerCase().startsWith("text/") && !isMarkdownMime(mime);
+}
+
+function isIframePreviewable(mime: string): boolean {
+  const lower = mime.toLowerCase();
+  return lower === "application/pdf" || lower.startsWith("image/");
 }
 
 function formatDateTime(value: string | null): string {
@@ -66,6 +71,13 @@ export function MaterialDetailPage() {
 
   const previewMime = previewQuery.data?.mime_type ?? material?.mime_type ?? "";
   const isTextPreview = isMarkdownMime(previewMime) || isPlainTextMime(previewMime);
+  const needsExtractedText = isReady && !isTextPreview && !isIframePreviewable(previewMime);
+  const extractedTextQuery = useQuery({
+    queryKey: ["material-extracted-text", parsedMaterialId],
+    enabled: needsExtractedText,
+    staleTime: 60_000,
+    queryFn: () => getMaterialExtractedText(parsedMaterialId),
+  });
   const textContentQuery = useQuery({
     queryKey: ["material-preview-text", parsedMaterialId, previewQuery.data?.url],
     enabled: Boolean(previewQuery.data?.url) && isTextPreview,
@@ -244,13 +256,36 @@ export function MaterialDetailPage() {
                     </pre>
                   )}
                 </div>
-              ) : (
+              ) : isIframePreviewable(previewMime) ? (
                 <iframe
                   key={previewQuery.data.url}
                   src={previewQuery.data.url}
                   title={`Preview of ${material.filename}`}
                   style={{ width: "100%", height: "70vh", border: "1px solid var(--border, #e2e2e2)", borderRadius: "8px", background: "#fff" }}
                 />
+              ) : (
+                <div className="material-extracted-preview">
+                  {extractedTextQuery.isLoading ? (
+                    <p className="muted">Loading extracted text…</p>
+                  ) : extractedTextQuery.isError ? (
+                    <p className="error-text">
+                      Could not load extracted text. {(extractedTextQuery.error as Error)?.message ?? ""}
+                    </p>
+                  ) : extractedTextQuery.data && extractedTextQuery.data.chunks.length === 0 ? (
+                    <p className="muted">No text was extracted from this file.</p>
+                  ) : (
+                    <div className="material-extracted-body">
+                      {(extractedTextQuery.data?.chunks ?? []).map((chunk, idx) => (
+                        <section key={idx} className="material-extracted-chunk">
+                          {chunk.page_number != null && (
+                            <div className="material-extracted-page">Page {chunk.page_number}</div>
+                          )}
+                          <p>{chunk.content}</p>
+                        </section>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
                 <a className="button button-secondary" href={previewQuery.data.url} target="_blank" rel="noreferrer">

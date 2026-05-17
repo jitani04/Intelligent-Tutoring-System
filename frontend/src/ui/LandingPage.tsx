@@ -1,52 +1,12 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 
 import { login, loginWithGoogle, register } from "../api";
 import { isAuthenticated, setToken } from "../auth";
 import type { AuthResult } from "../types";
-import { ShaderWallpaper } from "./ShaderWallpaper";
 import { ThemeToggle } from "./ThemeToggle";
-
-const FEATURES = [
-  {
-    icon: "◎",
-    title: "Socratic Questioning",
-    description: "The tutor asks targeted questions that guide you to the answer through active recall.",
-  },
-  {
-    icon: "✣",
-    title: "Concept Mapping",
-    description: "Build connections between topics with subject maps that organize what you are learning.",
-  },
-  {
-    icon: "↗",
-    title: "Progress Tracking",
-    description: "Track materials, study sessions, and subjects so each subject keeps momentum.",
-  },
-  {
-    icon: "▤",
-    title: "Grounded Practice",
-    description: "Upload notes and readings so explanations can stay tied to your actual course material.",
-  },
-  {
-    icon: "?",
-    title: "Active Recall",
-    description: "Practice with quizzes, hints, and checkpoints before the tutor gives full explanations.",
-  },
-  {
-    icon: "◌",
-    title: "Metacognition",
-    description: "Reflect on where you are stuck and choose a better study strategy for the next step.",
-  },
-];
-
-const STEPS = [
-  { number: "01", title: "Upload your material", body: "Add notes, readings, or a topic you want to master." },
-  { number: "02", title: "Engage actively", body: "Answer guided questions and ask for hints when you need them." },
-  { number: "03", title: "Track and improve", body: "Return to subjects, review study sessions, and keep building mastery." },
-];
 
 type ModalMode = "signin" | "signup";
 
@@ -89,7 +49,10 @@ export function LandingPage() {
   }
 
   function openModal(m: ModalMode) {
-    setEmail(""); setPassword(""); setError(null); setMode(m);
+    setEmail("");
+    setPassword("");
+    setError(null);
+    setMode(m);
   }
 
   async function handleAuthResult(result: AuthResult) {
@@ -101,7 +64,8 @@ export function LandingPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null); setLoading(true);
+    setError(null);
+    setLoading(true);
     try {
       const result = mode === "signup" ? await register(email, password) : await login(email, password);
       await handleAuthResult(result);
@@ -117,7 +81,6 @@ export function LandingPage() {
       setError("Google did not return a credential.");
       return;
     }
-
     setError(null);
     setLoading(true);
     try {
@@ -131,122 +94,145 @@ export function LandingPage() {
   }
 
   return (
-    <div className="bb-landing landing-page">
-      <nav className="bb-nav">
-        <div className="bb-nav-inner">
-          <Link className="bb-nav-logo" to="/">
-            <span className="bb-logo-mark">◎</span>
-            <span>Sapient</span>
-          </Link>
-          <div className="bb-nav-links">
-            <a href="#features">Features</a>
-            <a href="#how">How it works</a>
-            <a href="#start">Get started</a>
-          </div>
+    <div className="landing-shell">
+      <nav className="landing-nav">
+        <span className="landing-wordmark">Sapient</span>
+        <div className="landing-nav-right">
           <ThemeToggle variant="icon" />
-          <button className="bb-btn bb-btn-ghost" onClick={() => openModal("signin")} type="button">Sign in</button>
-          <button className="bb-btn bb-btn-primary" onClick={() => openModal("signup")} type="button">Sign up</button>
+          <button className="button button-secondary" onClick={() => openModal("signin")} type="button">
+            Sign in
+          </button>
         </div>
       </nav>
 
-      <header className="os-hero">
-        <ShaderWallpaper />
-        <div className="os-hero-overlay" aria-hidden="true" />
-        <div className="os-hero-grid" aria-hidden="true" />
+      <main className="landing-main">
+        <section className="landing-hero motion-reveal motion-rise">
+          <span className="landing-kicker">Sapient · stateful AI tutoring</span>
+          <h1 className="landing-headline">
+            A tutor that remembers <em>what</em> you've learned.
+          </h1>
+          <p className="landing-sub">
+            Sapient turns each study session into durable artifacts &mdash; concept maps, quizzes, flashcards,
+            and a Bayesian model of your mastery &mdash; all grounded in materials you upload.
+          </p>
+          <div className="landing-cta-row">
+            <button className="button button-primary" onClick={() => openModal("signup")} type="button">
+              Start a study session
+            </button>
+            <button className="button button-secondary" onClick={() => openModal("signin")} type="button">
+              Sign in
+            </button>
+          </div>
+        </section>
 
-        <div className="os-hero-corner os-hero-corner-tl" aria-hidden="true">
-          <span className="os-corner-dot" />
-          <span>SYS · SAPIENT v1.0</span>
-        </div>
-        <div className="os-hero-corner os-hero-corner-tr" aria-hidden="true">
-          <span>{new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
-          <span className="os-corner-dot os-corner-dot-pulse" />
-        </div>
-        <div className="os-hero-corner os-hero-corner-bl" aria-hidden="true">
-          <span>◇ move cursor to warp · click to ripple</span>
-        </div>
-        <div className="os-hero-corner os-hero-corner-br" aria-hidden="true">
-          <span>◎ active learning runtime</span>
-        </div>
-
-        <div className="os-hero-stage">
-          <div className="os-hero-content">
-            <span className="os-hero-eyebrow">◎ Sapient OS · online</span>
-            <h1 className="os-hero-title">Sapient</h1>
-            <div className="os-hero-define" aria-label="Definition of Sapient">
-              <span className="os-define-word">sa·pi·ent</span>
-              <span className="os-define-ipa">/ˈseɪ.pi.ənt/</span>
-              <span className="os-define-pos">adjective</span>
-              <span className="os-define-gloss">
-                possessing wisdom; able to think, reason, and learn —
-                from Latin <em>sapiēns</em>, "wise, knowing."
-              </span>
-            </div>
-            <p className="os-hero-body">
-              An adaptive Socratic tutor that grounds every answer in your own materials.
-              Upload notes, work through guided questions, build concept maps, and watch your
-              progress compound. The wallpaper reacts to you; so does the tutor.
+        <section className="landing-showcase landing-showcase-tinted motion-reveal motion-rise">
+          <div className="landing-showcase-copy">
+            <span className="landing-eyebrow">Retrieval-augmented</span>
+            <h2>Grounded in <em>your</em> materials.</h2>
+            <p>
+              Every answer cites the page, paragraph, or slide it came from &mdash; pulled from notes
+              and readings you upload, not just the model's training data.
             </p>
-            <div className="os-hero-actions">
-              <button className="bb-btn bb-btn-primary bb-btn-xl" onClick={() => openModal("signup")} type="button">
-                Boot up →
-              </button>
-              <button className="bb-btn bb-btn-ghost" onClick={() => openModal("signin")} type="button">
-                Sign in
-              </button>
+          </div>
+          <div className="landing-showcase-visual" aria-hidden="true">
+            <div className="landing-answer-card">
+              <div className="landing-answer-line landing-answer-line-1" />
+              <div className="landing-answer-line landing-answer-line-2" />
+              <div className="landing-answer-line landing-answer-line-3" />
+              <div className="landing-source-row">
+                <span className="landing-source-chip">Fine Art · slide 12</span>
+                <span className="landing-source-chip">notes.pdf · p. 4</span>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </section>
 
-      <section className="bb-features" id="features">
-        <div className="bb-section-inner">
-          <h2 className="bb-section-h2 motion-reveal motion-rise">Active learning features</h2>
-          <div className="bb-feat-grid landing-grid">
-            {FEATURES.map((f, index) => (
-              <article
-                className="bb-feat-card landing-card motion-reveal motion-card"
-                key={f.title}
-                style={{ transitionDelay: `${index * 65}ms` }}
-              >
-                <div className="bb-feat-icon">{f.icon}</div>
-                <h2>{f.title}</h2>
-                <p>{f.description}</p>
-              </article>
-            ))}
+        <section className="landing-showcase landing-showcase-reverse motion-reveal motion-rise">
+          <div className="landing-showcase-copy">
+            <span className="landing-eyebrow">Bayesian Knowledge Tracing</span>
+            <h2>Mastery, <em>modeled</em>.</h2>
+            <p>
+              Sapient maintains a BKT state per subject &mdash; a probability that you've mastered each
+              concept. Quiz attempts update it; the tutor uses it to decide what to revisit next.
+            </p>
           </div>
-        </div>
-      </section>
-
-      <section className="bb-how" id="how">
-        <div className="bb-section-inner">
-          <div className="bb-steps">
-            {STEPS.map((step, index) => (
-              <article
-                className="bb-step motion-reveal motion-rise"
-                key={step.number}
-                style={{ transitionDelay: `${index * 90}ms` }}
-              >
-                <div className="bb-step-num">{step.number}</div>
-                <h3>{step.title}</h3>
-                <p>{step.body}</p>
-              </article>
-            ))}
+          <div className="landing-showcase-visual" aria-hidden="true">
+            <svg className="landing-mastery-chart" viewBox="0 0 260 140" preserveAspectRatio="none">
+              <line className="landing-mastery-grid" x1="32" y1="30" x2="252" y2="30" />
+              <line className="landing-mastery-grid" x1="32" y1="60" x2="252" y2="60" />
+              <line className="landing-mastery-grid" x1="32" y1="90" x2="252" y2="90" />
+              <rect className="landing-mastery-band" x="32" y="86" width="220" height="22" />
+              <polyline
+                className="landing-mastery-curve"
+                points="32,112 54,106 76,98 98,92 120,82 142,72 164,58 186,48 208,42 230,38 252,34"
+              />
+              <line className="landing-mastery-axis" x1="32" y1="120" x2="252" y2="120" />
+              <line className="landing-mastery-axis" x1="32" y1="20" x2="32" y2="120" />
+              <text className="landing-mastery-tick" x="0" y="34">1.0</text>
+              <text className="landing-mastery-tick" x="0" y="92">0.5</text>
+              <text className="landing-mastery-tick" x="0" y="122">0.0</text>
+              <text className="landing-mastery-xtick" x="32" y="134">Day 1</text>
+              <text className="landing-mastery-xtick" x="142" y="134">Day 7</text>
+              <text className="landing-mastery-xtick" x="252" y="134" textAnchor="end">Day 14</text>
+            </svg>
+            <div className="landing-mastery-legend">
+              <span className="landing-legend-dot landing-legend-dot-band" />
+              needs-review band (mastery &lt; 0.62)
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="bb-cta" id="start">
-        <div className="bb-section-inner motion-reveal motion-rise">
-          <h2>Ready to unlock your learning potential?</h2>
-          <p>Start with a subject, upload material, and let the tutor guide the next question.</p>
-          <button className="bb-btn bb-btn-primary bb-btn-xl" onClick={() => openModal("signup")} type="button">
-            Get started free
+        <section className="landing-showcase landing-showcase-tinted motion-reveal motion-rise">
+          <div className="landing-showcase-copy">
+            <span className="landing-eyebrow">SM-2 spaced repetition</span>
+            <h2>Sessions that <em>compound</em>.</h2>
+            <p>
+              Notes you save during chat enter a spaced repetition schedule. Diagrams become
+              Mermaid sources. Flashcards re-surface when you're about to forget. Smart reminders
+              cross-reference upcoming deadlines with your weakest topics.
+            </p>
+          </div>
+          <div className="landing-showcase-visual" aria-hidden="true">
+            <div className="landing-schedule-stack">
+              <div className="landing-schedule-card">
+                <span className="landing-schedule-when">Today</span>
+                <span className="landing-schedule-card-label">SQL · LEFT JOIN</span>
+                <div className="landing-schedule-bar" />
+              </div>
+              <div className="landing-schedule-card landing-schedule-card-2">
+                <span className="landing-schedule-when">+3 days</span>
+                <span className="landing-schedule-card-label">Calculus · chain rule</span>
+                <div className="landing-schedule-bar landing-schedule-bar-2" />
+              </div>
+              <div className="landing-schedule-card landing-schedule-card-3">
+                <span className="landing-schedule-when">+9 days</span>
+                <span className="landing-schedule-card-label">Bio · mitosis phases</span>
+                <div className="landing-schedule-bar landing-schedule-bar-3" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="landing-loop motion-reveal motion-rise">
+          <span className="landing-eyebrow">Human in the loop</span>
+          <h2>You generate, you <em>curate</em>.</h2>
+          <p>
+            Save any snippet, diagram, or image from chat into your notes. Author your own quizzes
+            and flashcards alongside the LLM-generated ones. The system stores what you tell it to.
+          </p>
+        </section>
+
+        <section className="landing-closing motion-reveal motion-rise">
+          <h2>Ready when you are.</h2>
+          <button className="button button-primary" onClick={() => openModal("signup")} type="button">
+            Start a study session
           </button>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      <footer className="bb-footer">© 2026 Sapient.</footer>
+      <footer className="landing-footer">
+        Sapient · A masters project on stateful AI tutoring · {new Date().getFullYear()}
+      </footer>
 
       {mode !== null && (
         <div className="landing-modal-backdrop" onClick={() => setMode(null)} role="presentation">
@@ -293,7 +279,8 @@ export function LandingPage() {
                 <label>Email</label>
                 <input
                   className="modal-input"
-                  type="email" required
+                  type="email"
+                  required
                   autoComplete="email"
                   placeholder="you@example.com"
                   value={email}
@@ -304,7 +291,8 @@ export function LandingPage() {
                 <label>Password</label>
                 <input
                   className="modal-input"
-                  type="password" required
+                  type="password"
+                  required
                   autoComplete={mode === "signup" ? "new-password" : "current-password"}
                   placeholder="Enter your password"
                   value={password}

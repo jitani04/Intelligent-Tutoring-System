@@ -119,6 +119,18 @@ async def _hydrate_profile_cover_url(profile: ProjectProfile) -> ProjectProfileR
     return read
 
 
+def _project_quizzes_query(user_id: int, subject: str):
+    return (
+        select(Quiz)
+        .join(Conversation, Conversation.id == Quiz.conversation_id)
+        .where(
+            Conversation.user_id == user_id,
+            Conversation.subject == subject,
+        )
+        .order_by(Quiz.created_at.desc(), Quiz.id.desc())
+    )
+
+
 GENERAL_SUBJECT_LABELS = {"general", ""}
 
 
@@ -292,6 +304,16 @@ async def get_project_progress(
         next_review=next_review,
         knowledge_mastery=knowledge_state_for_progress(profile_for_mastery),
     )
+
+
+@router.get("/{subject}/quizzes", response_model=list[QuizRead])
+async def list_project_quizzes(
+    subject: str,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[QuizRead]:
+    result = await session.execute(_project_quizzes_query(user_id=user_id, subject=subject))
+    return [QuizRead.model_validate(quiz) for quiz in result.scalars()]
 
 
 @router.get("/{subject}", response_model=ProjectProfileRead)

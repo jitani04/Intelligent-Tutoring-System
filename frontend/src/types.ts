@@ -65,6 +65,13 @@ export interface UserProfile {
   tutor_style: string;
   tutor_instructions: string;
   tutor_voice: TutorVoice;
+  enable_review_emails: boolean;
+  reminder_frequency: "daily" | "weekly" | "before_deadlines_only";
+  preferred_reminder_time: string | null;
+  review_email_address: string | null;
+  digest_style: "concise" | "detailed";
+  include_key_notes: boolean;
+  include_outside_study_suggestions: boolean;
 }
 
 export type TutorVoice =
@@ -84,6 +91,16 @@ export interface TutorPreferences {
   tutor_style: string;
   tutor_instructions: string;
   tutor_voice: TutorVoice;
+}
+
+export interface ReviewEmailPreferences {
+  enable_review_emails: boolean;
+  reminder_frequency: "daily" | "weekly" | "before_deadlines_only";
+  preferred_reminder_time: string | null;
+  review_email_address: string | null;
+  digest_style: "concise" | "detailed";
+  include_key_notes: boolean;
+  include_outside_study_suggestions: boolean;
 }
 
 export interface AuthResult {
@@ -178,6 +195,55 @@ export interface ChatConversationTitleEvent {
   data: {
     title: string;
   };
+}
+
+export interface AgentStepEvent {
+  event: "agent_step";
+  data: {
+    message: string;
+    tool?: string;
+    plan?: Record<string, unknown>;
+  };
+}
+
+export interface ReviewDigestPreview {
+  subject: string | null;
+  reason: string;
+  email_subject: string;
+  focus_topics: string[];
+  key_notes: string[];
+  weak_areas: string[];
+  recommended_actions: string[];
+  outside_study_actions: string[];
+  links: { label: string; url: string }[];
+  upcoming_deadline?: Record<string, string> | null;
+  text_body: string;
+  html_body: string;
+}
+
+export interface PendingAgentAction {
+  id: number;
+  action_type: string;
+  explanation: string;
+  status: "pending" | "approved" | "rejected" | "failed";
+  payload: Record<string, unknown>;
+  preview: ReviewDigestPreview | null;
+}
+
+export interface PendingActionEvent {
+  event: "pending_action";
+  data: PendingAgentAction;
+}
+
+export interface NextBestAction {
+  title: string;
+  reason: string;
+  actions: { label: string; kind: string }[];
+}
+
+export interface NextBestActionEvent {
+  event: "next_best_action";
+  data: NextBestAction;
 }
 
 export interface MessageTrace {
@@ -403,7 +469,7 @@ export interface ChatResourceEvent {
   data: ResourceData;
 }
 
-export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatWebSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatConversationTitleEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent | ChatResourceEvent;
+export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatWebSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatConversationTitleEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent | ChatResourceEvent | AgentStepEvent | PendingActionEvent | NextBestActionEvent;
 
 export type KeyIdeaArtifactType = "text" | "diagram" | "image";
 

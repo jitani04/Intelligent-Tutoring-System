@@ -4,9 +4,9 @@ import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowUp, Bookmark, BookmarkCheck, FileText, FolderOpen, Pause, PencilLine, Play, Plus, RotateCcw } from "lucide-react";
 
-import { RateLimitError, createConversation, createKeyIdea, deleteConversation, deleteFeedbackForMessage, deleteKeyIdea, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listConversationResources, listMaterials, listModels, streamChat, submitFeedback, updateConversationModel, uploadMaterial } from "../api";
+import { RateLimitError, createConversation, createKeyIdea, deleteConversation, deleteFeedbackForMessage, deleteKeyIdea, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listConversationResources, listMaterials, listModels, rejectPendingAgentAction, sendReviewDigest, streamChat, submitFeedback, updateConversationModel, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
-import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, QuizData, Resource, ResourceData, RetrievedSource, WebSource } from "../types";
+import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, NextBestAction, PendingAgentAction, QuizData, Resource, ResourceData, RetrievedSource, WebSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { buttonClass } from "./buttonClass";
 import { DiagramCard } from "./DiagramCard";
@@ -345,6 +345,10 @@ export function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [sources, setSources] = useState<RetrievedSource[]>([]);
   const [webSources, setWebSources] = useState<WebSource[]>([]);
+  const [agentSteps, setAgentSteps] = useState<string[]>([]);
+  const [pendingAgentActions, setPendingAgentActions] = useState<PendingAgentAction[]>([]);
+  const [nextBestAction, setNextBestAction] = useState<NextBestAction | null>(null);
+  const [agentActionStatus, setAgentActionStatus] = useState<string | null>(null);
   const [showSources, setShowSources] = useState(false);
   const sourceCount = sources.length + webSources.length;
   const [sseQuizzes, setSseQuizzes] = useState<QuizData[]>([]);
@@ -504,11 +508,15 @@ export function ChatPage() {
     const el = threadRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages, streamedText]);
+  }, [messages, streamedText, agentSteps, pendingAgentActions, nextBestAction]);
 
   useEffect(() => {
     setSources([]);
     setWebSources([]);
+    setAgentSteps([]);
+    setPendingAgentActions([]);
+    setNextBestAction(null);
+    setAgentActionStatus(null);
     setShowSources(false);
     setSseQuizzes([]);
     setSseKeyIdeas([]);
@@ -670,6 +678,10 @@ export function ChatPage() {
     streamSmoothing.reset();
     setSources([]);
     setWebSources([]);
+    setAgentSteps([]);
+    setPendingAgentActions([]);
+    setNextBestAction(null);
+    setAgentActionStatus(null);
     setShowSources(false);
     pendingDiagramsRef.current = [];
     pendingImagesRef.current = [];
@@ -891,6 +903,18 @@ export function ChatPage() {
 
   function handleEvent(event: ChatStreamEvent) {
     if (event.event === "token") { streamSmoothing.push(event.data.delta); return; }
+    if (event.event === "agent_step") {
+      setAgentSteps((current) => [...current, event.data.message].slice(-8));
+      return;
+    }
+    if (event.event === "pending_action") {
+      setPendingAgentActions((current) => appendUniqueBy(current, [event.data], (action) => action.id));
+      return;
+    }
+    if (event.event === "next_best_action") {
+      setNextBestAction(event.data);
+      return;
+    }
     if (event.event === "sources") { setSources(event.data.sources); return; }
     if (event.event === "web_sources") { setWebSources(event.data.sources); return; }
     if (event.event === "conversation_title") {
@@ -1002,6 +1026,27 @@ export function ChatPage() {
       } else {
         setStreamError(event.data.error);
       }
+    }
+  }
+
+  async function handleSendPendingAction(action: PendingAgentAction) {
+    setAgentActionStatus("Sending review digest...");
+    try {
+      const result = await sendReviewDigest(action.id);
+      setPendingAgentActions((current) => current.filter((item) => item.id !== action.id));
+      setAgentActionStatus(`Review digest sent${result.provider === "noop" ? " (development no-op)" : ""}.`);
+    } catch (err) {
+      setAgentActionStatus(err instanceof Error ? err.message : "Could not send review digest.");
+    }
+  }
+
+  async function handleDismissPendingAction(action: PendingAgentAction) {
+    try {
+      await rejectPendingAgentAction(action.id);
+      setPendingAgentActions((current) => current.filter((item) => item.id !== action.id));
+      setAgentActionStatus("Suggestion dismissed.");
+    } catch (err) {
+      setAgentActionStatus(err instanceof Error ? err.message : "Could not dismiss suggestion.");
     }
   }
 
@@ -1529,6 +1574,64 @@ export function ChatPage() {
                   <span className="agent-thinking-dot" />
                 </div>
               )}
+
+              {agentSteps.length > 0 && (
+                <div className="ml-[3.1rem] flex max-w-[620px] flex-col gap-1 rounded-lg border border-[var(--panel-border)] bg-[var(--surface)] px-3 py-2 text-[0.78rem] text-[var(--text-soft)]">
+                  {agentSteps.map((step, index) => (
+                    <div key={`${step}-${index}`} className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
+                      <span>{step}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {pendingAgentActions.map((action) => (
+                <div key={`pending-action-${action.id}`} className="msg">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="rounded-xl border border-[var(--panel-border)] bg-[var(--surface)] p-4 shadow-sm">
+                      <div className="text-[0.72rem] font-bold uppercase tracking-[0.08em] text-[var(--accent)]">Suggested action</div>
+                      <h3 className="mt-1 text-[0.98rem] font-semibold text-[var(--text-main)]">Send a review digest</h3>
+                      <p className="mt-1 text-[0.84rem] leading-5 text-[var(--text-soft)]">{action.explanation}</p>
+                      {action.preview ? (
+                        <div className="mt-3 rounded-lg border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 text-[0.82rem] text-[var(--text)]">
+                          <strong>{action.preview.email_subject}</strong>
+                          <div className="mt-2 text-[var(--text-soft)]">Focus: {action.preview.focus_topics.slice(0, 4).join(", ")}</div>
+                        </div>
+                      ) : null}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button className={buttonClass("primary")} onClick={() => void handleSendPendingAction(action)} type="button">Send</button>
+                        <button className={buttonClass("secondary")} onClick={() => void handleDismissPendingAction(action)} type="button">Dismiss</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {nextBestAction && (
+                <div className="msg">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="rounded-xl border border-[var(--panel-border)] bg-[var(--surface)] p-4">
+                      <div className="text-[0.72rem] font-bold uppercase tracking-[0.08em] text-[var(--accent)]">Next best step</div>
+                      <h3 className="mt-1 text-[1rem] font-semibold text-[var(--text-main)]">{nextBestAction.title}</h3>
+                      <p className="mt-1 text-[0.84rem] text-[var(--text-soft)]">{nextBestAction.reason}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {nextBestAction.actions.map((action) => (
+                          <button key={action.kind} className={buttonClass("secondary")} onClick={() => setDraftAndFocus(action.label)} type="button">
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {agentActionStatus ? (
+                <div className="ml-[3.1rem] text-[0.82rem] text-[var(--text-soft)]">{agentActionStatus}</div>
+              ) : null}
 
               {streamedText && (
                 <div className="msg">

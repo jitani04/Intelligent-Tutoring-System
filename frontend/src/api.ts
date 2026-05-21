@@ -1,6 +1,6 @@
 import { getToken } from "./auth";
 import { sortConversationsByRecentActivity } from "./conversations";
-import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, LectureNote, LectureNoteSummary, LectureTimelineEntry, Material, MindMap, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, Resource, SearchResponse, SessionSummary, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
+import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, LectureNote, LectureNoteSummary, LectureTimelineEntry, Material, MindMap, PendingAgentAction, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, Resource, ReviewEmailPreferences, SearchResponse, SessionSummary, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -126,6 +126,41 @@ export async function updateTutorPreferences(preferences: TutorPreferences): Pro
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(preferences),
+  });
+  return parseJson(response);
+}
+
+export async function updateReviewEmailPreferences(preferences: ReviewEmailPreferences): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE_URL}/auth/review-email-preferences`, {
+    method: "PATCH",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(preferences),
+  });
+  return parseJson(response);
+}
+
+export async function previewReviewDigest(subject?: string | null): Promise<PendingAgentAction> {
+  const response = await fetch(`${API_BASE_URL}/review-digests/preview`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ subject: subject ?? null, trigger_type: "manual" }),
+  });
+  return parseJson(response);
+}
+
+export async function sendReviewDigest(pendingActionId: number): Promise<{ status: string; provider: string; provider_message_id: string | null }> {
+  const response = await fetch(`${API_BASE_URL}/review-digests/send`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ pending_action_id: pendingActionId }),
+  });
+  return parseJson(response);
+}
+
+export async function rejectPendingAgentAction(actionId: number): Promise<PendingAgentAction> {
+  const response = await fetch(`${API_BASE_URL}/pending-agent-actions/${actionId}/reject`, {
+    method: "POST",
+    headers: buildHeaders(),
   });
   return parseJson(response);
 }
@@ -537,6 +572,13 @@ export async function generateSubjectQuiz(
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ count: options.count ?? 5, focus: options.focus ?? null }),
+  });
+  return parseJson(response);
+}
+
+export async function listSubjectQuizzes(subject: string): Promise<QuizRead[]> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/quizzes`, {
+    headers: buildHeaders(),
   });
   return parseJson(response);
 }

@@ -24,6 +24,7 @@ class ProjectProfile(Base):
     mind_map: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     learning_map_progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     knowledge_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    next_recommended_action: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

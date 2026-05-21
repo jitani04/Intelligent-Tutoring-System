@@ -1,4 +1,5 @@
 from app.models.conversation import Conversation
+from app.models.agent_action import PendingAgentAction, ReviewDigestLog
 from app.models.assignment import Assignment, CalendarFeed
 from app.models.key_idea import KeyIdea
 from app.models.lecture_note import LectureNote
@@ -17,6 +18,8 @@ __all__ = [
     "Assignment",
     "CalendarFeed",
     "Conversation",
+    "PendingAgentAction",
+    "ReviewDigestLog",
     "Message",
     "MessageFeedback",
     "PreferenceMemory",

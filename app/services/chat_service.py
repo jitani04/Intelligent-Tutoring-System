@@ -479,6 +479,9 @@ async def stream_chat(
     resource_provider: YouTubeResourceProvider | None = None,
     preference_summary: str | None = None,
     preference_memories: list[str] | None = None,
+    agent_state: dict[str, Any] | None = None,
+    study_plan: dict[str, Any] | None = None,
+    allowed_tool_names: list[str] | None = None,
 ) -> AsyncIterator[SseEvent]:
     turn_start_ms = time.monotonic() * 1000
     conv = await get_conversation_for_user(session=session, conversation_id=conversation_id, user_id=user_id)
@@ -529,6 +532,8 @@ async def stream_chat(
         retrieved_context=retrieved_context,
         preference_summary=preference_summary,
         preference_memories=preference_memories,
+        agent_state=agent_state,
+        study_plan=study_plan,
     )
 
     yield SseEvent(event="start", data={"conversation_id": conversation_id, "message_id": None})
@@ -651,7 +656,8 @@ async def stream_chat(
             )
             return
 
-        available_tools = [*AGENT_TOOLS]
+        allowed = set(allowed_tool_names or [tool["function"]["name"] for tool in AGENT_TOOLS])
+        available_tools = [tool for tool in AGENT_TOOLS if tool["function"]["name"] in allowed]
         if web_search_service is not None and web_search_service.is_configured:
             available_tools.append(WEB_SEARCH_TOOL)
 
@@ -676,6 +682,7 @@ async def stream_chat(
 
             for tc in tool_calls_data:
                 if tc["name"] == "generate_quiz":
+                    yield SseEvent(event="agent_step", data={"message": "Creating a practice question...", "tool": "generate_quiz"})
                     args = tc["args"]
                     question_key = (args.get("question") or "").strip().lower()
                     if question_key and question_key in quiz_questions_this_turn:
@@ -727,6 +734,7 @@ async def stream_chat(
                     })
 
                 elif tc["name"] == "create_diagram":
+                    yield SseEvent(event="agent_step", data={"message": "Creating a diagram...", "tool": "create_diagram"})
                     args = tc["args"]
                     raw_source = args.get("source", "")
                     source = raw_source.strip() if isinstance(raw_source, str) else ""
@@ -771,6 +779,7 @@ async def stream_chat(
                         })
 
                 elif tc["name"] == "find_image":
+                    yield SseEvent(event="agent_step", data={"message": "Finding a helpful image...", "tool": "find_image"})
                     args = tc["args"]
                     query = str(args.get("query", "")).strip()
                     caption = str(args.get("caption", "")).strip()
@@ -842,6 +851,7 @@ async def stream_chat(
                     )
 
                 elif tc["name"] == "find_resource":
+                    yield SseEvent(event="agent_step", data={"message": "Finding a helpful resource...", "tool": "find_resource"})
                     args = tc["args"]
                     topic = str(args.get("topic", "")).strip()
                     kind = str(args.get("kind", "")).strip().lower()
@@ -929,6 +939,7 @@ async def stream_chat(
                     )
 
                 elif tc["name"] == "save_key_idea":
+                    yield SseEvent(event="agent_step", data={"message": "Saving key idea...", "tool": "save_key_idea"})
                     args = tc["args"]
                     concept_key = (args.get("concept") or "").strip().lower()
                     if concept_key and concept_key in key_idea_concepts_this_turn:
@@ -965,6 +976,7 @@ async def stream_chat(
                     })
 
                 elif tc["name"] == "web_search":
+                    yield SseEvent(event="agent_step", data={"message": "Searching the web...", "tool": "web_search"})
                     args = tc["args"]
                     query = str(args.get("query", "")).strip()
                     freshness = str(args.get("freshness") or "noLimit")

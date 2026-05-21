@@ -9,11 +9,12 @@ interface Props {
   onAnswered?: (result: AttemptResult, answer: string) => void;
   onSkipped?: (result: AttemptResult) => void;
   hideSkip?: boolean;
+  allowRetry?: boolean;
 }
 
 type PendingAction = "submit" | "skip" | null;
 
-export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Props) {
+export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false, allowRetry = false }: Props) {
   const [selected, setSelected] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [skipped, setSkipped] = useState(false);
@@ -60,6 +61,15 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
   function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void handleSubmit();
+  }
+
+  function resetAttempt() {
+    setSelected("");
+    setSubmitted(false);
+    setSkipped(false);
+    setResult(null);
+    setPendingAction(null);
+    setError(null);
   }
 
   const optionBase =
@@ -185,6 +195,11 @@ export function QuizCard({ quiz, onAnswered, onSkipped, hideSkip = false }: Prop
             </div>
           )}
         </div>
+      )}
+      {allowRetry && submitted && (
+        <button className={buttonClass("secondary", "mt-3 w-full justify-center")} onClick={resetAttempt} type="button">
+          Try again
+        </button>
       )}
     </form>
   );

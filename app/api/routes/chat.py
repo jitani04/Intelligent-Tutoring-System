@@ -19,7 +19,8 @@ from app.models.message import Message, MessageRole
 from app.models.project_profile import ProjectProfile
 from app.models.user import User
 from app.schemas.chat import ChatRequest
-from app.services.chat_service import SseEvent, stream_chat
+from app.services.chat_service import SseEvent
+from app.services.agent_orchestrator import AgentOrchestrator
 from app.services.conversation_service import get_conversation_for_user
 from app.services.errors import ConversationNotFoundError
 from app.services.feedback_service import retrieve_preference_memories
@@ -408,11 +409,12 @@ async def stream_chat_endpoint(
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            source = stream_chat(
+            orchestrator = AgentOrchestrator()
+            source = orchestrator.stream_turn(
                 session=session,
                 llm_service=llm_service,
-                conversation_id=conversation_id,
-                user_id=user_id,
+                conversation=conversation,
+                user=user,
                 user_message=user_message,
                 system_prompt=system_prompt,
                 user_message_id=existing_user_message_id,

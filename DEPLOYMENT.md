@@ -86,6 +86,12 @@ OPENAI_TTS_VOICE=nova
 GOOGLE_CLIENT_ID=your_google_oauth_client_id.apps.googleusercontent.com
 PEXELS_API_KEY=
 
+EMAIL_PROVIDER=resend
+EMAIL_FROM_ADDRESS=Sapient <review@your-verified-domain.com>
+RESEND_API_KEY=your_resend_api_key
+APP_BASE_URL=https://your-frontend.example.com
+INTERNAL_JOB_TOKEN=replace_with_a_long_random_secret_for_scheduled_jobs
+
 CORS_ALLOW_ORIGINS=https://your-frontend.example.com
 ```
 
@@ -94,6 +100,8 @@ Notes:
 - `LLM_API_KEY` is used for both tutor generation and embeddings in the current implementation.
 - `OPENAI_TTS_API_KEY` is used for **both** `/tts` and `/stt`.
 - `S3_ENDPOINT_URL` should be blank for AWS S3 and set explicitly for R2, B2, MinIO, or another compatible provider.
+- `EMAIL_PROVIDER=noop` disables real review digest sends. Use `EMAIL_PROVIDER=resend` with a verified sender/domain for production email.
+- `INTERNAL_JOB_TOKEN` protects the scheduled review digest endpoint.
 
 ### Frontend
 
@@ -204,6 +212,26 @@ location /chat/ {
     proxy_read_timeout 3600s;
 }
 ```
+
+## Smart Review Digest Scheduler
+
+Automatic Smart Review Digest emails are driven by a GitHub Actions schedule in `.github/workflows/review-digests.yml`.
+
+Set these GitHub configuration values:
+
+- Secret: `INTERNAL_JOB_TOKEN` should match the backend `INTERNAL_JOB_TOKEN`.
+- Variable or secret: `REVIEW_DIGEST_API_URL` should be the production backend URL, for example `https://your-api.example.com`.
+
+If `REVIEW_DIGEST_API_URL` is not set, the workflow falls back to `VITE_API_BASE_URL` if that already points at the production backend.
+
+The workflow calls:
+
+```http
+POST /internal/review-digests/run
+X-Internal-Job-Token: ...
+```
+
+Manual digest sends do not need this scheduler. The scheduler only powers automatic opt-in reminders.
 
 ## Deployment Checklist
 

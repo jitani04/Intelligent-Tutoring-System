@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, time
 
-from sqlalchemy import Boolean, DateTime, String, Text, func
+from sqlalchemy import Boolean, DateTime, String, Text, Time, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -23,6 +23,13 @@ class User(Base):
     tutor_voice: Mapped[str] = mapped_column(String(32), default="nova", server_default="nova", nullable=False)
     preference_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     preference_summary_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    enable_review_emails: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    reminder_frequency: Mapped[str] = mapped_column(String(32), default="before_deadlines_only", server_default="before_deadlines_only", nullable=False)
+    preferred_reminder_time: Mapped[time | None] = mapped_column(Time(), nullable=True)
+    review_email_address: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    digest_style: Mapped[str] = mapped_column(String(32), default="concise", server_default="concise", nullable=False)
+    include_key_notes: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    include_outside_study_suggestions: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="user")

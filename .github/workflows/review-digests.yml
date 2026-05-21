@@ -1,0 +1,38 @@
+name: Review Digests
+
+on:
+  schedule:
+    # Runs daily at 15:00 UTC, which is 8 AM Pacific during daylight saving time.
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: review-digests
+  cancel-in-progress: false
+
+jobs:
+  run-review-digests:
+    name: Run Smart Review Digest Job
+    runs-on: ubuntu-latest
+    env:
+      REVIEW_DIGEST_API_URL: ${{ vars.REVIEW_DIGEST_API_URL || secrets.REVIEW_DIGEST_API_URL || vars.VITE_API_BASE_URL || secrets.VITE_API_BASE_URL }}
+      INTERNAL_JOB_TOKEN: ${{ secrets.INTERNAL_JOB_TOKEN }}
+
+    steps:
+      - name: Validate scheduler configuration
+        run: |
+          if [ -z "${REVIEW_DIGEST_API_URL}" ]; then
+            echo "REVIEW_DIGEST_API_URL is not configured. Set it to the production backend URL."
+            exit 1
+          fi
+          if [ -z "${INTERNAL_JOB_TOKEN}" ]; then
+            echo "INTERNAL_JOB_TOKEN is not configured as a GitHub secret."
+            exit 1
+          fi
+
+      - name: Trigger review digest emails
+        run: |
+          curl --fail-with-body --show-error --silent \
+            --request POST "${REVIEW_DIGEST_API_URL%/}/internal/review-digests/run" \
+            --header "X-Internal-Job-Token: ${INTERNAL_JOB_TOKEN}" \
+            --header "Content-Type: application/json"

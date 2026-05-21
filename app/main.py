@@ -16,6 +16,7 @@ from app.api.routes.models import router as models_router
 from app.api.routes.projects import router as projects_router
 from app.api.routes.quiz import router as quiz_router
 from app.api.routes.resources import router as resources_router
+from app.api.routes.review_digests import router as review_digests_router
 from app.api.routes.flashcards import router as flashcards_router
 from app.api.routes.feedback import router as feedback_router
 from app.api.routes.lecture_notes import router as lecture_notes_router
@@ -104,6 +105,7 @@ app.include_router(models_router)
 app.include_router(projects_router)
 app.include_router(quiz_router)
 app.include_router(resources_router)
+app.include_router(review_digests_router)
 app.include_router(artifacts_router)
 app.include_router(lecture_notes_router)
 app.include_router(assignments_router)

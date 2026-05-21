@@ -4183,6 +4183,32 @@ h1, h2, h3 {
   font-size: 0.82rem;
   color: var(--success);
 }
+.subject-quiz-history {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto 1.5rem;
+}
+.subject-quiz-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.9rem;
+}
+.subject-quiz-item {
+  min-width: 0;
+}
+.subject-quiz-item .quiz-card {
+  max-width: none;
+  height: 100%;
+}
+.subject-quiz-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
 
 .practice-modal-overlay {
   position: fixed;

@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     pexels_api_key: str = Field(default="", alias="PEXELS_API_KEY")
     youtube_api_key: str = Field(default="", alias="YOUTUBE_API_KEY")
+    email_provider: str = Field(default="noop", alias="EMAIL_PROVIDER")
+    email_from_address: str = Field(default="", alias="EMAIL_FROM_ADDRESS")
+    resend_api_key: str = Field(default="", alias="RESEND_API_KEY")
+    app_base_url: str = Field(default="http://127.0.0.1:5173", alias="APP_BASE_URL")
+    internal_job_token: str = Field(default="", alias="INTERNAL_JOB_TOKEN")
 
     google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
 

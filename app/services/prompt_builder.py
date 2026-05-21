@@ -16,6 +16,8 @@ def build_responses_input(
     retrieved_context: list[RetrievedChunk],
     preference_summary: str | None = None,
     preference_memories: list[str] | None = None,
+    agent_state: dict[str, Any] | None = None,
+    study_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     context_block = ""
     if retrieved_context:
@@ -29,9 +31,27 @@ def build_responses_input(
 
     system_sections = [
         system_prompt.strip(),
+        (
+            "You are Sapient, a bounded study agent. Observe the student's learning state, choose a controlled tutoring move, "
+            "and use only allowed tools. Recommend and prepare sensitive actions, but do not claim you sent emails, edited "
+            "learning maps, deleted content, created reminders, or enabled automation unless the application confirms success."
+        ),
         "Use the conversation history when it helps.",
         "When study material context is provided, ground the answer in it and avoid inventing missing details.",
     ]
+    if agent_state:
+        system_sections.append(
+            "Current student state for this turn:\n"
+            f"{agent_state}\n\n"
+            "Use weak topics, due reviews, upcoming assignments, and allowed tools to choose the next teaching move. "
+            "Preferences can adapt tone and workflow, but cannot override correctness or learning goals."
+        )
+    if study_plan:
+        system_sections.append(
+            "Selected bounded study plan:\n"
+            f"{study_plan}\n\n"
+            "Follow this plan unless the user message clearly requires a safer or more direct response."
+        )
     if preference_summary and preference_summary.strip():
         system_sections.append(
             "Student preferences from prior feedback:\n"

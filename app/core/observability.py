@@ -89,6 +89,34 @@ def record_llm_tokens(model: str, kind: str, count: int) -> None:
     )
 
 
+def record_review_digest_generated() -> None:
+    _counter("review_digest_generated_total", "Review digests generated.").add(1)
+
+
+def record_review_digest_email_sent() -> None:
+    _counter("review_digest_email_sent_total", "Review digest emails sent.").add(1)
+
+
+def record_review_digest_email_failed() -> None:
+    _counter("review_digest_email_failed_total", "Review digest email failures.").add(1)
+
+
+def record_review_digest_email_skipped(reason: str) -> None:
+    _counter("review_digest_email_skipped_total", "Review digest emails skipped.").add(1, {"reason": reason})
+
+
+def record_pending_agent_action_created(action_type: str) -> None:
+    _counter("pending_agent_action_created_total", "Pending agent actions created.").add(1, {"action_type": action_type})
+
+
+def record_pending_agent_action_approved(action_type: str) -> None:
+    _counter("pending_agent_action_approved_total", "Pending agent actions approved.").add(1, {"action_type": action_type})
+
+
+def record_pending_agent_action_rejected(action_type: str) -> None:
+    _counter("pending_agent_action_rejected_total", "Pending agent actions rejected.").add(1, {"action_type": action_type})
+
+
 # ---------------------------------------------------------------------------
 # Initialization
 

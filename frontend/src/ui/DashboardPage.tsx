@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, BookOpen, CalendarDays, Plus } from "lucide-react";
 
-import { getCurrentUser, listAssignments, listConversations, listProjectProfiles } from "../api";
+import { getCurrentUser, listAssignments, listConversations, listProjectProfiles, previewReviewDigest, sendReviewDigest } from "../api";
 import { conversationLastActivityTime } from "../conversations";
 import { normalizeSubject } from "../subjects";
-import type { Conversation } from "../types";
+import type { Conversation, PendingAgentAction } from "../types";
 import { useStartSessionModal } from "./StartSessionModalContext";
 import { buttonClass } from "./buttonClass";
 
@@ -99,6 +100,9 @@ function formatDue(value: string): string {
 
 export function DashboardPage() {
   const { openStartSession } = useStartSessionModal();
+  const [digestAction, setDigestAction] = useState<PendingAgentAction | null>(null);
+  const [digestStatus, setDigestStatus] = useState<string | null>(null);
+  const [digestBusy, setDigestBusy] = useState(false);
   const { data: user } = useQuery({
     queryKey: ["me"],
     queryFn: getCurrentUser,
@@ -157,6 +161,35 @@ export function DashboardPage() {
   const displayName = user?.name?.trim() || user?.email.split("@")[0] || "there";
   const firstName = displayName.split(/\s+/)[0];
 
+  async function handleDashboardDigest() {
+    setDigestBusy(true);
+    setDigestStatus(null);
+    try {
+      const subject = upcomingAssignments.find((assignment) => assignment.subject)?.subject ?? projects[0]?.subject ?? null;
+      const action = await previewReviewDigest(subject);
+      setDigestAction(action);
+      setDigestStatus("Review plan ready.");
+    } catch (err) {
+      setDigestStatus(err instanceof Error ? err.message : "Could not build review plan.");
+    } finally {
+      setDigestBusy(false);
+    }
+  }
+
+  async function handleSendDashboardDigest() {
+    if (!digestAction) return;
+    setDigestBusy(true);
+    try {
+      const result = await sendReviewDigest(digestAction.id);
+      setDigestStatus(`Review plan sent${result.provider === "noop" ? " (development no-op)" : ""}.`);
+      setDigestAction(null);
+    } catch (err) {
+      setDigestStatus(err instanceof Error ? err.message : "Could not send review plan.");
+    } finally {
+      setDigestBusy(false);
+    }
+  }
+
   return (
     <div className="dashboard">
       <div className="dashboard-hero">
@@ -185,6 +218,29 @@ export function DashboardPage() {
           </div>
         </section>
       )}
+
+      <section className="mx-auto mb-4 flex max-w-[1120px] flex-col gap-3 rounded-xl border border-[var(--panel-border)] bg-[var(--surface)] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[0.78rem] font-bold uppercase tracking-[0.08em] text-[var(--accent)]">Smart Review</div>
+            <p className="m-0 text-sm text-[var(--text-soft)]">Generate a bounded review digest from deadlines, weak topics, notes, and due flashcards.</p>
+          </div>
+          <button className={buttonClass("secondary")} disabled={digestBusy} onClick={() => void handleDashboardDigest()} type="button">
+            {digestBusy ? "Preparing..." : "Email review plan"}
+          </button>
+        </div>
+        {digestAction?.preview ? (
+          <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 text-sm text-[var(--text)]">
+            <strong>{digestAction.preview.email_subject}</strong>
+            <p className="m-0 mt-1 text-[var(--text-soft)]">{digestAction.preview.reason}</p>
+            <div className="mt-3 flex gap-2">
+              <button className={buttonClass("primary")} disabled={digestBusy} onClick={() => void handleSendDashboardDigest()} type="button">Send</button>
+              <button className={buttonClass("secondary")} disabled={digestBusy} onClick={() => setDigestAction(null)} type="button">Dismiss</button>
+            </div>
+          </div>
+        ) : null}
+        {digestStatus ? <p className="m-0 text-sm text-[var(--text-soft)]">{digestStatus}</p> : null}
+      </section>
 
       <div className="dashboard-collection">
         <div className="dashboard-collection-bar">

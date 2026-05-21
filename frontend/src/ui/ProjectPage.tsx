@@ -4,14 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Circle, Download, ExternalLink, LockKeyhole, MessageCircle, MoreHorizontal, Pencil, Play, Plus, Trash2 } from "lucide-react";
 
-import { RateLimitError, createConversation, createKeyIdea, createManualQuiz, deleteConversation, deleteKeyIdea, deleteLectureNote, deleteProjectSubject, deleteResource, generateMindMap, generateSubjectFlashcards, generateSubjectQuiz, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getLectureNote, getProjectProfile, getProjectProgress, listAllKeyIdeas, listAssignments, listConversations, listLectureNotes, listMaterials, listSubjectResources, updateConversationTitle, updateKeyIdea, updateLearningMapProgress, updateProjectMindMap } from "../api";
+import { RateLimitError, createConversation, createKeyIdea, createManualQuiz, deleteConversation, deleteKeyIdea, deleteLectureNote, deleteProjectSubject, deleteResource, generateMindMap, generateSubjectFlashcards, generateSubjectQuiz, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getLectureNote, getProjectProfile, getProjectProgress, listAllKeyIdeas, listAssignments, listConversations, listLectureNotes, listMaterials, listSubjectQuizzes, listSubjectResources, previewReviewDigest, sendReviewDigest, updateConversationTitle, updateKeyIdea, updateLearningMapProgress, updateProjectMindMap } from "../api";
 import { sortConversationsByRecentActivity } from "../conversations";
 import { formatSubjectName, normalizeSubject } from "../subjects";
-import type { Conversation, Flashcard, KeyIdea, KnowledgeStateEntry, LearningMapStatus, LectureNote, MindMap, MindMapNode, PracticeQuizItem, ProjectProgress, SessionSummary } from "../types";
+import type { Conversation, Flashcard, KeyIdea, KnowledgeStateEntry, LearningMapStatus, LectureNote, MindMap, MindMapNode, PendingAgentAction, PracticeQuizItem, ProjectProgress, SessionSummary } from "../types";
 import { FlashcardsView } from "./FlashcardsPage";
 import { LectureModeOverlay } from "./LectureModeOverlay";
 import { LectureNoteViewer } from "./LectureNoteViewer";
 import { MaterialsView } from "./MaterialsPage";
+import { QuizCard } from "./QuizCard";
 import { ResourceCard } from "./ResourceCard";
 import { useStartSessionModal } from "./StartSessionModalContext";
 import { WeakQuizModal } from "./WeakQuizModal";
@@ -619,6 +620,9 @@ export function ProjectPage() {
   const [practiceStatus, setPracticeStatus] = useState<string | null>(null);
   const [manualQuizOpen, setManualQuizOpen] = useState(false);
   const [manualFlashcardOpen, setManualFlashcardOpen] = useState(false);
+  const [reviewDigestAction, setReviewDigestAction] = useState<PendingAgentAction | null>(null);
+  const [reviewDigestStatus, setReviewDigestStatus] = useState<string | null>(null);
+  const [reviewDigestBusy, setReviewDigestBusy] = useState(false);
   const [learningProgress, setLearningProgress] = useState<Record<string, LearningMapStatus>>(() => getStoredLearningProgress(decoded));
   const [selectedLearningNodeId, setSelectedLearningNodeId] = useState<string | null>(null);
   const [editingMap, setEditingMap] = useState(false);
@@ -759,6 +763,17 @@ export function ProjectPage() {
     staleTime: 30_000,
   });
   const dueCount = dueFlashcards?.total_due ?? 0;
+
+  const {
+    data: subjectQuizzes = [],
+    isError: subjectQuizzesError,
+    isLoading: subjectQuizzesLoading,
+  } = useQuery({
+    queryKey: ["subject-quizzes", decoded],
+    queryFn: () => listSubjectQuizzes(decoded),
+    enabled: Boolean(decoded),
+    staleTime: 30_000,
+  });
 
   const filteredNotes = useMemo(() => {
     const q = noteSearch.trim().toLowerCase();
@@ -1017,6 +1032,7 @@ export function ProjectPage() {
       const data = await generateSubjectQuiz(decoded, { count: 5 });
       setWeakQuizzes(data.quizzes);
       setPracticeStatus(`Generated ${data.quizzes.length} new quiz question${data.quizzes.length === 1 ? "" : "s"}.`);
+      await queryClient.invalidateQueries({ queryKey: ["subject-quizzes", decoded] });
     } catch (err) {
       if (err instanceof RateLimitError) {
         setPracticeError(`AI is rate-limited. Try again in ~${err.retryAfterSeconds}s.`);
@@ -1050,6 +1066,7 @@ export function ProjectPage() {
       });
       setManualQuizOpen(false);
       setPracticeStatus("Quiz question saved.");
+      await queryClient.invalidateQueries({ queryKey: ["subject-quizzes", decoded] });
     } catch (err) {
       setPracticeError(err instanceof Error ? err.message : "Failed to save quiz.");
     }
@@ -1091,6 +1108,41 @@ export function ProjectPage() {
     } finally {
       setPracticeBusy(null);
     }
+  }
+
+  async function handlePreviewReviewDigest() {
+    setReviewDigestBusy(true);
+    setReviewDigestStatus(null);
+    try {
+      const action = await previewReviewDigest(decoded);
+      setReviewDigestAction(action);
+      setReviewDigestStatus("Review plan ready to send.");
+    } catch (err) {
+      setReviewDigestStatus(err instanceof Error ? err.message : "Could not build review plan.");
+    } finally {
+      setReviewDigestBusy(false);
+    }
+  }
+
+  async function handleSendReviewDigest() {
+    if (!reviewDigestAction) return;
+    setReviewDigestBusy(true);
+    setReviewDigestStatus(null);
+    try {
+      const result = await sendReviewDigest(reviewDigestAction.id);
+      setReviewDigestStatus(`Review plan sent${result.provider === "noop" ? " (development no-op)" : ""}.`);
+      setReviewDigestAction(null);
+    } catch (err) {
+      setReviewDigestStatus(err instanceof Error ? err.message : "Could not send review plan.");
+    } finally {
+      setReviewDigestBusy(false);
+    }
+  }
+
+  function handleSubjectQuizAttempted() {
+    void queryClient.invalidateQueries({ queryKey: ["project-progress", decoded] });
+    void queryClient.invalidateQueries({ queryKey: ["project-profile", decoded] });
+    void queryClient.invalidateQueries({ queryKey: ["subject-quizzes", decoded] });
   }
 
   useEffect(() => {
@@ -1366,6 +1418,14 @@ export function ProjectPage() {
             >
               New study session
             </button>
+            <button
+              className="button button-secondary project-hero-secondary"
+              disabled={reviewDigestBusy}
+              onClick={() => void handlePreviewReviewDigest()}
+              type="button"
+            >
+              Email review plan
+            </button>
             <details className="project-action-menu">
               <summary aria-label="Subject actions" title="Subject actions">
                 <MoreHorizontal size={18} strokeWidth={2} />
@@ -1391,6 +1451,30 @@ export function ProjectPage() {
       </div>
 
       {deleteSubjectError ? <p className="error-text">{deleteSubjectError}</p> : null}
+
+      {(reviewDigestAction?.preview || reviewDigestStatus) && (
+        <section className="mx-auto mb-4 flex w-full max-w-[1100px] flex-col gap-3 rounded-xl border border-[var(--panel-border)] bg-[var(--surface)] p-4">
+          {reviewDigestAction?.preview ? (
+            <>
+              <div>
+                <div className="text-[0.72rem] font-bold uppercase tracking-[0.08em] text-[var(--accent)]">Review digest preview</div>
+                <h2 className="mt-1 text-[1rem] font-semibold text-[var(--text-main)]">{reviewDigestAction.preview.email_subject}</h2>
+                <p className="mt-1 text-sm text-[var(--text-soft)]">{reviewDigestAction.preview.reason}</p>
+              </div>
+              <div className="text-sm text-[var(--text-soft)]">Focus: {reviewDigestAction.preview.focus_topics.slice(0, 5).join(", ")}</div>
+              <div className="flex flex-wrap gap-2">
+                <button className="button button-primary" disabled={reviewDigestBusy} onClick={() => void handleSendReviewDigest()} type="button">
+                  {reviewDigestBusy ? "Sending..." : "Send"}
+                </button>
+                <button className="button button-secondary" disabled={reviewDigestBusy} onClick={() => setReviewDigestAction(null)} type="button">
+                  Dismiss
+                </button>
+              </div>
+            </>
+          ) : null}
+          {reviewDigestStatus ? <p className="settings-copy">{reviewDigestStatus}</p> : null}
+        </section>
+      )}
 
       {showMindmapWarning && (
         <div
@@ -1442,6 +1526,8 @@ export function ProjectPage() {
               ? ` (${lectureNotes.length})`
               : tab === "materials" && subjectMaterials.length > 0
               ? ` (${subjectMaterials.length})`
+              : tab === "quizzes" && subjectQuizzes.length > 0
+              ? ` (${subjectQuizzes.length})`
               : tab === "flashcards" && dueCount > 0
               ? ` (${dueCount})`
               : "";
@@ -1462,31 +1548,78 @@ export function ProjectPage() {
 
       {activeTab === "materials" && <MaterialsView subject={decoded} />}
       {activeTab === "quizzes" && (
-        <section className="project-section-shell project-practice-section project-tab-practice">
-          <div className="project-practice-card project-practice-card-wide">
-            <h3>Quizzes</h3>
-            <p>Generate a new quiz across {displaySubject} or write your own questions.</p>
-            <div className="project-practice-actions">
-              <button
-                className="button button-primary"
-                disabled={practiceBusy === "quiz"}
-                onClick={() => void handleGenerateSubjectQuiz()}
-                type="button"
-              >
-                {practiceBusy === "quiz" ? "Generating..." : "Generate quiz"}
-              </button>
-              <button
-                className="button button-secondary"
-                onClick={() => setManualQuizOpen(true)}
-                type="button"
-              >
-                Add question
-              </button>
+        <>
+          <section className="project-section-shell project-practice-section project-tab-practice">
+            <div className="project-practice-card project-practice-card-wide">
+              <h3>Quizzes</h3>
+              <p>Generate a new quiz across {displaySubject} or write your own questions.</p>
+              <div className="project-practice-actions">
+                <button
+                  className="button button-primary"
+                  disabled={practiceBusy === "quiz"}
+                  onClick={() => void handleGenerateSubjectQuiz()}
+                  type="button"
+                >
+                  {practiceBusy === "quiz" ? "Generating..." : "Generate quiz"}
+                </button>
+                <button
+                  className="button button-secondary"
+                  onClick={() => setManualQuizOpen(true)}
+                  type="button"
+                >
+                  Add question
+                </button>
+              </div>
             </div>
-          </div>
-          {practiceError && <p className="project-practice-error">{practiceError}</p>}
-          {practiceStatus && <p className="project-practice-status">{practiceStatus}</p>}
-        </section>
+            {practiceError && <p className="project-practice-error">{practiceError}</p>}
+            {practiceStatus && <p className="project-practice-status">{practiceStatus}</p>}
+          </section>
+
+          <section className="subject-quiz-history">
+            <div className="notes-notebook-header">
+              <div>
+                <h2>Past questions</h2>
+                <p>Retry quiz questions from this subject. Each answer is saved as a new attempt.</p>
+              </div>
+            </div>
+
+            {subjectQuizzesLoading ? (
+              <p className="notebook-loading">Loading quiz questions...</p>
+            ) : subjectQuizzesError ? (
+              <p className="project-practice-error">Could not load past quiz questions.</p>
+            ) : subjectQuizzes.length === 0 ? (
+              <div className="notebook-empty">
+                <h3>No past questions</h3>
+                <p>No quiz questions yet. Generate a quiz or ask Sapient to quiz you during a study session.</p>
+              </div>
+            ) : (
+              <div className="subject-quiz-list">
+                {subjectQuizzes.map((quiz) => (
+                  <article className="subject-quiz-item" key={`subject-quiz-${quiz.id}`}>
+                    <div className="subject-quiz-meta">
+                      <span>{quiz.quiz_type === "multiple_choice" ? "Multiple choice" : "Short answer"}</span>
+                      <span>{formatTimestamp(quiz.created_at)}</span>
+                    </div>
+                    <QuizCard
+                      quiz={{
+                        quiz_id: quiz.id,
+                        question: quiz.question,
+                        concept: quiz.concept,
+                        quiz_type: quiz.quiz_type,
+                        options: quiz.options,
+                        message_id: quiz.message_id,
+                      }}
+                      allowRetry
+                      hideSkip
+                      onAnswered={handleSubjectQuizAttempted}
+                      onSkipped={handleSubjectQuizAttempted}
+                    />
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
       )}
       {activeTab === "flashcards" && (
         <>

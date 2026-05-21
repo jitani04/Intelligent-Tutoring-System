@@ -1,11 +1,11 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { fetchSpeech, getCurrentUser, updateTutorPreferences } from "../api";
+import { fetchSpeech, getCurrentUser, previewReviewDigest, updateReviewEmailPreferences, updateTutorPreferences } from "../api";
 import { ThemeToggle } from "./ThemeToggle";
 import { useReadingPrefs } from "../ReadingPrefsContext";
 import type { FontSize, FontFamily } from "../readingPrefs";
-import type { TutorVoice } from "../types";
+import type { PendingAgentAction, ReviewEmailPreferences, TutorVoice } from "../types";
 import { buttonClass } from "./buttonClass";
 
 const POMODORO_KEY = "sapient-pomodoro";
@@ -102,6 +102,18 @@ export function SettingsPage() {
   const [customizationStatus, setCustomizationStatus] = useState<string | null>(null);
   const [customizationError, setCustomizationError] = useState<string | null>(null);
   const [savingCustomization, setSavingCustomization] = useState(false);
+  const [reviewPrefs, setReviewPrefs] = useState<ReviewEmailPreferences & { preferred_reminder_time: string; review_email_address: string }>({
+    enable_review_emails: false,
+    reminder_frequency: "before_deadlines_only" as const,
+    preferred_reminder_time: "",
+    review_email_address: "",
+    digest_style: "concise" as const,
+    include_key_notes: true,
+    include_outside_study_suggestions: true,
+  });
+  const [reviewPreview, setReviewPreview] = useState<PendingAgentAction | null>(null);
+  const [reviewStatus, setReviewStatus] = useState<string | null>(null);
+  const [savingReviewPrefs, setSavingReviewPrefs] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -110,6 +122,15 @@ export function SettingsPage() {
     setTutorStyle(user.tutor_style || "Socratic guide");
     setTutorInstructions(user.tutor_instructions || "");
     setTutorVoice(user.tutor_voice || "nova");
+    setReviewPrefs({
+      enable_review_emails: user.enable_review_emails,
+      reminder_frequency: user.reminder_frequency,
+      preferred_reminder_time: user.preferred_reminder_time ?? "",
+      review_email_address: user.review_email_address ?? user.email,
+      digest_style: user.digest_style,
+      include_key_notes: user.include_key_notes,
+      include_outside_study_suggestions: user.include_outside_study_suggestions,
+    });
   }, [user]);
 
   useEffect(() => {
@@ -169,6 +190,33 @@ export function SettingsPage() {
       setCustomizationError(err instanceof Error ? err.message : "Could not save tutor preferences.");
     } finally {
       setSavingCustomization(false);
+    }
+  }
+
+  async function handleReviewSubmit(event: FormEvent) {
+    event.preventDefault();
+    setSavingReviewPrefs(true);
+    setReviewStatus(null);
+    try {
+      if (reviewPrefs.enable_review_emails && !reviewPreview) {
+        const preview = await previewReviewDigest(null);
+        setReviewPreview(preview);
+        setReviewStatus("Preview generated. Review it, then save again to enable reminders.");
+        return;
+      }
+      const updated = await updateReviewEmailPreferences({
+        ...reviewPrefs,
+        preferred_reminder_time: reviewPrefs.preferred_reminder_time || null,
+        review_email_address: reviewPrefs.review_email_address || null,
+      });
+      queryClient.setQueryData(["me"], updated);
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+      setReviewStatus("Review email preferences saved.");
+      setReviewPreview(null);
+    } catch (err) {
+      setReviewStatus(err instanceof Error ? err.message : "Could not save review email preferences.");
+    } finally {
+      setSavingReviewPrefs(false);
     }
   }
 
@@ -398,6 +446,89 @@ export function SettingsPage() {
                 </div>
               )}
             </div>
+
+            <form className="content-card prefs-card mt-4" onSubmit={(event) => void handleReviewSubmit(event)}>
+              <div className="content-card-title">Review emails</div>
+              <p className="settings-copy">Sapient can prepare focused review digests for deadlines, due flashcards, and weak topics. Emails are off unless you opt in.</p>
+              <div className="prefs-row">
+                <div className="prefs-row-label">
+                  <span>Automatic review emails</span>
+                  <p className="settings-copy">You will see a preview before this is enabled.</p>
+                </div>
+                <Switch
+                  checked={reviewPrefs.enable_review_emails}
+                  onChange={() => setReviewPrefs((current) => ({ ...current, enable_review_emails: !current.enable_review_emails }))}
+                  label="Toggle review emails"
+                />
+              </div>
+              <label className="flow-field">
+                <span>Email address</span>
+                <input
+                  type="email"
+                  value={reviewPrefs.review_email_address}
+                  onChange={(event) => setReviewPrefs((current) => ({ ...current, review_email_address: event.target.value }))}
+                />
+              </label>
+              <div className="prefs-row">
+                <div className="prefs-row-label"><span>Frequency</span></div>
+                <div className="prefs-pills">
+                  {(["before_deadlines_only", "daily", "weekly"] as const).map((value) => (
+                    <button
+                      key={value}
+                      className={`prefs-pill ${reviewPrefs.reminder_frequency === value ? "selected" : ""}`}
+                      onClick={() => setReviewPrefs((current) => ({ ...current, reminder_frequency: value }))}
+                      type="button"
+                    >
+                      {value === "before_deadlines_only" ? "Before deadlines" : value}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label className="flow-field">
+                <span>Preferred time</span>
+                <input
+                  type="time"
+                  value={reviewPrefs.preferred_reminder_time}
+                  onChange={(event) => setReviewPrefs((current) => ({ ...current, preferred_reminder_time: event.target.value }))}
+                />
+              </label>
+              <div className="prefs-row">
+                <div className="prefs-row-label"><span>Digest style</span></div>
+                <div className="prefs-pills">
+                  {(["concise", "detailed"] as const).map((value) => (
+                    <button
+                      key={value}
+                      className={`prefs-pill ${reviewPrefs.digest_style === value ? "selected" : ""}`}
+                      onClick={() => setReviewPrefs((current) => ({ ...current, digest_style: value }))}
+                      type="button"
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="prefs-row">
+                <div className="prefs-row-label"><span>Include key notes</span></div>
+                <Switch checked={reviewPrefs.include_key_notes} onChange={() => setReviewPrefs((current) => ({ ...current, include_key_notes: !current.include_key_notes }))} label="Toggle key notes in digest" />
+              </div>
+              <div className="prefs-row">
+                <div className="prefs-row-label"><span>Outside-study suggestions</span></div>
+                <Switch checked={reviewPrefs.include_outside_study_suggestions} onChange={() => setReviewPrefs((current) => ({ ...current, include_outside_study_suggestions: !current.include_outside_study_suggestions }))} label="Toggle outside study suggestions" />
+              </div>
+              {reviewPreview?.preview ? (
+                <div className="rounded-xl border border-[var(--panel-border)] bg-[var(--panel-bg)] p-3 text-sm text-[var(--text)]">
+                  <strong>{reviewPreview.preview.email_subject}</strong>
+                  <p className="mt-1 text-[var(--text-soft)]">{reviewPreview.preview.reason}</p>
+                  <p className="mt-2 text-[var(--text-soft)]">Focus: {reviewPreview.preview.focus_topics.slice(0, 4).join(", ")}</p>
+                </div>
+              ) : null}
+              {reviewStatus ? <p className="settings-copy">{reviewStatus}</p> : null}
+              <div className="settings-actions">
+                <button className={buttonClass("primary")} disabled={savingReviewPrefs} type="submit">
+                  {savingReviewPrefs ? "Saving..." : reviewPrefs.enable_review_emails && !reviewPreview ? "Preview before enabling" : "Save review emails"}
+                </button>
+              </div>
+            </form>
 
           </div>
         </div>

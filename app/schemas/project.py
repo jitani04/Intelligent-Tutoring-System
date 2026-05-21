@@ -44,6 +44,7 @@ class ProjectProfileRead(BaseModel):
     mind_map: dict[str, Any] | None = None
     learning_map_progress: dict[str, LearningMapStatus] | None = None
     knowledge_state: dict[str, KnowledgeStateRead] | None = None
+    next_recommended_action: dict[str, Any] | None = None
     created_at: datetime
 
 

@@ -1,6 +1,7 @@
+from datetime import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from pydantic import BaseModel, EmailStr
@@ -14,6 +15,7 @@ from app.core.rate_limit import rate_limit_ip
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db_session as get_db
 from app.models.user import User
+from app.services.onboarding_email_service import send_onboarding_email
 from app.services.tts_service import validate_tutor_voice
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -58,6 +60,16 @@ class TutorPreferencesRequest(BaseModel):
     tutor_voice: str = "nova"
 
 
+class ReviewEmailPreferencesRequest(BaseModel):
+    enable_review_emails: bool
+    reminder_frequency: str = "before_deadlines_only"
+    preferred_reminder_time: time | None = None
+    review_email_address: EmailStr | None = None
+    digest_style: str = "concise"
+    include_key_notes: bool = True
+    include_outside_study_suggestions: bool = True
+
+
 class UserResponse(BaseModel):
     id: int
     email: EmailStr
@@ -69,6 +81,13 @@ class UserResponse(BaseModel):
     tutor_style: str
     tutor_instructions: str
     tutor_voice: str
+    enable_review_emails: bool
+    reminder_frequency: str
+    preferred_reminder_time: time | None = None
+    review_email_address: EmailStr | None = None
+    digest_style: str
+    include_key_notes: bool
+    include_outside_study_suggestions: bool
 
     @classmethod
     def from_user(cls, user: User) -> "UserResponse":
@@ -83,6 +102,13 @@ class UserResponse(BaseModel):
             tutor_style=user.tutor_style,
             tutor_instructions=user.tutor_instructions,
             tutor_voice=user.tutor_voice,
+            enable_review_emails=user.enable_review_emails,
+            reminder_frequency=user.reminder_frequency,
+            preferred_reminder_time=user.preferred_reminder_time,
+            review_email_address=user.review_email_address,
+            digest_style=user.digest_style,
+            include_key_notes=user.include_key_notes,
+            include_outside_study_suggestions=user.include_outside_study_suggestions,
         )
 
 
@@ -98,7 +124,7 @@ class TokenResponse(BaseModel):
     status_code=status.HTTP_201_CREATED,
     dependencies=[_auth_rate_limit],
 )
-async def register(body: RegisterRequest, db: DbDep) -> TokenResponse:
+async def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DbDep) -> TokenResponse:
     existing = await db.scalar(select(User).where(User.email == body.email))
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered.")
@@ -107,6 +133,7 @@ async def register(body: RegisterRequest, db: DbDep) -> TokenResponse:
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    background_tasks.add_task(send_onboarding_email, user_id=user.id, email=user.email, name=user.name)
 
     return TokenResponse(access_token=create_access_token(user.id), user=UserResponse.from_user(user))
 
@@ -121,7 +148,7 @@ async def login(body: LoginRequest, db: DbDep) -> TokenResponse:
 
 
 @router.post("/google", response_model=TokenResponse, dependencies=[_auth_rate_limit])
-async def login_with_google(body: GoogleAuthRequest, db: DbDep) -> TokenResponse:
+async def login_with_google(body: GoogleAuthRequest, background_tasks: BackgroundTasks, db: DbDep) -> TokenResponse:
     settings = get_settings()
     if not settings.google_client_id:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured.")
@@ -148,15 +175,19 @@ async def login_with_google(body: GoogleAuthRequest, db: DbDep) -> TokenResponse
     if not user:
         user = await db.scalar(select(User).where(User.email == email))
 
+    is_new_user = False
     if user:
         user.google_id = user.google_id or google_id
         user.name = user.name or display_name
     else:
         user = User(email=email, google_id=google_id, name=display_name)
         db.add(user)
+        is_new_user = True
 
     await db.commit()
     await db.refresh(user)
+    if is_new_user:
+        background_tasks.add_task(send_onboarding_email, user_id=user.id, email=user.email, name=user.name)
 
     return TokenResponse(access_token=create_access_token(user.id), user=UserResponse.from_user(user))
 
@@ -203,6 +234,43 @@ async def update_tutor_preferences(
     await db.commit()
     await db.refresh(user)
 
+    return UserResponse.from_user(user)
+
+
+@router.get("/review-email-preferences", response_model=UserResponse)
+async def get_review_email_preferences(
+    user_id: Annotated[int, Depends(get_user_id)],
+    db: DbDep,
+) -> UserResponse:
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    return UserResponse.from_user(user)
+
+
+@router.patch("/review-email-preferences", response_model=UserResponse)
+async def update_review_email_preferences(
+    body: ReviewEmailPreferencesRequest,
+    user_id: Annotated[int, Depends(get_user_id)],
+    db: DbDep,
+) -> UserResponse:
+    if body.reminder_frequency not in {"daily", "weekly", "before_deadlines_only"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reminder frequency.")
+    if body.digest_style not in {"concise", "detailed"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid digest style.")
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    user.enable_review_emails = body.enable_review_emails
+    user.reminder_frequency = body.reminder_frequency
+    user.preferred_reminder_time = body.preferred_reminder_time
+    user.review_email_address = str(body.review_email_address) if body.review_email_address else None
+    user.digest_style = body.digest_style
+    user.include_key_notes = body.include_key_notes
+    user.include_outside_study_suggestions = body.include_outside_study_suggestions
+    await db.commit()
+    await db.refresh(user)
     return UserResponse.from_user(user)
 
 

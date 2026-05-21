@@ -1,8 +1,11 @@
 # Sapient: A Retrieval-Augmented Intelligent Tutoring System
 
+**Technical Research Report**
+**Last updated:** May 20, 2026
+
 ## Abstract
 
-Sapient is a full-stack intelligent tutoring system designed to support active study rather than one-off question answering. The platform combines conversational tutoring, retrieval-augmented generation (RAG) over student-provided materials, inline formative assessment, spaced-repetition review, and multimodal interaction through diagrams and voice. The system is implemented with a FastAPI backend, a React frontend, PostgreSQL with `pgvector`, Google Gemini for tutoring and structured generation, and OpenAI speech services for transcription and audio playback. Its core architectural goal is to turn tutoring sessions into durable learning artifacts: conversations generate quizzes, key ideas, summaries, flashcards, and project-level progress signals that can be revisited over time. This write-up presents the motivation, design, implementation, and current limitations of the system as implemented in the repository.
+Sapient is a full-stack intelligent tutoring system designed to support active study rather than one-off question answering. The platform combines conversational tutoring, retrieval-augmented generation (RAG) over student-provided materials, inline formative assessment, spaced-repetition review, Bayesian Knowledge Tracing (BKT), assignment-aware reminders, feedback-driven personalization, and multimodal interaction through diagrams, images, resources, and voice. The system is implemented with a FastAPI backend, a React frontend, PostgreSQL with `pgvector`, S3-compatible object storage, Google Gemini as the default tutor model, optional Anthropic/OpenAI chat model selection, and OpenAI speech services for transcription and audio playback. Its core architectural goal is to turn tutoring sessions into durable learning artifacts: conversations generate quizzes, key ideas, summaries, flashcards, resources, mastery estimates, and project-level progress signals that can be revisited over time. This report presents the motivation, design, implementation, and current limitations of the system as implemented in the repository as of May 20, 2026.
 
 **Keywords:** intelligent tutoring systems, retrieval-augmented generation, spaced repetition, educational AI, FastAPI, React, pgvector
 
@@ -16,33 +19,60 @@ The project is designed around three assumptions:
 2. Study sessions are more valuable when they produce reusable artifacts such as notes, quizzes, and review prompts.
 3. Answers are stronger when grounded in the learner's own uploaded materials instead of relying only on the base model.
 
-## 2. Problem Statement and Goals
+This report is organized around three research and engineering questions:
 
-The system aims to solve a practical study problem: how to provide personalized AI tutoring that remains grounded, organized, and useful across multiple sessions.
+- **RQ1:** How can an LLM tutoring system convert transient chat interactions into durable learning artifacts?
+- **RQ2:** How can the system preserve the convenience of conversational AI while encouraging active learning, retrieval practice, and source-grounded study?
+- **RQ3:** What software-development practices are effective when building a full-stack AI product primarily with AI-assisted development tools?
 
-The main goals of the project are:
+The report makes three contributions. First, it documents a deployable architecture for a retrieval-augmented tutoring system that persists learning artifacts beyond the chat turn. Second, it describes how feedback, BKT mastery estimates, assignments, and lecture mode can be connected into one study workflow. Third, it records a practical AI-assisted development methodology for building and evaluating a full-stack educational AI system under limited time and budget constraints.
+
+## 2. Background and Motivation
+
+This project addresses a practical study problem: how to provide personalized AI tutoring that remains grounded, organized, and useful across multiple sessions.
+
+The product motivation came from a mismatch between what general-purpose assistants are good at and what students often need when they are trying to learn. ChatGPT, Claude, and similar tools can produce fluent answers quickly, but speed is not the same as learning. The MIT Media Lab preprint *Your Brain on ChatGPT* [1] made this tension concrete: in an EEG-based essay-writing study, participants using an LLM showed weaker brain connectivity than the search-engine and brain-only groups, lower ownership of their essays, and difficulty accurately quoting their own work. The study is a preprint and should not be overgeneralized to all learning tasks, but it usefully frames the risk that students can outsource the very cognitive work that helps them learn.
+
+That concern is also consistent with newer retention-focused work. A randomized controlled trial with undergraduates found lower delayed knowledge retention for students who used ChatGPT as a study aid than for students who used traditional study methods [2]. The point is not that AI should be removed from education; it is that the interaction design matters. A tutor that immediately writes the answer for the student may be efficient in the short term while weakening the effortful retrieval, explanation, and correction loops that durable learning depends on.
+
+To ground the product direction, the project used a 13-question formative survey about students' experiences using AI for learning, followed by interviews with the key user group: students already using AI tools for coursework, studying, or project work. The raw survey responses are not stored in this repository, so the conclusions are recorded here as design takeaways rather than statistical claims. The main themes were:
+
+- students value AI for fast explanations, examples, and debugging their confusion
+- students do not consistently trust unsupported answers and want visible sources
+- students often leave a chat without a durable study artifact they can review later
+- students want the system to quiz them, summarize what mattered, and remember weak areas instead of only answering the current prompt
+- students prefer control over study mode: quick chat when stuck, guided lecture when they want structure, and review tools when preparing for exams
+
+One early failure mode in Sapient illustrated the same point. The original tutor prompt over-applied Socratic method: when asked direct questions such as "what are the main principles of UI design?", it often answered with a counter-question instead of teaching. That was pedagogically poor because the learner had not yet received enough material to reason from. The system prompt was therefore changed to an explain-first pattern: define the core ideas, give examples, then check understanding. Socratic questioning remains useful, but only after the student has enough context to engage productively.
+
+## 3. Methodology and Design Requirements
+
+The project follows a design-science framing: Sapient is treated as an implemented artifact whose value is assessed through the requirements it satisfies, the architectural trade-offs it makes, and the evaluation harnesses used to measure retrieval quality, answer faithfulness, and tutoring behavior. Requirements were derived from three sources: prior research on passive AI use and knowledge retention, formative user research with students who already use AI tools for learning, and failures observed during prototype testing.
+
+The main design requirements derived from the literature motivation, survey themes, interviews, and early prototype failures are:
 
 - provide subject-based conversational tutoring
-- ground tutor responses in uploaded study materials
+- ground tutor responses in uploaded study materials and explicit web searches
 - generate formative checks during study, not only after it
-- preserve important concepts as notes and flashcards
-- identify weak areas and support targeted review
+- preserve important concepts as notes, flashcards, diagrams, images, and resource cards
+- identify weak areas with both quiz history and BKT mastery estimates
+- connect learning priorities to deadlines through assignments and calendar feeds
 - support multiple interaction modes, including voice and lecture-style learning
 
-## 3. System Overview
+## 4. System Overview
 
 Sapient is organized around **subjects** and **study sessions**.
 
 - A **subject** acts as a project container with a level, goals, materials, cover image, mind map, and progress indicators.
 - A **study session** is a conversation between the student and the tutor.
-- During a session, the tutor can produce quizzes, key ideas, summaries, citations, and diagrams.
-- After a session, the student can revisit notes, flashcards, search results, summaries, and weak-area practice.
+- During a session, the tutor can produce quizzes, key ideas, summaries, citations, Mermaid diagrams, real image artifacts, web sources, and recommended resources.
+- After a session, the student can revisit notes, flashcards, resources, search results, summaries, due assignments, smart reminders, and weak-area practice.
 
 This structure gives the application a longer-lived educational memory than a standard chatbot interface.
 
-## 4. Technical Architecture
+## 5. Technical Architecture
 
-### 4.1 Frontend
+### 5.1 Frontend
 
 The frontend is implemented in React 19 with TypeScript and Vite. It is responsible for:
 
@@ -52,11 +82,13 @@ The frontend is implemented in React 19 with TypeScript and Vite. It is responsi
 - file upload orchestration
 - quiz, note, and flashcard interfaces
 - project dashboards and history views
-- lecture mode, microphone input, and speech playback
+- assignments, calendar reminders, and resource-card views
+- Mermaid diagram rendering and real-image artifact display
+- lecture mode, microphone input, and streamed speech playback
 
 TanStack React Query is used for client-server data synchronization, and React Router handles protected navigation across the app.
 
-### 4.2 Backend
+### 5.2 Backend
 
 The backend is implemented in FastAPI with SQLAlchemy 2.0 async ORM and Alembic migrations. It provides:
 
@@ -65,29 +97,34 @@ The backend is implemented in FastAPI with SQLAlchemy 2.0 async ORM and Alembic 
 - conversation and project APIs
 - streaming tutoring responses
 - material ingestion and retrieval
-- search, summaries, quizzes, flashcards, and progress aggregation
+- search, summaries, quizzes, flashcards, resources, assignments, and progress aggregation
+- observability, security headers, and per-bucket rate limiting
 
-The backend also controls the structured tutoring actions that let the model create persistent learning artifacts.
+The backend also controls the structured tutoring actions that let the model create persistent learning artifacts. The current model registry exposes Gemini 2.5 Flash, Claude Sonnet 4.6, and GPT-4o as selectable chat models, while Gemini remains the default configured model.
 
-### 4.3 Database and Storage
+### 5.3 Database and Storage
 
-The system uses PostgreSQL for relational data and `pgvector` for semantic retrieval over uploaded materials. File uploads are stored in S3-compatible object storage rather than directly in the database or application filesystem. The database stores metadata and object keys, while the object store holds the original files.
+The system uses PostgreSQL for relational data and `pgvector` for semantic retrieval over uploaded materials and derived preference memories. File uploads and uploaded subject cover images are stored in S3-compatible object storage rather than directly in the database or application filesystem. The database stores metadata and object keys, while the object store holds the original files.
 
-## 5. AI and Retrieval Design
+## 6. AI and Pedagogical Design
 
-### 5.1 Tutor generation
+### 6.1 Tutor generation
 
-Tutor responses are generated with Google Gemini through the LangChain Google GenAI integration. Each chat request is composed from:
+Tutor responses are generated through a LangChain-backed model abstraction. Google Gemini 2.5 Flash is the default model because Google's current Gemini API documentation describes it as the price/performance-oriented 2.5 model and lists support for function calling, structured outputs, caching, search grounding, and URL context. The implementation can also route selected conversations to Anthropic or OpenAI chat models when the required provider API keys are configured.
+
+Each chat request is composed from:
 
 - a system prompt
 - subject context when available
 - user-specific tutor customization settings
+- feedback-derived preference summaries and retrieved preference memories when enabled
 - prior conversation history
 - retrieved study-material context when available
+- BKT mastery signals from the current subject when available
 
 This design allows the tutor to adapt both to the learner and to the current subject.
 
-### 5.2 Retrieval-augmented generation
+### 6.2 Retrieval-augmented generation
 
 Uploaded PDF, TXT, and Markdown files are processed into semantic chunks. Each chunk is embedded and stored in the `material_chunks` table with its vector representation. At chat time, the system:
 
@@ -100,38 +137,46 @@ Uploaded PDF, TXT, and Markdown files are processed into semantic chunks. Each c
 
 The retrieved chunks are also streamed back to the frontend as citation metadata so the interface can display sources to the student.
 
-### 5.3 Structured tutoring actions
+The optional reranking step uses LangSearch's reranker API when `RAG_RERANKER_ENABLED=true` and `LANGSEARCH_API_KEY` is configured. A local cross-encoder reranker was considered, but it would add model-hosting overhead before the project had enough retrieval traffic to justify it. Increasing `RAG_TOP_K` alone was also rejected because it increases prompt cost and distractor context rather than improving ranking quality. Separately, web search is exposed as an explicit tutor tool for current facts, outside references, or student-requested searches, so public-web claims can be surfaced as web-source cards rather than being blended invisibly into the tutor's base-model knowledge.
 
-The tutoring layer exposes three internal structured actions to the model:
+### 6.3 Structured tutoring actions
+
+The tutoring layer exposes five main structured actions to the model:
 
 - `generate_quiz`
 - `save_key_idea`
 - `create_diagram`
+- `find_image`
+- `find_resource`
 
-These actions are important because they let the tutor produce data objects, not just text. Quizzes and key ideas are persisted to the database, while diagrams are streamed to the client as Excalidraw-compatible payloads for immediate rendering.
+The web-search tool is added when configured. These actions are important because they let the tutor produce data objects, not just text. Quizzes, key ideas, and recommended resources are persisted to the database. Diagrams are streamed to the client as Mermaid source for immediate rendering. Real image artifacts and web-source results are streamed as attributed cards so the user can distinguish uploaded-material citations, public web sources, and visual references.
 
-## 6. Implemented Features
+## 7. Learning and Product Features
 
-### 6.1 Personalized tutoring
+### 7.1 Personalized tutoring
 
 Users can customize tutor name, tone, style, and freeform instructions. These settings are appended to the tutor prompt so the teaching style can vary by learner preference without changing the rest of the system design.
 
-### 6.2 Session-based chat with streaming output
+### 7.2 Session-based chat with streaming output
 
 The main tutor interface uses SSE streaming. The frontend receives incremental assistant tokens and structured events such as:
 
 - `start`
 - `token`
 - `sources`
+- `web_sources`
 - `quiz`
 - `key_idea`
 - `diagram`
+- `image`
+- `resource`
+- `conversation_title`
 - `end`
 - `error`
 
 This gives the product a more interactive study workflow than a standard request-response chat.
 
-### 6.3 Material upload, preview, and grounding
+### 7.3 Material upload, preview, and grounding
 
 Material upload is implemented as a presigned direct-to-object-storage flow:
 
@@ -142,35 +187,35 @@ Material upload is implemented as a presigned direct-to-object-storage flow:
 
 Ready materials can be previewed through a signed GET URL and used for retrieval grounding during chat.
 
-### 6.4 Inline quizzes and weak-area practice
+### 7.4 Inline quizzes and weak-area practice
 
 The tutor can generate inline quizzes during a session. Student answers are stored and evaluated server-side. Separately, the project layer can generate targeted weak-area quizzes using prior summaries, failed quiz attempts, and concept mastery signals, producing a dedicated practice conversation and quiz set.
 
-Quiz attempts also feed a Bayesian Knowledge Tracing (BKT) model. Each observed answer updates a per-concept mastery probability using the standard prior, learn, guess, and slip parameters. The resulting mastery estimate is stored on the subject profile and used by the Learning Map and tutor prompt to distinguish topics that are mastered, in progress, or likely to need review.
+Quiz attempts also feed a Bayesian Knowledge Tracing (BKT) model. Each observed answer updates a per-concept mastery probability using the standard prior, learn, guess, and slip parameters. The resulting mastery estimate is stored on the subject profile and used by the Learning Map and tutor prompt to distinguish topics that are mastered, in progress, or likely to need review. BKT was chosen over a simple percent-correct score because it models hidden mastery rather than only observed accuracy; Deep Knowledge Tracing was considered but rejected for this project because it requires substantially more attempt-sequence data and is harder to explain in the UI.
 
-### 6.5 Key ideas and notes
+### 7.5 Key ideas and notes
 
-Important concepts can be saved as key ideas during a tutoring session. These notes appear in the session artifact panel and on the dedicated notes page, where they can be filtered, searched, deleted, or promoted for immediate review.
+Important concepts can be saved as key ideas during a tutoring session. These notes appear in the session artifact panel and on the dedicated notes page, where they can be filtered, searched, edited, deleted, or promoted for immediate review. The current implementation also supports manual note creation and saving selected assistant text, Mermaid diagrams, or image cards into the same `key_ideas` table with structured artifact metadata.
 
-### 6.6 Spaced-repetition flashcards
+### 7.6 Spaced-repetition flashcards
 
-Key ideas double as flashcards using SM-2 scheduling fields. The system tracks repetition count, interval, ease factor, and next due date, allowing the notes generated during tutoring to become part of a long-term revision workflow.
+Key ideas double as flashcards using SM-2 scheduling fields. The system tracks repetition count, interval, ease factor, and next due date, allowing notes generated during tutoring or manually authored by the student to become part of a long-term revision workflow. The subject page can also generate fresh flashcards on demand from the subject profile and recent notes.
 
-### 6.7 Session summaries and project progress
+### 7.7 Session summaries and project progress
 
-Session summaries are generated on demand and cached on the conversation. These summaries capture covered topics, struggled concepts, key concepts, and next-review suggestions. Project progress is then computed from the aggregate of sessions, summaries, and quiz attempts.
+Session summaries are generated on demand and cached on the conversation. These summaries capture covered topics, struggled concepts, key concepts, and next-review suggestions. Project progress is then computed from the aggregate of sessions, summaries, quiz attempts, and BKT knowledge-state entries.
 
-### 6.8 Mind maps and diagrams
+### 7.8 Mind maps and diagrams
 
-The system supports two different visual representations:
+The system supports three different visual representations:
 
-- **session diagrams**, which are streamed during chat as Excalidraw-style diagrams and rendered immediately in the UI
-- **session images**, which are streamed during chat as attributed Wikimedia Commons image artifacts when a real photo/reference image is more useful than a generated diagram
+- **session diagrams**, which are streamed during chat as Mermaid source and rendered immediately in the UI
+- **session images**, which are streamed during chat as attributed image artifacts when a real photo/reference image is more useful than a generated diagram
 - **project mind maps**, which are generated through a dedicated endpoint and stored on the `project_profiles` table as JSON
 
-This distinction matters because diagrams and images are ephemeral session artifacts, while mind maps are subject-level persistent planning artifacts. Diagrams are best for abstract structure, flows, and relationships; real images are best for concrete visual references such as organisms, places, lab setups, physical objects, or historical artifacts.
+This distinction matters because diagrams and images are ephemeral session artifacts, while mind maps are subject-level persistent planning artifacts. Diagrams are best for abstract structure, flows, and relationships; real images are best for concrete visual references such as organisms, places, lab setups, physical objects, or historical artifacts. Mermaid replaced an earlier Excalidraw-style JSON approach because the model could reliably generate a small diagram DSL, while raw Excalidraw element graphs frequently produced malformed arrows, bindings, and missing relationships.
 
-### 6.9 Voice and lecture mode
+### 7.9 Voice and lecture mode
 
 The system supports:
 
@@ -184,9 +229,11 @@ The system supports:
 - real image artifacts in chat and lecture mode when the tutor needs a photo/reference visual
 - lecture pace controls, playback-speed controls, and quick actions for "check me" and "show visually"
 
-Lecture mode buffers streamed tutor text into shorter audio chunks and plays them sequentially while collecting notes, diagrams, real images, and source cards in a live notebook view. The voice layer is intentionally interruptible: when the learner starts speaking, the current stream/audio queue is cancelled, the utterance is transcribed, and a new tutor turn is started. This makes lecture mode behave like a real-time tutoring conversation rather than a passive audio player.
+Lecture mode buffers streamed tutor text into shorter audio chunks and plays them sequentially while collecting notes, diagrams, real images, and source/resource cards in a live notebook view. The current TTS route streams MP3 bytes from OpenAI through FastAPI's `StreamingResponse`, and the frontend uses MediaSource Extensions where supported so playback can begin before the entire spoken chunk has been buffered. A fully buffered audio response was simpler but added avoidable first-audio latency; SSE with base64 audio chunks was also rejected because it adds bandwidth overhead without improving playback control. The voice layer is intentionally interruptible: when the learner starts speaking, the current stream/audio queue is cancelled, the utterance is transcribed, and a new tutor turn is started. This makes lecture mode behave like a real-time tutoring conversation rather than a passive audio player.
 
-### 6.10 Search and review
+Lecture mode is also a product response to the passive-chat problem described earlier in this report. Instead of treating learning as a blank text box, it gives the student a guided explanation surface with visible source cards, live notes, generated diagrams/images, pace controls, playback controls, and two high-frequency intervention buttons: "check me" and "show visually." Lecture conversations are persisted as conversation rows so the same chat, retrieval, quiz, key-idea, and artifact infrastructure can be reused, but they are marked with `is_lecture=true` and hidden from normal sidebar/history listings. A fully ephemeral lecture mode was considered, but it would have broken artifact persistence because chat streaming, key ideas, diagrams, and audio all rely on a conversation identifier. The chosen design keeps lecture mode durable enough for artifact storage without turning every short guided explanation into long-term chat clutter.
+
+### 7.10 Search and review
 
 The search interface queries across:
 
@@ -196,7 +243,44 @@ The search interface queries across:
 
 This gives the learner a way to recover earlier ideas and study context without manually opening each session.
 
-## 7. Data Model
+### 7.11 Assignments, resources, and feedback personalization
+
+Sapient now includes three study-management features beyond the original tutoring loop:
+
+- **Assignments and calendar feeds.** Students can create manual assignments or import iCal/webcal feeds such as Canvas calendars. Smart reminders combine due-date urgency with BKT mastery signals and learning-map review states. The iCal/webcal route was preferred over a Canvas REST API integration because it works across institutions without per-school OAuth setup.
+- **External resources.** The tutor can recommend a YouTube video or web article as a structured resource card. Recommended resources are saved per subject and can be deleted by the user.
+- **Message feedback.** Students can rate assistant messages with thumbs up/down, optional explanation text, and corrections. The backend stores feedback analytics and can derive user-level preference summaries and vector-retrieved preference memories when the corresponding feature flags are enabled.
+
+The feedback path is intentionally more conservative than a simple "thumbs down means never do this again" rule. A rating is saved synchronously on `message_feedback` with the assistant message, prior user turn, prompt version, model name, latency, retrieved chunk IDs, and tool trace. If the student includes written feedback or a correction, a background enrichment task asks the LLM to classify the reason category, summarize the complaint, and extract a safe future-facing preference only when the signal is stable enough. The classifier is explicitly told not to create preferences that undermine correctness or tutoring value, such as "always give me the final answer" or "agree with me even when I am wrong."
+
+When `ENABLE_FEEDBACK_PREFERENCES=true`, thumbs-down feedback with text can update `users.preference_summary`, a compact summary of stable communication and learning-strategy preferences. When `ENABLE_PREFERENCE_MEMORY=true`, safe derived preferences are also embedded into `preference_memories` with the feedback category, task type, rating, and stability. On later chat turns, the backend retrieves the user's preference summary plus the top relevant preference memories for the current message and subject. `prompt_builder` injects them into the system prompt under "Student preferences from prior feedback" and "Relevant prior feedback for this kind of task," while also reminding the tutor that preferences must not override correctness, safety, or the learning objective. In practice, this lets Sapient adapt to repeated feedback such as "be more concise," "use more examples before quizzing me," or "cite sources when using my uploaded notes," without letting one frustrated dislike corrupt the tutor's behavior.
+
+### 7.12 Saved lecture pages
+
+During a lecture, the tutor builds a notebook page of key ideas, generated Mermaid diagrams, and retrieved images. Earlier in development, the only persistence path was the `save_key_idea` tool, which stores each concept as a `key_ideas` row tied to a conversation and subject. In practice students reported that nothing from a History (or similar) lecture appeared in the subject's Notes tab afterwards, because individual key-idea rows did not reconstruct the page they had actually seen — diagrams and images were never linked back, and the ordering across the timeline was lost.
+
+Two persistence approaches were considered:
+
+- **Reuse `key_ideas` rows.** The schema already supports `artifact_type` of "text", "diagram", or "image", so each timeline entry could become its own row. This requires no migration but conflates per-concept review notes with full lecture transcripts, makes "view the whole lecture I just had" expensive to reconstruct (multiple queries grouped by conversation and ordered by created_at), and complicates a single-document export.
+- **New `lecture_notes` table snapshotting the timeline.** One row per lecture session storing the ordered timeline as a JSON column. This keeps the lecture page coherent for both viewing and download, and keeps the existing `key_ideas` table focused on spaced-repetition review.
+
+The new-table approach was adopted (migration `20260520_000027_add_lecture_notes.py`). The lecture overlay auto-saves the timeline on **End session**, defaulting the title to `<first concept> — <date>` or `<subject> lecture — <date>` when no key idea was saved. Saved pages appear in a dedicated **Lectures** tab on the subject page (separate from **Notes**, which remains focused on short concept rows for spaced-repetition review) as cards listing title, date, and entry count. Opening a card renders a modal viewer that re-runs Mermaid for diagrams and re-uses `ImageArtifactCard` for images, ensuring fidelity to the original notebook.
+
+For download, three options were considered: client-side Markdown export, a server-side PDF render, and an in-browser print-to-PDF flow. Markdown was rejected because Mermaid diagrams and image artifacts do not render in most Markdown readers without extra tooling, defeating "view the lecture as I saw it." A server-side PDF pipeline (e.g. headless Chromium or `weasyprint`) was rejected because it adds a significant runtime dependency for a feature whose audience is a single student and where rendering quality is not the bottleneck. The in-browser `window.print()` approach was chosen: a `@media print` stylesheet hides chrome and lets the user save to PDF via the browser's native print dialog. This adds no dependencies, works in every modern browser, and produces a PDF that matches the on-screen page including rendered Mermaid SVG.
+
+### 7.13 Flashcard rating UI: three friendly buttons over SM-2 labels
+
+The flashcard review screen originally exposed the four canonical SM-2 grades — Again, Hard, Good, Easy — with each button labelled with the next interval ("now", "tomorrow", ...). This mirrors Anki's interface, but in user feedback the four-option spectrum and the SM-2 jargon were reported as unfriendly: students asked what "Hard" meant relative to "Good," and the "tomorrow / tomorrow / tomorrow" subtitles in early reviews offered no real distinction.
+
+Three redesigns were considered:
+
+- **Two buttons** ("Didn't know" / "Got it"), mapping to qualities 1 and 4. Simplest, but collapses the "I struggled but got it" signal, which is the most informative point for ease-factor calibration in SM-2.
+- **Three buttons** ("Forgot" / "Sort of" / "Knew it"), mapping to qualities 1, 3, and 5. Preserves the failure / borderline / confident distinction that actually moves the ease factor without forcing the student to differentiate "Good" from "Easy."
+- **Keep four buttons with plainer copy.** Lower cognitive load only marginally and still asks the student to make a four-way comparative judgment after every card.
+
+The three-button design was adopted. Quality scores 1/3/5 are still passed to the existing SM-2 update on the backend (no schema or scheduler change), so the spaced-repetition behavior is unchanged; only the UI surface narrows. The interval preview under each button still reads from `sr_interval`, `sr_repetitions`, and `sr_ease_factor` so students can see when the card will return.
+
+## 8. Data Model
 
 The major persisted entities are:
 
@@ -207,16 +291,21 @@ The major persisted entities are:
 - `material_chunks`: extracted chunk text plus embeddings
 - `quizzes`: tutor-generated quiz questions
 - `quiz_attempts`: student responses and correctness
-- `key_ideas`: saved notes and flashcard scheduling data
-- `project_profiles`: subject-level settings, cover image metadata, and mind maps
+- `key_ideas`: saved notes, artifact metadata, and flashcard scheduling data
+- `project_profiles`: subject-level settings, cover image metadata, mind maps, learning-map progress, and BKT knowledge state
+- `resources`: tutor-recommended videos and articles saved by subject, conversation, and optional assistant message
+- `assignments`: manual or imported deadlines with completion state
+- `calendar_feeds`: iCal/webcal feed definitions and sync metadata
+- `message_feedback`: per-message ratings, corrections, categorization, and prompt/model metadata
+- `preference_memories`: vector-searchable derived preference memories when personalization memory is enabled
 
 This schema supports both short-term tutoring interactions and long-term review behavior.
 
-## 8. Deployment and Operational Design
+## 9. Deployment and Operational Design
 
-The deployment shape is a Dockerized FastAPI backend and a static React build, both hosted on Fly.io, paired with managed Postgres on Neon and S3-compatible object storage on Cloudflare R2. External AI services (Gemini, OpenAI speech APIs, Google OAuth, Pexels) are accessed over the public internet via API keys held as platform secrets. This section records the alternatives that were considered for each component and the reasoning that produced the current design.
+The deployment shape is a Dockerized FastAPI backend and a static React build, both hosted on Fly.io, paired with managed Postgres on Neon and S3-compatible object storage on Cloudflare R2. External AI services (Gemini, optional Anthropic/OpenAI chat models, OpenAI speech APIs, Google OAuth, Pexels/Wikimedia image search, LangSearch search/reranking, and YouTube resource search) are accessed over the public internet via API keys held as platform secrets. GitHub Actions now runs backend tests, builds the frontend, and deploys both Fly apps on pushes to `main`. This section records the alternatives that were considered for each component and the reasoning that produced the current design.
 
-### 8.1 Object storage: Cloudflare R2 over AWS S3
+### 9.1 Object storage: Cloudflare R2 over AWS S3
 
 Earlier prototypes wrote uploaded materials to the application server's local filesystem. That approach broke as soon as the server became containerized: ephemeral disks lose state on restart, and horizontal scaling is impossible because each instance can only see its own files. The system was therefore migrated to S3-compatible object storage with two providers under consideration:
 
@@ -225,7 +314,7 @@ Earlier prototypes wrote uploaded materials to the application server's local fi
 
 R2 was chosen because the application's workload is read-heavy on uploaded materials: every chat turn that triggers retrieval reads chunk data, and material previews and downloads pull entire files. The egress savings dominate the comparison for any non-trivial usage. The trade-off is a slightly less mature ecosystem (some advanced S3 features like Object Lambda or Glacier-class lifecycle rules are unavailable on R2), none of which are required for the current feature set.
 
-### 8.2 Upload flow: presigned PUT URLs
+### 9.2 Upload flow: presigned PUT URLs
 
 A second decision concerned how the browser delivers files to object storage. Two patterns were considered:
 
@@ -234,7 +323,7 @@ A second decision concerned how the browser delivers files to object storage. Tw
 
 The presigned approach was adopted because it keeps the application servers stateless with respect to file payloads, removes a memory and bandwidth bottleneck on the backend, and follows the standard production pattern for browser-uploaded user content. The cost is a more involved client flow (presign → PUT → confirm) and a CORS configuration on the bucket. Material preview is implemented symmetrically with presigned GET URLs and a forced inline `Content-Disposition`, so previews render in-browser without proxying bytes through the backend.
 
-### 8.3 Database: Neon over Supabase, Railway, RDS, and self-hosted Postgres
+### 9.3 Database: Neon over Supabase, Railway, RDS, and self-hosted Postgres
 
 The application requires PostgreSQL with the `pgvector` extension. The shortlist of providers that meet that requirement on a sustainable free or low-cost tier was:
 
@@ -246,7 +335,7 @@ The application requires PostgreSQL with the `pgvector` extension. The shortlist
 
 Neon was chosen because the application has irregular usage patterns: it should cost nothing during long idle periods and should not require manual unpausing after a week of inactivity. The cold-start penalty is imperceptible relative to LLM and embedding API latency, and the database branching feature gives a low-cost path to test migrations against realistic data.
 
-### 8.4 Compute platform: Fly.io for backend and frontend
+### 9.4 Compute platform: Fly.io for backend and frontend
 
 For application hosting, four platforms were realistic for a single-developer free-tier project:
 
@@ -258,7 +347,9 @@ For application hosting, four platforms were realistic for a single-developer fr
 
 Fly.io was chosen because it consolidates backend and frontend hosting on one platform, supports the long-lived SSE connections required by the chat endpoint without proxy buffering surprises, and can be operated entirely from the command line with reproducible Dockerfiles. With `auto_stop_machines` enabled, the expected steady-state cost for this workload is roughly one to three USD per month, well within the cost envelope of a single-developer project. Cloud Run remains a reasonable migration target if the steady-state cost ever becomes a concern, since the application's container is portable across both platforms with no code changes. The deployment shape is two Fly applications: the backend serves the FastAPI app on internal port 8000, and the frontend serves the Vite-built static bundle through `nginx` on port 80. The frontend calls the backend over the public internet, so cross-origin requests are governed by the `CORS_ALLOW_ORIGINS` setting on the backend rather than by an internal proxy.
 
-### 8.5 Product name and public URL
+Current Fly documentation confirms that stopped Machines are still billed for their root filesystem but not normal compute, and the autostop/autostart configuration remains the intended mechanism for hibernating low-traffic apps. That matches the repository's deployment posture: low idle cost is an operational assumption, but it is not the same thing as a permanent free tier.
+
+### 9.5 Product name and public URL
 
 The product is named **Sapient**, drawn from the Latin *sapere*, meaning *to know* or *to be wise*. The term refers in cognitive science to the capacity for conscious, deliberate reasoning that distinguishes thinking minds from mere intelligence, which directly aligns with the system's tutoring goal of building durable, reflective knowledge rather than surfacing one-shot answers.
 
@@ -269,42 +360,29 @@ The public URL is the Fly-provided subdomain, with the frontend at `https://sapi
 
 The Fly-provided subdomain was chosen because the application is currently a single-developer project where the additional polish of a custom domain is not yet necessary. The deployment is structured so that adding a custom domain later is a cosmetic change rather than a structural one: it requires running `fly certs add` on each app, adding DNS records, updating the `CORS_ALLOW_ORIGINS` setting on the backend, the `VITE_API_BASE_URL` build argument on the frontend, the R2 bucket CORS policy, and the Google OAuth authorized origins. None of those changes touch application code.
 
-### 8.6 Regional placement
+### 9.6 Regional placement
 
 The end-to-end latency profile of a tutoring request is dominated by two hops: the user-to-frontend hop, which is bounded by the user's connectivity, and the backend-to-database hop, which occurs on every request and often involves multiple round-trips per query. To minimize the second hop, the compute and database regions are aligned on the United States West Coast.
 
 The chosen regions are Fly.io `lax` (Los Angeles) for both backend and frontend, Cloudflare R2 in the WNAM (Western North America) location, and Neon in `us-west-2` (Oregon). Neon does not offer a Los Angeles region, so Oregon is the closest available choice and yields a backend-to-database round-trip in the low tens of milliseconds. This places all three persistent components within the same broad geography, keeping per-request overhead low for a developer based in Los Angeles while preserving acceptable latency for users elsewhere on the West Coast and in the western United States.
 
-## 9. Strengths of the Current Implementation
+### 9.7 Current external-service notes
 
-The project has several architectural strengths:
+Several external-service choices are time-sensitive, so the report was checked against current vendor documentation in May 2026:
 
-- it separates conversational tutoring from project-level learning memory
-- it treats generated artifacts as first-class data
-- it grounds answers in user-owned materials
-- it supports multiple study modes without changing the core backend
-- it uses a production-friendly object storage flow instead of proxying uploads through the API server
+- Google's [Gemini API model documentation](https://ai.google.dev/gemini-api/docs/models/gemini) lists `gemini-2.5-flash` with function calling, structured outputs, search grounding, URL context, caching, and batch support, which fits Sapient's tool-calling tutor design.
+- OpenAI's [text-to-speech documentation](https://platform.openai.com/docs/guides/text-to-speech) now positions `gpt-4o-mini-tts` as the newest and most reliable TTS model for intelligent realtime applications, while [`tts-1-hd`](https://platform.openai.com/docs/models/tts-1-hd) remains available as a higher-quality legacy Speech API model. Sapient currently uses `tts-1-hd`, so a future migration to `gpt-4o-mini-tts` is a relevant latency and controllability upgrade path.
+- OpenAI's [speech-to-text documentation](https://platform.openai.com/docs/guides/speech-to-text) now lists `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, and `gpt-4o-transcribe-diarize` alongside `whisper-1`. Sapient currently uses `whisper-1`; upgrading would be a targeted improvement rather than a required architectural change because the `/stt` route already abstracts transcription behind one backend endpoint.
+- Cloudflare [R2 documentation](https://developers.cloudflare.com/r2/how-r2-works/) and [R2 pricing](https://developers.cloudflare.com/r2/pricing/) still describe R2 as S3-compatible object storage with no direct data-transfer egress charges. This continues to support the R2 decision for previewing and re-reading uploaded study materials, though operations are still billable beyond the free tier.
+- Fly.io [pricing](https://fly.io/docs/about/pricing/) and [autostop/autostart documentation](https://fly.io/docs/launch/autostop-autostart/) confirm that the app's `auto_stop_machines = "stop"` posture lowers idle compute spend but does not eliminate all costs.
 
-Most importantly, the system is designed around learning continuity. Sessions feed notes, quizzes, progress, and review systems rather than disappearing after the answer is delivered.
-
-## 10. Limitations and Future Work
-
-The current implementation is strong as a prototype and early product foundation, but several areas remain open for expansion:
-
-- export flows for summaries, notes, or session transcripts
-- stronger mobile optimization
-- richer analytics and retention metrics
-- deeper material parsing and citation fidelity
-- persistence for session diagrams if long-term diagram history becomes important
-- stronger evaluation workflows for tutoring quality and retrieval relevance
-
-## 10.1 Observability and Rate Limiting
+## 10. Implementation: Observability and Rate Limiting
 
 Two operational concerns were addressed together: (1) understanding the behavior of the running service in production, and (2) protecting the LLM-bound and authentication endpoints from accidental or abusive traffic.
 
-### Observability
+### 10.1 Observability
 
-#### Why server-side observability is required
+#### 10.1.1 Why server-side observability is required
 
 A reasonable first question for a single-developer web application is whether browser-side tooling — the Chrome / Firefox developer tools, the network panel, the JavaScript console — is sufficient to understand application behavior. For Sapient it is not, and the reasons generalize to most LLM-bound applications.
 
@@ -314,11 +392,11 @@ Server-side instrumentation answers that question directly. With distributed tra
 
 There are also categories of behavior that browser tooling cannot observe at all. It cannot aggregate across users to distinguish a personal anomaly from a systemic regression; it cannot aggregate over time to support post-hoc analysis of yesterday's complaint; it cannot run in production where the data and load actually exist; it has no notion of alerting; it does not survive the user closing the tab; it sees a single HTTP call rather than the distributed work that call triggers; and it captures nothing about background processes such as the asynchronous material-ingestion path. These are the tasks for which an instrumented backend exists, and each of them is in scope for a tutoring application that depends on a third-party LLM whose latency, cost, and failure modes are part of the user experience. Browser developer tools and a server-side observability stack are therefore complementary rather than alternatives: developer tools remain the right instrument for client-side concerns such as paint, hydration, and bundle size, while OpenTelemetry covers the entire backend call graph that DevTools cannot see.
 
-#### Implementation
+#### 10.1.2 Implementation
 
 The system was instrumented for full three-signal observability — distributed traces, metrics, and structured logs that share a common correlation identifier — using OpenTelemetry as the data plane. OpenTelemetry was chosen because it is the de facto open standard for instrumentation in modern back-end services and because it decouples the instrumented application from the chosen telemetry backend: the same SDK can export to Jaeger, Tempo, Honeycomb, Grafana Cloud, Datadog, or any other OTLP-compatible system without code changes.
 
-**Traces.** An ASGI-level middleware (`ObservabilityMiddleware`) assigns every HTTP request a `X-Request-ID` (accepted from upstream or generated as a UUID), binds the ID into a `ContextVar`, and emits a structured JSON log line at request completion. Distributed tracing itself is provided by four OpenTelemetry instrumentations: `FastAPIInstrumentor` produces an `http.server` span per request annotated with the matched route template, `SQLAlchemyInstrumentor` and `AsyncPGInstrumentor` produce DB spans for every query, and `HTTPXClientInstrumentor` produces client spans for outbound calls (the Whisper, OpenAI TTS, and Pexels APIs). Manual spans are added inside `LLMService.stream_response` and `LLMService.stream_with_tools` and annotated with the OpenTelemetry GenAI semantic conventions (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`), so per-call latency, token consumption, and tool-call rate are queryable as first-class span attributes. The middleware is intentionally implemented as a pure ASGI wrapper rather than a Starlette `BaseHTTPMiddleware` because the chat endpoint streams long-lived Server-Sent Events and `BaseHTTPMiddleware` is known to buffer streaming bodies in certain configurations.
+**Traces.** An ASGI-level middleware (`ObservabilityMiddleware`) assigns every HTTP request a `X-Request-ID` (accepted from upstream or generated as a UUID), binds the ID into a `ContextVar`, and emits a structured JSON log line at request completion. Distributed tracing itself is provided by four OpenTelemetry instrumentations: `FastAPIInstrumentor` produces an `http.server` span per request annotated with the matched route template, `SQLAlchemyInstrumentor` and `AsyncPGInstrumentor` produce DB spans for every query, and `HTTPXClientInstrumentor` produces client spans for outbound calls (the Whisper, OpenAI TTS, Pexels, Wikimedia Commons, LangSearch, and YouTube APIs). Manual spans are added inside `LLMService.stream_response` and `LLMService.stream_with_tools` and annotated with the OpenTelemetry GenAI semantic conventions (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`), so per-call latency, token consumption, and tool-call rate are queryable as first-class span attributes. The middleware is intentionally implemented as a pure ASGI wrapper rather than a Starlette `BaseHTTPMiddleware` because the chat endpoint streams long-lived Server-Sent Events and `BaseHTTPMiddleware` is known to buffer streaming bodies in certain configurations.
 
 **Metrics.** Metrics flow through the same OpenTelemetry `MeterProvider`, which is configured with two readers: a `PrometheusMetricReader` that backs the `/metrics` scrape endpoint, and a `PeriodicExportingMetricReader` that pushes the same data over OTLP/HTTP to any configured collector. The FastAPI instrumentor automatically emits `http.server.request.duration` and `http.server.active_requests`. Three application-specific counters — `rate_limit_rejections_total{bucket}`, `llm_calls_total{model,status}`, and `llm_tokens_total{model,kind}` — record the policy events that matter for capacity planning: which buckets are pressured, which model is being called, whether calls are succeeding, and how prompt and completion tokens are accumulating per model.
 
@@ -326,9 +404,9 @@ The system was instrumented for full three-signal observability — distributed 
 
 *Alternatives considered.* A first iteration used `prometheus-client` directly with no tracing, on the reasoning that the application was a single-process deployment and that Prometheus alone would be sufficient. That position was revisited and rejected: an LLM-tutoring application has a fan-out call graph (request → DB → retriever → embedding API → LLM stream → DB writes) where the most useful operational question is "where did this slow request spend its time," and that question is only answerable with traces. A hosted APM (Datadog, Sentry Performance, New Relic) was rejected on cost and lock-in grounds at the current scale; using OpenTelemetry preserves the option to point at any of those systems later by changing one environment variable. A push-only setup using StatsD/DogStatsD was rejected because it requires running an agent process for any backend to be useful, and because the OpenTelemetry pull-and-push hybrid means the application can be scraped locally during development and exported to a collector in production with a single configuration change. Computing latency histograms from logs alone (e.g., Loki + LogQL `quantile_over_time`) was rejected because it is lossy at the percentiles that matter for an LLM application and significantly more expensive than first-class metric histograms. The instrumentation-package footprint (api, sdk, OTLP HTTP exporter, Prometheus reader, four instrumentation libraries) was accepted as a deliberate cost of the standardization benefit.
 
-### Rate limiting
+### 10.2 Rate limiting
 
-#### Why rate limiting is required
+#### 10.2.1 Why rate limiting is required
 
 An LLM-bound application has a property that traditional web applications do not: the marginal cost of a single request is non-trivial and is denominated in tokens billed by an external provider. A modest tutoring conversation may consume several thousand prompt tokens and several hundred completion tokens per turn, and the cost is incurred whether the request originates from a legitimate user, a buggy client that retries on every keystroke, or an automated script. Without an explicit policy, a single misbehaving caller can exhaust both the application's monthly LLM budget and the throughput of the upstream API, degrading service for every other user.
 
@@ -336,13 +414,13 @@ Rate limiting is therefore a substantive operational requirement rather than a d
 
 These goals motivate three concrete design choices that the implementation reflects. Limits are *per principal* rather than per route — a single user calling chat repeatedly should be throttled even when the global request rate is low. Limits are *segmented by bucket* — a user uploading a large set of materials should not deplete the budget for their chat session, because uploads and chat answer different operational questions. And limits are *observable* — every rejection increments a counter that flows into the same Grafana stack as the rest of the metrics, so that limit pressure is visible alongside latency and error rate rather than being silently absorbed.
 
-#### Implementation
+#### 10.2.2 Implementation
 
 An in-memory token-bucket limiter is exposed as two FastAPI dependency factories: `rate_limit_user` (keyed by JWT subject, falling back to client IP if no valid token is presented) and `rate_limit_ip` (used by the unauthenticated `/auth/login`, `/auth/register`, and `/auth/google` endpoints). Buckets are named (`chat`, `stt`, `tts`, `summary`, `upload`, `auth`), per-minute capacities are configurable through environment variables, and rejected requests return `429 Too Many Requests` with a computed `Retry-After` header and increment the `rate_limit_rejections_total{bucket}` counter so that limit pressure is observable in Grafana alongside everything else.
 
 *Alternatives considered.* A Redis-backed limiter (`slowapi`, `fastapi-limiter`) would survive multi-process deployments and is the correct choice once the backend horizontally scales, but the application currently runs as a single Fly.io process and adding Redis purely for rate limiting would introduce a new piece of infrastructure for no current benefit. A reverse-proxy-level limit (Fly.io edge or Cloudflare) was rejected because it cannot key on the authenticated user ID and would conflate users behind shared NATs. Per-route hardcoded limits inside each handler were rejected as harder to audit than a single configuration surface; the dependency-factory approach keeps the limit declarations adjacent to the route definitions while centralizing the policy. The decision to keep the limiter in-memory is therefore explicitly time-bound: it is appropriate for the single-process deployment and should be replaced with a Redis-backed implementation when a second worker is added.
 
-## 10.2 Evaluation
+## 11. Evaluation
 
 The retrieval-augmented generation pipeline is evaluated against `rag-mini-bioasq`, a 4.7-thousand-passage biomedical benchmark from `rag-datasets`. The dataset is chosen for two properties: it provides ground-truth `relevant_passage_ids` for each question, which makes deterministic retrieval metrics possible without an LLM judge, and its passage size and language register approximate the textbook excerpts and lecture notes that students upload as study material in production use.
 
@@ -356,364 +434,98 @@ A separate ingestion script (`evals/ingest_dataset.py`) populates pgvector with 
 
 The harness is intentionally LLM-budget-aware. The retrieval evaluation consumes only one embedding call per question. The Ragas and TutorBench evaluations run serially with configurable inter-call pacing (twenty seconds by default) and support checkpoint resume, so a partial run can be continued without re-paying for answers already generated. All evaluations write per-row CSV outputs alongside their aggregated stdout summaries, so results can be diffed across commits as a regression signal. Run artifacts (corpus map, checkpoints, CSV outputs) are deliberately gitignored: the source of truth is the dataset and the code, not the regenerable output.
 
-*Limitations.* The biomedical benchmark exercises retrieval and faithfulness but does not measure educational quality; TutorBench closes that gap for response-level teaching behaviors but introduces its own caveats. Some TutorBench rows are multimodal, while the current eval harness is text-first, so image-backed rows are skipped by default unless explicitly enabled. The judge is from a different model family than the Gemini tutor, which reduces self-judging bias but does not eliminate LLM-as-judge variance. Expanding the judge ensemble and adding a multimodal path for image-backed TutorBench rows are natural next steps for a follow-up project.
+*Reranker A/B at n=100.* Because the cross-encoder reranker is presented as the project's retrieval-quality story, both the retrieval-only and Ragas evaluations were run twice on the same 100-row BioASQ corpus — once with vector-only retrieval (`RAG_RERANKER_ENABLED=false`) and once with the LangSearch cross-encoder enabled — so that the architectural decision is backed by an empirical delta rather than an asserted improvement.
 
-## 11. Conclusion
+| Metric                | Baseline (vector-only) | Reranker | Δ      |
+|-----------------------|------------------------|----------|--------|
+| `recall@1`            | 0.140                  | 0.144    | +0.004 |
+| `recall@5`            | 0.463                  | 0.473    | +0.010 |
+| `recall@10`           | 0.612                  | 0.624    | +0.012 |
+| `precision@1`         | 0.950                  | 0.970    | +0.020 |
+| `precision@5`         | 0.834                  | 0.852    | +0.018 |
+| `mrr`                 | 0.965                  | 0.980    | +0.015 |
+| `faithfulness`        | 0.962                  | 0.957    | −0.005 |
+| `answer_relevancy`    | 0.819                  | 0.853    | +0.034 |
+| `context_precision`   | 0.847                  | 0.873    | +0.026 |
+| `context_recall`      | 0.828                  | 0.839    | +0.011 |
+| `factual_correctness` | 0.456                  | 0.456    | +0.000 |
 
-Sapient demonstrates a practical architecture for an educational AI system that goes beyond generic chat. By combining conversational tutoring, retrieval grounding, structured artifact generation, spaced repetition, and voice interaction, the platform creates a more complete study environment. Its main contribution is not any single feature in isolation, but the way those features are connected: tutoring sessions generate reusable learning artifacts, those artifacts drive review and progress, and the system gradually builds a personalized study workspace for the learner over time.
+The reranker improves every retrieval-side metric, and the gains propagate exactly where the two-stage architecture predicts they should: `context_precision` increases by 0.026 because the cross-encoder pushes the single most relevant passage above its near-neighbors, and `answer_relevancy` increases by 0.034 because a more focused prompt produces a more on-topic generation. `mrr` reaches 0.980, indicating that the first relevant passage is at rank 1 in essentially every case where any relevant passage is in the candidate pool.
 
-## Decision: Landing page → interactive WebGL shader wallpaper (2026-05-11)
+To distinguish real effects from LLM-judge variance, every paired delta was tested for statistical significance using a Wilcoxon signed-rank test and a paired bootstrap with 10,000 resamples over the 100-row sample. The cleanest results sit on the retrieval side and on `answer_relevancy`: `precision@5` improves by 0.018 with a 95% confidence interval of `[+0.002, +0.038]` that excludes zero, and `answer_relevancy` improves by 0.034 (Wilcoxon `p=0.030`, 95% CI `[−0.004, +0.076]`). The remaining retrieval-side metrics (`recall@5`, `recall@10`, `precision@1`, `mrr`) all move in the predicted direction with effect sizes between +0.010 and +0.020 but with confidence intervals that include zero at this sample size, so they are best read as directionally consistent rather than individually decisive. The Ragas-side `context_precision` and `context_recall` gains are similarly directional. The `faithfulness` movement of −0.005 has a 95% CI of `[−0.027, +0.018]` and a Wilcoxon `p=0.563`, which is firmly inside judge noise. The honest summary is that the reranker produces a *consistent positive bundle* across eleven metrics — every metric whose value changes does so in the predicted direction — but the per-metric effect sizes are mostly at the edge of detectability at n=100, and a larger sample would be required to call each individual delta significant on its own.
 
-The marketing landing page was redesigned around an interactive shader wallpaper that fills the hero, warps toward the cursor, and emits expanding pulse rings on click. The hero presents the product as a "futuristic learning OS desktop" — a frosted glass panel sits over the wallpaper carrying the app name, tagline, three stat chips, and primary CTAs, framed by monospace corner badges (clock, system tag, interaction hints).
+Two of the eleven metrics move in directions that initially look counterintuitive and are worth explaining explicitly. **`faithfulness` drops by 0.005.** Faithfulness is computed as the fraction of statements in the generated answer that are supported by *the retrieved context the model was shown*. The reranker is a precision-leaning operation: it concentrates the top-K on the single best chunk and discards weaker candidates that the vector-only path would have kept. When the model writes a fluent answer that extends slightly beyond what any one chunk says, a tighter context window gives the judge fewer surrounding sentences to anchor each statement to, and statement-level support is a strict binary check, so a 0.005 movement on 100 rows is consistent with one or two borderline statements per row being reclassified. The magnitude is within the LLM-judge variance that the writeup already attributes to this family of metrics, and the *direction* is the expected precision-vs-coverage trade-off, not a real regression in answer quality. **`factual_correctness` does not move at all.** Unlike faithfulness, factual_correctness compares the generated answer's claims to the dataset's *ground-truth* answer rather than to the retrieved context. Reranking can only reorder what is already in the candidate pool; it cannot add ground-truth content the corpus does not contain. A flat 0.456 on this metric across both configurations therefore reads as a coverage ceiling rather than a ranking ceiling — the bottleneck on this benchmark sits in what the indexed corpus contains, not in how candidates are ordered. The A/B accordingly validates the two-stage architecture (consistent gains where ranking matters) while clarifying which class of result the cross-encoder is and is not expected to move.
 
-*Rationale.* The previous hero used a 2D canvas aurora that was passive and decorative. A genuinely interactive surface (mouse-warp + click ripples + iridescent palette) signals the product's adaptive/responsive nature on first paint and rewards fidgeting, which raises dwell time before sign-up.
+*Failure-mode analysis.* Reading the lowest-scoring rows in each evaluation is more informative than the aggregate means. On the Ragas side, the rows with `factual_correctness=0.00` are not actually wrong answers in the colloquial sense — they are dominated by two patterns. The first is *verbose-but-correct expansion*: a question like "Has Denosumab (Prolia) been approved by FDA?" has a one-sentence ground truth ("Yes, Denosumab was approved by the FDA in 2010") and the generated answer correctly opens with "Yes" and then enumerates the conditions it is approved for, which adds claims the ground truth never makes. Claim-level F1 penalizes these additional claims even though they are accurate and grounded in the retrieved context. The second pattern is *honest hedging under inconsistent context*: when retrieval returns chunks that disagree, the tutor sometimes responds with "the context provides conflicting information" rather than committing to an answer. That behavior is desirable for a tutoring system but reads to claim-level F1 as a missing claim. Together, these two patterns explain most of the 0.456 score on this metric — it is more a feature of how the metric is computed than a coverage failure of the corpus, and is the kind of trade-off the writeup would expect a follow-on study to investigate by replacing claim-level F1 with a semantic-overlap metric. On the TutorBench side, the lowest-scoring scenarios are concentrated in long quantitative word problems (Physics inclined-plane, Statistics diagnostic-test base-rate, Calculus differential-equation derivations); the dimension that pulls the mean down most consistently across all subjects is `connections` (4.41 over 100 rows), which scores the tutor on how often it reaches for analogies and prior topics — a real pedagogical opportunity rather than a metric artifact. Per-subject overall means range from 4.42 (Computer Science, `n=11`) to 4.79 (Chemistry, `n=21`, and Statistics, `n=20`), and 78% of scenarios score at or above 4.5 overall, so the tutor's pedagogical floor is high and the variance is concentrated in the lower 22% of scenarios rather than spread across the dataset.
 
-*Alternatives considered.*
-- *Three.js / react-three-fiber:* would simplify scene composition but adds ~150 KB gzipped for a single fullscreen fragment shader. Rejected — the effect is one quad with one fragment program, so raw WebGL is lighter and has no dependency cost.
-- *CSS-only animated gradients (conic / mesh):* zero deps but cannot react meaningfully to mouse position or click events without compounding JS layers, and cannot produce real ripple propagation. Rejected as insufficiently interactive.
-- *Lottie / video loop:* canned, not reactive. Rejected.
-- *Particle system on Canvas2D:* feasible but visually noisier and CPU-bound at full viewport; the shader runs on the GPU and stays smooth at 60 fps even at 2× DPR.
+*Limitations.* The biomedical benchmark exercises retrieval and faithfulness but does not measure educational quality; TutorBench closes that gap for response-level teaching behaviors but introduces its own caveats. Some TutorBench rows are multimodal, while the current eval harness is text-first, so image-backed rows are skipped by default unless explicitly enabled. The judge is from a different model family than the Gemini tutor, which reduces self-judging bias but does not eliminate LLM-as-judge variance, and the entire eval suite is judged by a single OpenAI model family — running the same prompts under a second judge (e.g., Claude on a small subset) would be the obvious robustness check that a follow-up project could add cheaply. On factual_correctness specifically, the 0.456 score is partly a property of the metric (claim-level F1 penalizes verbose-but-correct expansion and honest hedging) rather than purely a corpus-coverage signal; a richer follow-up would re-score those rows with a semantic-overlap metric. Beyond automated evaluation, two informal read-aloud studies were conducted in which student volunteers used the deployed application and narrated their reasoning while interacting with it; the observations from those sessions directly informed iterations on the chat UI, the lecture-mode controls, and the way sources are presented inline. This is intentionally lightweight rather than a formal user study: as a student building a system explicitly for the way I myself study, I treated my own first-person experience as a primary design source and used the read-aloud sessions to surface frictions I had already adapted around. A formal between-subjects study with retention metrics and a control condition is the right next step for a follow-on project but was outside the scope of this one. Expanding the judge ensemble and adding a multimodal path for image-backed TutorBench rows remain natural extensions on the automated side.
 
-*Implementation notes.* Built as `ShaderWallpaper.tsx` — a single fullscreen quad with a domain-warped fbm field, an eased mouse-follow that pulls the field toward the cursor with an exponential halo, and a fixed-size ripple buffer (8 slots, rolling index) where each click writes `(x, y, startTime)` consumed by the fragment shader as expanding sin-band rings with exponential decay. No new npm dependencies were added. DPR is capped at 2 to keep mid-range laptops responsive.
+## 12. Discussion
 
-## Decision: App-wide UI cohesion pass (2026-05-11)
+The project has several architectural strengths:
 
-Following the landing redesign, three app-wide fixes were made to bring the rest of the product up to the same standard: dark-theme scoping, real navigation icons, and chat readability.
+- it separates conversational tutoring from project-level learning memory
+- it treats generated artifacts as first-class data
+- it grounds answers in user-owned materials
+- it uses explicit tools for public web search, images, and resources instead of hiding outside context in plain text
+- it models student knowledge with BKT rather than only aggregate quiz accuracy
+- it connects study planning to deadlines through calendar-backed assignments
+- it has deploy, observability, security-header, and rate-limiting paths that are credible beyond a local demo
+- it supports multiple study modes without changing the core backend
+- it uses a production-friendly object storage flow instead of proxying uploads through the API server
 
-**1) Dark theme.** The previous styling defined the light palette under `:root` and only added `[data-theme="light"]` tweaks, with no `[data-theme="dark"]` rules and a stored default of `"dark"` — i.e. the app booted into a "dark" mode that rendered with light variables. Fixed by (a) changing the default in `theme.ts` to honour `prefers-color-scheme` and fall back to `"light"`, and (b) appending a comprehensive `[data-theme="dark"]` block to `styles.css` that overrides every CSS variable (`--bg`, `--surface`, `--panel-bg`, `--text-*`, `--user-bg`, sidebar tokens, status colors) and adds dark equivalents for surfaces that hardcoded `#fff` (inputs on focus, modals, flashcard faces, notes, search). Alternative considered: a near-total CSS rewrite to use semantic-only tokens — rejected as too invasive for the cohesion goal; the variable-flip plus a focused list of hardcoded-surface overrides is much smaller and reversible.
+The central finding is that the system becomes more educationally meaningful when chat is treated as one interface into a larger learning state, rather than as the product itself. Sessions feed notes, quizzes, resources, progress, mastery estimates, reminders, and review systems rather than disappearing after the answer is delivered. This directly addresses RQ1 by converting transient interactions into durable artifacts, and RQ2 by pairing conversational convenience with retrieval practice, source cards, lecture controls, and student-visible study memory.
 
-**2) Sidebar icons via `lucide-react` (new dependency).** Sidebar entries used unicode glyphs (`⊞◎⬡⌕◷◉⚙↩`) which read as bullets to screen readers, didn't align visually, and clashed with the new landing aesthetic. Replaced with `lucide-react` icons (`LayoutGrid`, `MessageSquare`, `Layers`, `FolderOpen`, `StickyNote`, `Search`, `History`, `User`, `Settings`, `LogOut`, `Plus`) and added an accent-colored left-bar plus icon-tint on the active row for clearer state. Alternatives considered: (a) `react-icons` — broader coverage but pulls a much larger surface area and inconsistent stroke widths across icon families; (b) hand-rolled SVG set — zero deps but unproductive for ~10 icons we want to add to and audit consistently. Chose lucide for tree-shakeable per-icon imports, uniform stroke geometry (matches the OS-chrome feel of the landing), and minimal runtime cost.
+The evaluation design also clarifies an important distinction: retrieval quality, factual grounding, and pedagogical helpfulness are related but separate properties. A system can retrieve the right passage and still produce a weak tutor response if it does not scaffold, check understanding, or adapt depth. Conversely, a warm and engaging answer is not acceptable if it is not grounded in the student's material when grounding is available. Sapient therefore needs both RAG metrics and tutoring-quality metrics to be evaluated honestly.
 
-**3) Chat density + typed artifact headers.** The thread crammed turns together (`gap: 0.125rem`, 0.625rem turn-padding) and gave quizzes/diagrams the same sender-line treatment as ordinary AI messages, so artifacts didn't visually announce themselves. Raised inter-turn `gap` to 0.85rem and added a typed pill label (`Quiz` / `Diagram`) with an accent-tinted background and an accent left-border on the artifact cards themselves, so the user can scan the thread for "moments" (quizzes, diagrams, sources) at a glance. The pill uses the same `--accent` slate-blue token as the rest of the design so it stays themed.
+## 13. Limitations and Future Work
 
-*Why bundle these.* All three are visual-cohesion items with shared dependencies on theme tokens. Doing them in one pass meant the dark-theme palette could be designed knowing exactly which surfaces (icons, artifact pills, sidebar active bar) needed accent treatment, rather than re-touching each three times.
+The current implementation is strong as a prototype and early product foundation, but several areas remain open for expansion:
 
-## Decision: Lecture mode persistence + AI surfaces polish (2026-05-11)
+- export flows for summaries, notes, or session transcripts
+- stronger mobile optimization and accessibility review
+- richer analytics and retention metrics
+- deeper material parsing and citation fidelity, especially for tables, slides, and scanned PDFs
+- persistence for session diagrams if long-term diagram history becomes important
+- Redis-backed rate limiting before horizontal backend scaling
+- migration from localStorage bearer tokens to HttpOnly cookie auth with CSRF protection
+- migration paths for newer OpenAI speech models (`gpt-4o-mini-tts`, `gpt-4o-transcribe`) if latency or transcription quality become priority issues
+- stronger evaluation workflows for tutoring quality, retrieval relevance, BKT calibration, and resource-recommendation usefulness
 
-**1) Lecture mode conversations no longer appear in the sidebar / history.** Added `is_lecture BOOLEAN NOT NULL DEFAULT FALSE` column to `conversations` (migration `20260511_000014`), threaded the flag through `ConversationCreate` and `create_conversation()`, and filtered `list_conversations_for_user` to `WHERE is_lecture IS FALSE`. `useLectureSession` now calls `createConversation(subject, { isLecture: true })`. The conversation row still exists (so key-ideas, diagrams, and the audio stream all keep working via `conversation_id`), but every listing surface that uses `listConversations()` — sidebar, recent, dashboard, history, search — now skips it automatically. Alternatives considered: (a) make lecture mode entirely ephemeral with no DB row — rejected because `streamChat` and artifact persistence both require a `conversation_id`; (b) frontend-only filter via localStorage of "ids to hide" — rejected as non-durable across devices.
+## 14. AI-Assisted Development Methodology
 
-**2) Lecture mode UI re-themed.** The lecture overlay used a yellow legal-pad / Bradley-Hand cursive aesthetic disconnected from the slate-blue OS theme. Kept the notebook metaphor (ruled lines, margin line, "now writing" block, note-entry stream, sketch section) but switched colors: dark slate-glass page surface with backdrop blur, faint slate ruled lines, accent-colored margin (not red), `--accent` glow on the active concept pill, and accent left-border on note entries / sketch card / live block — matching the artifact left-border treatment used in the chat thread. Replaced cursive font with the existing Newsreader serif (italicized for "in-progress" feel) so typography ties back to landing/hero. The status pill now has a pulsing accent dot to signal liveness; the speaker waveform and send button were re-tinted to use `--accent`. Removed the per-entry random rotation (`±0.45deg`) which read as a paper-stack metaphor but conflicted with the new clean OS aesthetic.
+A major part of this project was also methodological: it was an experiment in building substantial software with AI development tools under realistic constraints. Because the project was completed independently, it could not simulate one central part of professional software engineering: team communication. There were no product managers, designers, reviewers, QA partners, or other engineers to negotiate requirements with. However, within the constraints of personal funding, the development process used Claude Code, Codex, Gemini, and Claude Design as development collaborators with different strengths.
 
-**3) Quiz result clarity.** Hardcoded greens/reds (`#15803d`, `#b91c1c`) were swapped for theme tokens (`--success`, `--error`, `--success-bg`, `--error-bg`) and a 4px colored left-border was added to `.quiz-result` so correct/wrong/skipped reads as a strong, glanceable verdict. Header font size bumped to 1rem with a status-colored leading icon.
+The most useful workflow was Claude Code through the VS Code extension, with the Codex extension becoming especially useful when Claude Code credits ran out or when a second implementation path was useful. Gemini was useful for additional ideation and cross-checking. Claude Design, still in beta, was useful for quickly exploring interface direction, but it also made the risks of AI-generated UI clear: a visually plausible design is not automatically coherent with the existing product model, data model, or interaction constraints.
 
-**4) Audited & confirmed.** Verified that the previously-suspected flashcard-flip-missing issue is a false positive — flips already work via `perspective: 1200px` + `transform-style: preserve-3d` + `rotateY(180deg)`. Likewise, the "dark theme completely broken" finding from the earlier audit was overstated — a duplicate `:root` block at line 2248 of `styles.css` defines a complete dark palette that wins by cascade order, and dark mode was functionally fine; the `[data-theme="dark"]` block I added in the previous pass is now an explicit, lint-friendly override of that implicit dark base rather than a fix for missing styles.
+This experience matched observations from work as a Quality Assurance Intern at a newer AI startup: speed is often valued above everything else, and quality can become a downstream correction step. The cost of that mindset is familiar in product work. Features ship quickly, then have to be redesigned because the UX does not match the real workflow, or because the implementation does not fit cleanly with the rest of the system. Sapient suggests a more useful frame: AI tools can help one person produce more and move faster, but only when the human supplies product judgment, constraints, verification, and continuity.
 
-## Decision: Grounded, interruptible lecture mode (2026-05-13)
+The first lesson is that AI does not automatically ground itself in the builder's reality. The tool does not know the time limit, budget, deployment target, evaluation standard, product taste, or intended user unless those are made explicit. Sapient had a specific product intent: a serious study workspace, not a generic chatbot, and not a decorative edtech landing page. The models did not reliably infer that from a few prompts. They had to be given the budget constraints, the intended product feel, the need for durable learning artifacts, the importance of source grounding, and the reason speed alone was not the goal.
 
-Lecture mode was extended from "read the generated answer aloud" into a more tutor-like interaction model: grounded sources on screen, learner-controlled pacing, direct visual/checkpoint prompts, and real interruption semantics.
+The second lesson is that context and documentation are the real control surface. This became especially important when switching between agents. Before an agent implemented a feature, its understanding of the core problem, surrounding architecture, and product constraint had to be checked. The most productive workflow was to ask for a plan, inspect the reasoning, challenge weak assumptions, and only then let it edit. This costs more tokens, but it prevents more expensive mistakes: duplicated abstractions, UI that does not fit the system, or features that work locally but break deployment assumptions. Project files such as `features.md`, implementation notes, and future agent-guidance files such as `CLAUDE.md` or `Featuremap.md` are not just documentation for humans; they are memory and alignment infrastructure for AI agents.
 
-**1) Source rail instead of hidden citations.** The streaming chat endpoint already emits retrieved uploaded-material chunks through a `sources` SSE event. `useLectureSession` now stores those `RetrievedSource` records in session state, and `LectureModeOverlay` renders them in a dedicated source rail with filename, page metadata, snippet, relevance score, and a link back to the material detail page when a subject route is available. This keeps the learner oriented while the tutor is speaking and makes grounding visible without forcing citations into the spoken script.
+The third lesson is that an AI development tool works best when it has bounded tools and a clear feedback loop. Anthropic's work on effective agents describes the augmented LLM as an LLM with retrieval, tools, and memory, and emphasizes that agents need ground truth from their environment during execution [3]. That matched this project directly: agents were more useful when they could inspect the repository, run tests, read logs, use MCP servers or skills, and see concrete errors rather than operating only from natural-language requests. Slack's 2026 overview of agentic AI platforms similarly emphasizes goal-directed behavior, tool integration, adaptation to context, and human-in-the-loop oversight [4]. In practice, the "human-in-the-loop" part was not optional. It was the mechanism that kept the project coherent.
 
-**2) Pace and playback controls.** Lecture mode now separates pedagogical pace from audio playback speed. Pace (`Concise`, `Normal`, `Deep`) is sent as an instruction on the opening lecture and each follow-up so the model changes explanation depth. Playback speed (`1x`, `1.25x`, `1.5x`) updates the active `HTMLAudioElement.playbackRate` and is also applied to queued speech chunks. This avoids conflating "talk faster" with "teach less deeply."
+For Sapient specifically, this process shaped both the app and the engineering approach. The app itself pushes against passive AI consumption by adding sources, quizzes, flashcards, BKT mastery, reminders, and lecture-mode interruption. The development workflow followed the same principle: do not accept fluent output as sufficient. Ask for evidence, inspect the plan, test the result, preserve context, and make the model interact with the actual system rather than an imagined one.
 
-**3) Real-time interruption and explicit stop.** The browser microphone runs with echo cancellation, noise suppression, automatic gain control, and one-channel audio. `useLectureVoiceInput` watches microphone RMS locally, stops the current tutor audio as soon as speech starts, records only the learner utterance, filters transcripts that look like the tutor's own recent speech, and then sends the clean transcript as the next turn. The manual stop button uses the same cancellation primitives (`AbortController`, generation invalidation, audio queue cleanup), so stopping a response and interrupting by voice are consistent.
+## 15. Conclusion
 
-**4) Fast teaching actions.** "Check me" sends a prompt that pauses the lecture and asks one focused understanding question. "Show visually" asks the tutor to generate a visual explanation/diagram for the current concept. These are intentionally buttons rather than hidden prompt examples because they represent frequent lecture-mode control moves that should be available without typing.
+Sapient demonstrates a practical architecture for an educational AI system that goes beyond generic chat. By combining conversational tutoring, retrieval grounding, structured artifact generation, BKT-based mastery modeling, spaced repetition, calendar-aware reminders, feedback personalization, and voice interaction, the platform creates a more complete study environment. Its main contribution is not any single feature in isolation, but the way those features are connected: tutoring sessions generate reusable learning artifacts, those artifacts drive review and progress, quiz evidence updates the student model, deadlines influence study priority, and the system gradually builds a personalized study workspace for the learner over time.
 
-*Why this architecture.* The implementation keeps lecture mode on top of the existing chat stream, source retrieval, key-idea, diagram, and TTS systems instead of creating a separate lecture backend. That preserves persistence, artifact generation, and RAG behavior while adding a lecture-specific presentation and voice-control layer in the frontend. The tradeoff is that pace preferences are prompt-injected per turn rather than stored as a separate conversation setting; this is simpler and adequate until lectures need persistent per-subject pedagogy profiles.
+## References
 
-## Decision: Real image artifacts in chat and lecture (2026-05-13)
+[1] N. Kosmyna et al., ["Your Brain on ChatGPT: Accumulation of Cognitive Debt when Using an AI Assistant for Essay Writing Task,"](https://arxiv.org/abs/2506.08872) arXiv:2506.08872, 2025.
 
-The tutor can now call a `find_image` tool when a real photo/reference image would help more than a generated diagram. The tool searches Wikimedia Commons through a dedicated `WebImageService`, emits a streamed `image` event, and renders the same attributed image card in both normal chat and lecture mode.
+[2] A. Barcaui, ["ChatGPT as a cognitive crutch: Evidence from a randomized controlled trial on knowledge retention,"](https://www.sciencedirect.com/science/article/pii/S2590291125010186) *Social Sciences & Humanities Open*, 2025.
 
-*Why Wikimedia Commons.* Tutor-response images should be educational references, not decorative stock photography. Wikimedia Commons is a better default because it is public, source-oriented, commonly contains diagrams/photos of academic topics, and exposes creator/license metadata that can be rendered directly in the artifact card. It also avoids coupling response visuals to the Pexels cover-image flow. If Wikimedia search fails, the stream does not fail; the tool returns a "no image displayed" message to the model and the tutor can continue with text or a generated diagram.
+[3] Anthropic, ["Building Effective AI Agents,"](https://www.anthropic.com/engineering/building-effective-agents) 2024.
 
-*How it differs from diagrams and sources.* Diagrams remain model-generated Excalidraw artifacts for relationships, flows, systems, and abstract concepts. Images are provider-backed media artifacts for concrete visual references. Sources are uploaded-material retrieval snippets that ground claims in the student's files. Keeping these as separate event types (`diagram`, `image`, `sources`) lets the UI present each one with the right affordances and attribution instead of forcing every visual into one generic attachment format.
+[4] Slack, ["Best Agentic AI Platforms for 2026: What They Are and How to Choose One,"](https://slack.com/blog/productivity/best-agentic-ai-platforms-for-2026-what-they-are-and-how-to-choose-one) 2026.
 
-*Implementation notes.* `AGENT_TOOLS` now includes `find_image(query, caption)`. When the model calls it, `stream_chat()` fetches one image, yields an `image` SSE payload with URL, caption, creator, license, provider, and source links, then sends a LangChain `ToolMessage` back into the second-pass tutor response so the tutor knows whether an image was shown. The frontend adds an `ImageData` stream type, a reusable `ImageArtifactCard`, chat-side `sseImages` rendering, and lecture-side image buffering so images can appear in the live notebook alongside notes and diagrams.
+[5] Google, ["Gemini API model documentation,"](https://ai.google.dev/gemini-api/docs/models/gemini) accessed May 2026.
 
-## Decision: LLM-graded targeted quiz feedback (2026-05-11)
+[6] OpenAI, ["Text to speech,"](https://platform.openai.com/docs/guides/text-to-speech) and ["Speech to text,"](https://platform.openai.com/docs/guides/speech-to-text) accessed May 2026.
 
-The previous grader at `POST /quizzes/{id}/attempt` did a case-insensitive string-equality check against `quiz.correct_answer` and always returned the static `quiz.explanation` written at quiz-generation time. Symptom: a free-text answer that captured the right idea with imprecise wording (e.g., calling `<header>` "the parent of `<a>`" while also correctly stating "nav is the parent of `<a>`") was marked wrong and got generic feedback that ignored what the student actually wrote. Replaced with a hybrid grader.
+[7] Cloudflare, ["R2 pricing,"](https://developers.cloudflare.com/r2/pricing/) accessed May 2026.
 
-*Hybrid path.* Multiple-choice answers that exactly match the canonical option keep the cheap string-equality fast path and return the stored explanation (no LLM call). Everything else — wrong MCQ choices and any free-text response — routes through a new `app/services/quiz_grading_service.py`. The grader sends `(question, canonical answer, options, student answer)` to Gemini with a Socratic prompt asking for JSON `{verdict: "correct"|"partial"|"incorrect", feedback}`. Verdict maps `correct → is_correct=True`, otherwise `False`. Feedback replaces the static explanation in the response.
-
-*Where the cost lands.* The LLM call only fires on the wrong / free-text path, which is the teaching moment. A student who answers a routine MCQ correctly burns zero LLM tokens; a student who's actually wrong gets a 1–3s response that quotes their wording and points to the specific gap.
-
-*Failure modes.* On any LLM failure (timeout, quota, malformed JSON, empty feedback string), the grader falls back to the naive string-equality verdict + canonical explanation, so the user still gets a usable response — same UX as before this change, never worse.
-
-*Alternatives considered.*
-- *Replace with `with_structured_output()` from langchain_google_genai for hard-schema JSON.* Cleaner but adds another dependency surface and the existing artifact-generation code in `artifacts.py` already uses the bare `ainvoke` + `json.loads` pattern; consistency won.
-- *Grade everything (including correct MCQs) with LLM for consistent voice.* Rejected — burns money and adds latency on the routine "correct" path with no pedagogical upside.
-- *Cache feedback by `(quiz_id, normalized_user_answer)` so common mistakes don't re-grade.* Worth doing later if attempt volume grows; skipped for now since it adds infra without changing UX.
-- *Add a "partial" UI verdict (yellow/amber) to surface verdict=partial distinctly.* Considered, but partial answers and incorrect answers both pedagogically want the same UX — "here's what you got, here's the gap" — so the schema currently collapses partial → `is_correct=False` and lets the feedback text do the differentiation.
-
-## Decision: Study workspace product rules (2026-05-11)
-
-The project workspace should prioritize the information students actually need while avoiding placeholder or telemetry-like UI clutter.
-
-**Empty chats.** A chat with no messages is ephemeral. Empty sessions are hidden from all history/listing surfaces and are deleted on a best-effort basis when the user leaves an empty loaded chat. This keeps the sidebar, dashboard, search, and subject session lists from accumulating accidental sessions created by setup flows or abandoned navigation.
-
-**Subject page.** The subject page should stay compact and task-focused: no activity chart, no extra message-count or session-duration metadata, no "Last tutor reply" label, and no redundant "Change cover" text button. Sections can collapse/hide to reduce page weight, the cover is intentionally smaller, and cover editing is represented by a single top-right icon button. Study-session cards show only the last tutor reply timestamp, formatted in the user's browser timezone with 12-hour time, plus the relevant action buttons.
-
-**Navigation and dashboard.** Search belongs above recent chat history in the sidebar because it is a primary navigation/action surface, not an archive item. Recent chat rows do not need per-row message icons; the title and timestamp carry the row meaning. The dashboard should not include an extra "new subject" example card when the primary new-subject action already exists. Subject cards should stay visual and uncluttered: no "Study flow" chip, no study-session count, no percent progress, and no decorative gradient block behind the greeting.
-
-**Materials and input behavior.** PPTX is a first-class material type because student lecture materials are commonly distributed as PowerPoint decks. Chat messages and short-answer quiz responses should submit through the same path whether the user presses Enter or clicks the submit button, so keyboard and pointer behavior stay consistent.
-
-## Decision: Ragas + OpenAI judge for end-to-end RAG and pedagogical evaluation (updated 2026-05-17)
-
-The evaluation harness in `evals/` uses Ragas to score the end-to-end RAG pipeline on `faithfulness`, `answer_relevancy`, `context_precision`, `context_recall`, and `factual_correctness`, with OpenAI as the judge model. A second tutoring evaluation uses an OpenAI judge with a six-dimension rubric (scaffolding, active engagement, misconception handling, calibrated depth, prior-knowledge connections, source grounding) over `ScaleAI/TutorBench` rows and their sample-specific rubrics. Deterministic retrieval metrics (`recall@k`, `precision@k`, MRR) are computed against ground-truth labels without an LLM judge.
-
-*Rationale.* Ragas ships the metric set that is most directly aligned with the failure modes a tutoring RAG system actually produces — hallucination beyond the retrieved context, off-topic answers, and retrieval that is numerous but irrelevant — and it does so against the existing `(question, contexts, answer, ground_truth)` interface that the production retriever already emits. OpenAI is used for judging because the tutor itself is Gemini-backed; judging Gemini outputs with a different model family reduces self-preferential bias and gives a cleaner evaluation story.
-
-*Alternatives considered.*
-- *DeepEval / `deepeval`.* Ships a similar metric surface (faithfulness, answer-relevancy, hallucination, bias) with a pytest-style harness. Rejected because its metrics are tuned for general LLM-app testing rather than RAG specifically, and its tighter coupling to its own dataset format would have meant rewriting the `(question, ground_truth_answer, relevant_passage_ids)` schema that `rag-mini-bioasq` already provides.
-- *TruLens.* Strong on observability and feedback functions, oriented toward production tracing. Rejected because the eval harness is run offline against a fixed dataset, not against live traffic; the tracing surface would be unused and the metric set is less RAG-specific than Ragas.
-- *LangSmith evaluators.* Tight integration with LangChain (which this project already uses for tutor generation) and good UI for inspecting per-row results. Rejected because it introduces a hosted-service dependency and an extra account/SDK surface for a metric set that Ragas implements offline without external state.
-- *ARES / RAGAs-style learned judges.* Higher-fidelity per-metric judges fine-tuned on retrieval-augmented QA. Rejected as out of scope for this iteration — the cost of training or hosting a judge model outweighs the marginal accuracy gain at the current dataset size.
-- *Custom rubric prompts only, no Ragas.* The pedagogical evaluation already takes this shape because no off-the-shelf framework scores tutoring behavior. Rejected as a *replacement* for Ragas on the RAG side, because rewriting `faithfulness` and `context_precision` prompts in-house gives up an externally-audited baseline for no architectural benefit.
-- *Gemini judge.* Initially attractive because it reused the same provider and credentials as the tutor, but it makes the judge and system-under-test too similar.
-- *Judge ensemble (Gemini + GPT-4o + Claude).* Would mitigate single-judge bias further. Acknowledged in the limitations section but deferred — the current single-judge configuration is already useful for trend detection, and adding two more providers triples the LLM cost and the failure-mode surface per run.
-
-## Decision: `rag-mini-bioasq` as the RAG benchmark corpus (2026-05-12)
-
-The retrieval and Ragas evaluations both run against `rag-datasets/rag-mini-bioasq` (4.7K biomedical passages with ground-truth `relevant_passage_ids` per question), supplemented with configurable distractor passages drawn from the rest of the BioASQ corpus and segregated to a dedicated `ragas-eval@local` user with its own subject. The current default uses one hundred QA rows and five hundred distractors.
-
-*Rationale.* The dataset provides deterministic ground-truth relevance labels, which makes retrieval metrics computable without an LLM judge, and its passage length and register approximate the textbook excerpts and lecture notes that students actually upload. The distractor passages keep recall non-trivial: without them, a retriever that returned every passage would hit perfect recall vacuously.
-
-*Alternatives considered.*
-- *MS-MARCO.* Massive scale and a de facto industry baseline, but the passage register is web-search snippets rather than instructional content, and the relevance graders were optimized for web ranking rather than academic correctness. Rejected as a register mismatch for tutoring material.
-- *FiQA / BEIR financial subset.* Domain-narrow and registers as Q&A rather than instructional prose. Rejected for the same register-mismatch reason.
-- *Hand-curated corpus drawn from real student uploads.* Highest external validity but blocked on (a) consent / privacy for actual student-uploaded material and (b) the engineering cost of labeling ground-truth relevance ourselves. Deferred to a follow-up project; the BioASQ subset is the appropriate placeholder until real-user data can be ethically annotated.
-- *MMLU / academic QA benchmarks.* Measure model knowledge, not retrieval quality — passages are not the unit of evaluation. Rejected as not measuring the system under test.
-- *Full BioASQ (vs. `rag-mini-bioasq`).* The full corpus is millions of passages; ingestion cost and embedding budget would dominate the harness without changing the *signal* it produces, since the mini variant already exercises the retriever's ranking, deduplication, and chunking paths. Rejected as a cost-only difference.
-
-## Decision: Lecture-mode session shape — boolean column on `conversations` (2026-05-11)
-
-Lecture-mode sessions are modeled as ordinary `conversations` rows with a new `is_lecture BOOLEAN NOT NULL DEFAULT FALSE` column (migration `20260511_000014`), filtered out of every listing query (`list_conversations_for_user` and any view that calls it) but still backing artifact persistence via the existing `conversation_id` foreign keys.
-
-*Rationale.* The lecture flow reuses the same `streamChat` endpoint, the same key-ideas and diagram artifact tables, and the same audio-stream wiring as ordinary chats — sharing the conversation table keeps those references valid without polymorphic joins or duplicated artifact tables. Hiding the rows at the query layer rather than at write time means the data is still introspectable for debugging and analytics, and converting an existing lecture session into a regular chat (or vice versa) is a single column flip rather than a row migration.
-
-*Alternatives considered.*
-- *Separate `lecture_sessions` table with its own primary key.* Cleanest separation of concerns, but `key_ideas`, `diagrams`, and the streaming pipeline all foreign-key to `conversations.id`. Either every artifact table would need a parallel `lecture_session_id` column (doubling the schema) or every artifact insert would need a polymorphic-association adapter. Rejected — the additional schema cost is large and the only benefit is conceptual.
-- *Ephemeral / no DB row at all.* Considered briefly; rejected because `streamChat` requires a stable `conversation_id` to attach assistant messages and tool outputs to, and artifact persistence (key-ideas, diagrams) is part of the lecture-mode UX, not optional. Going ephemeral would mean re-architecting both surfaces around a transient identifier.
-- *`conversation_type` enum column (`chat | lecture | …`).* More extensible than a boolean and the right shape if a third or fourth session kind is ever added. Rejected for *now* on YAGNI grounds — only two states exist today, and enums are harder to filter on indexes than booleans. The migration to an enum is trivial (`ALTER TABLE` plus a backfill) if a third state ever appears.
-- *Frontend-only filter via `localStorage` of hidden conversation IDs.* Considered for speed — no migration, no backend change. Rejected because it is not durable across devices, and the "lecture sessions should not appear in history" guarantee should be a property of the data, not of one client.
-- *Soft-delete on creation (`deleted_at = NOW()`).* Would naturally hide the rows from any query that already filters deleted conversations. Rejected because lecture sessions are not *deleted* — they are valid, accessible, just-not-listed — and conflating the two semantics would corrupt the meaning of the existing soft-delete column.
-
-## Decision: Dashboard cover images via S3-backed direct upload with re-signed read URLs (2026-05-13)
-
-Dashboard subject covers are now uploaded by the user from their machine, not pasted as arbitrary public URLs. The frontend obtains a short-lived presigned PUT URL from `POST /projects/cover-images/presign`, uploads the file directly to S3/R2 under `cover-images/{user_id}/{uuid}.{ext}`, and persists the resulting object key on `project_profiles.cover_image_storage_key` (migration `20260513_000016`). When any endpoint returns a `ProjectProfileRead`, the backend re-signs a fresh GET URL for that key and serves it as `cover_image_url`. Pexels selections continue to flow through the existing `cover_image_url` field, mutually exclusive with `cover_image_storage_key`; switching between the two modes clears the prior blob from S3 inside the `setup_project` transaction.
-
-*Rationale.* The "paste a public image URL" affordance was both a usability tax (users had to host the image themselves) and a security smell (every load issued a third-party GET that leaked the user's IP and `Referer`, and there was no integrity guarantee that the image at the URL would still be the image they picked). Moving uploads into the same bucket already used for materials gives us one credential surface, one CORS configuration, one upload-size policy (here 5 MB, enforced by the presigned URL), and one place to delete blobs when the user replaces the cover. Storing the *key* (not a presigned URL) in the database keeps the row durable across signature expiration and lets the backend control read-side TTL centrally via `preview_url_expires_seconds`.
-
-*Alternatives considered.*
-- *Backend multipart endpoint that streams the file through FastAPI to S3.* Conceptually simpler for the frontend (one request, no presigning) but doubles the bandwidth at the API server and ties request latency to the file size. Rejected — the materials pipeline already established the presigned-PUT pattern and the operational characteristics are strictly better.
-- *Public-read bucket / public bucket prefix for cover images.* Would let `<img src>` point at a stable URL with no re-signing. Rejected because the project is single-bucket and switching one prefix to public ACL on Cloudflare R2 requires bucket-wide configuration changes, and because there is no real benefit at this scale to leaking authenticated upload artifacts to the open web.
-- *7-day max-expiry presigned URL stored directly in `cover_image_url`.* Avoids the new column and the hydration helper. Rejected because the URL silently breaks after seven days and there is no signal on the row that it needs to be refreshed; the failure mode is "the user's dashboard quietly loses its image."
-- *Base64-encoded image stored inline in the DB.* No S3, no signing, trivial reads. Rejected because Postgres-resident base64 image bytes inflate every profile read by ~33%, and `ProjectProfileRead` is fetched on dashboard and project pages where the payload would dominate response size.
-- *Client-side blob URL only (no upload at all).* The picker would set an `<img src>` to `URL.createObjectURL(file)` and store nothing server-side. Rejected because the cover would not survive a page reload, let alone a different device, which is the entire point of the feature.
-- *Keeping the URL-paste option alongside the upload picker.* Considered briefly. Rejected per the explicit product directive ("remove the URL option") and because supporting both paths doubles the validation surface (CORS for hotlinked images, MIME sniffing for arbitrary remote URLs) without a corresponding usability gain.
-
-## Decision: Explain-first tutor prompt (concepts → examples → check) (2026-05-13)
-
-The base tutor system prompt was rewritten to lead with *substantive explanation* — named sub-concepts in **bold**, one-sentence definitions, and at least one concrete example per principle — and to use Socratic questioning as the *closer* rather than the gate. The prior prompt began with "ASSESS FIRST. ... Never open with a lecture" and "HINT BEFORE EXPLAIN," which caused the tutor to deflect direct informational questions ("what are the main principles of UI design?") into counter-questions ("what do *you* think the most important things are?") instead of teaching. The new prompt explicitly distinguishes *information-seeking* questions (which get a structured, exampled answer) from *attempt* questions ("I think the answer is X — is that right?", which still get hints, not the full answer).
-
-*Rationale.* A tutor that refuses to give the answer to a "what is X?" question fails the most basic affordance of a learning tool: when a student doesn't know something and asks, they should learn it, not get bounced. The original prompt over-applied Socratic method to every interaction, conflating explanation-requests with problem-solving-attempts. The rewritten prompt keeps the hinting behavior for genuine problem-solving and the comprehension check for after-explanation calibration, but unblocks the teaching path that the rest of the system (key-idea saving, diagram generation, quiz verification) was already designed to support.
-
-*Alternatives considered.*
-- *Per-style prompt switching via the `users.tutor_style` column.* The `tutor_style` field (default "Socratic guide") is concatenated into the system prompt at request time, so users could in principle pick a different style. Rejected as the *primary* fix because every new student lands on the default "Socratic guide" style and would hit the same deflecting behavior on day one; the base prompt has to be correct before per-user customization can meaningfully refine it.
-- *Two-tier prompt: assess-first for the first message of a session, explain-first afterward.* Reasonable on paper. Rejected because the assess-first opener was exactly the part the user complained about, and most sessions are short enough that the "assess once, then teach" mode never reaches the teach phase.
-- *Stricter quiz/diagram tool-call triggers as a substitute for explanation.* The thinking: if the tutor immediately quizzes or diagrams instead of explaining, it still teaches. Rejected because a quiz on a topic the student has never been taught is a worse experience than a clear text explanation, and diagrams are not always appropriate (the UI-principles question above is mostly textual).
-- *Keep the Socratic prompt and educate users to phrase questions differently.* I.e., teach the student to type "explain X" instead of "what is X." Rejected — the prompt is a *configuration* surface the project owner controls, and pushing tutor-side configuration burden onto every student is exactly backwards.
-- *RLHF / preference-tuned model swap.* A model fine-tuned on tutoring would presumably handle the assess-vs-explain distinction natively. Out of scope for this iteration; this is a prompt change, not a model change. The new prompt makes the boundary explicit enough that base instruction-tuned models can follow it reliably.
-
-## Decision: GitHub Actions deploys commits to Fly.io (2026-05-14)
-
-Commits pushed to `main` now trigger `.github/workflows/deploy.yml`. The workflow runs backend tests, builds the Vite frontend, installs `flyctl`, deploys the FastAPI app using the root `fly.toml` (`sapient-api`), then deploys the frontend from `frontend/fly.toml` (`sapient`). Manual runs are also available through `workflow_dispatch`.
-
-*Operational requirements.* The repository must define `FLY_API_TOKEN` as a GitHub Actions secret. The frontend build reads `VITE_API_BASE_URL` and `VITE_GOOGLE_CLIENT_ID` from repository variables, with same-named secrets accepted as a fallback. Backend runtime secrets stay in Fly, not in GitHub Actions; the backend deploy uses Fly's release command to run `alembic upgrade head`.
-
-*Rationale.* Deployment should be tied to the commit that produced it. Running tests and the frontend build in Actions catches broken pushes before Fly receives an image, while keeping the actual production secrets in Fly preserves the existing operational boundary.
-
-*Alternatives considered.*
-- *Manual local `fly deploy` after every commit.* Simple, but it depends on a developer machine and makes it easy for the deployed version to drift from `origin/main`.
-- *Separate backend and frontend workflows.* Slightly more granular, but this app's deployable surfaces are coupled by API/frontend contract changes and should advance together for now.
-- *Build-only CI plus manual deploy approval.* Useful for higher-risk production systems, but too much ceremony for the current project size. Manual dispatch remains available when a redeploy is needed without a new commit.
-
-## Decision: Bayesian Knowledge Tracing as the student model (2026-05-15)
-
-Sapient now maintains a per-subject BKT knowledge state on `project_profiles.knowledge_state` and stores an optional `concept` on each generated quiz. When a student answers or skips a quiz, the backend resolves the quiz to a Learning Map topic when possible, applies the BKT update, persists the new mastery probability, and maps that probability back to the Learning Map status. The tutor prompt receives the resulting mastery percentages so live tutoring can prioritize weak concepts instead of relying only on summary text.
-
-*Rationale.* BKT is a canonical intelligent tutoring system algorithm and gives the app an explicit student model: not just "how many questions were correct," but "how likely is this student to have mastered this concept?" It is also explainable and data-efficient enough for the current product scale, unlike sequence models that require many historical attempts per user.
-
-*Alternatives considered.*
-- *Naive correctness rate per concept.* Easier to implement, but it cannot distinguish guessing from knowledge or mistakes from non-mastery.
-- *Deep Knowledge Tracing.* More expressive, but it needs far more attempt-sequence data than the app currently has and is harder to explain in the UI and writeup.
-- *Only prompting the LLM to infer weak areas.* Flexible, but not a durable model. The same evidence should produce the same mastery update regardless of prompt phrasing.
-
-## Decision: Optional cross-encoder reranking for RAG retrieval (2026-05-15)
-
-The retrieval pipeline now supports an optional second-stage reranker. The backend first over-fetches vector candidates from pgvector (`RAG_CANDIDATE_K`, default 50), then, when `RAG_RERANKER_ENABLED=true` and `LANGSEARCH_API_KEY` is configured, sends those candidate passages to LangSearch's `/v1/rerank` endpoint using `langsearch-reranker-v1`. The reranked results are then trimmed with the existing per-material diversity rule before being injected into the tutor prompt and streamed as source metadata.
-
-*Rationale.* Embedding search is fast and broad, but it scores the query and each passage independently in the vector space. A cross-encoder reranker scores the query-passage pair directly, which is the standard two-stage retrieval architecture for improving precision at the small `top_k` used in prompts. This gives the project a concrete retrieval-quality ML story: vector-only versus vector-plus-reranker can be evaluated with recall, precision, and MRR using the existing retrieval harness.
-
-*Alternatives considered.*
-- *Always rerank every query.* Rejected because reranking adds latency and an external API dependency; the feature is opt-in and fail-open.
-- *Cohere Rerank.* Strong industry baseline, but paid at production usage. LangSearch fits the student-project budget better while preserving the same two-stage retrieval architecture.
-- *Local BGE reranker immediately.* Stronger local-control story, but it adds model-hosting and dependency weight that is not necessary to validate the retrieval architecture.
-- *Increase `RAG_TOP_K` instead.* Cheaper, but it pushes more context into the LLM rather than making the retrieved context better, increasing prompt cost and distraction.
-
-## Decision: Web search as an explicit tutor tool (2026-05-16)
-
-Sapient now exposes web search to the tutoring agent as a tool, using LangSearch's `/v1/web-search` API when `WEB_SEARCH_ENABLED=true` and `LANGSEARCH_API_KEY` is configured. The tutor is instructed to call the tool for current/latest facts, outside references, or when the student explicitly asks to search the web. Results are returned with `[Web N]` labels, surfaced in the chat sources panel, and the tutor is instructed to cite web-sourced claims inline.
-
-*Rationale.* Study-material RAG is still the primary source for course-specific tutoring, but students often ask for current examples, newer documentation, or outside context. Making web search a tool keeps the tutor grounded: it can browse when needed without pretending every answer came from uploaded notes. It also creates a clearer UX boundary between course sources and public web sources.
-
-*Alternatives considered.*
-- *Let the base LLM answer from training knowledge only.* Simple, but it cannot handle current facts and encourages vague hedging.
-- *Always search the web before every answer.* Rejected because it adds latency, cost, and distraction for questions already covered by uploaded study materials.
-- *Add a separate Google/Bing provider.* More familiar, but it adds another credential and billing surface. LangSearch already supports both reranking and web search with the same API-key pattern.
-
-## Decision: First-pass security hardening — security headers and dependency bumps (2026-05-15)
-
-A read-only security audit of the codebase produced three classes of fixable issues; this decision records the subset that was applied immediately and the items deferred for separate validation.
-
-**Applied.**
-1. **Security headers middleware** in `app/main.py`. Every response now carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Strict-Transport-Security: max-age=31536000; includeSubDomains` when the request was HTTPS. A strict `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` is applied to API responses; `/docs`, `/redoc`, and `/openapi.json` get a relaxed CSP that whitelists the jsDelivr CDN so Swagger UI continues to load.
-2. **Backend dependency pins** in `requirements.txt`: `pypdf 5.4.0 → 6.10.2` (closes 22 pypdf CVEs around malformed PDF handling, directly relevant because Sapient parses user-uploaded PDFs), `python-multipart 0.0.20 → 0.0.27` (closes 3 multipart-parsing CVEs), `pyjwt 2.10.1 → 2.12.0`. Verified by `pip install --dry-run` and the full unit test suite (34 passed).
-3. **Frontend transitive bumps** via `npm audit fix` in `frontend/`. Reduced reported vulnerabilities from 12 (1 high, 11 moderate) to 9 (1 high, 8 moderate). The residual high (lodash-es prototype pollution / `_.template` code injection) and the nanoid moderates are all transitive through `@excalidraw/excalidraw`; `npm audit fix --force` would bump it to a major-version-incompatible release and is deferred.
-
-**Deferred (with rationale).**
-- **`fastapi 0.115 → 0.122` + `starlette 0.46 → 0.49`.** Starlette 0.46.2 has two open CVEs (multipart parsing DoS) and FastAPI 0.115.12 pins starlette below 0.49, so closing the CVE requires bumping both. A 7-minor FastAPI bump can change middleware ordering and dependency-override scoping behavior; the audit pinned 0.122.1 in a sandbox and confirmed pip resolution but did not run the full integration suite. Treated as a separate change that needs its own validation pass.
-- **JWT in `localStorage` → `HttpOnly` cookie.** The current bearer-token setup is exposed to XSS payloads that bypass CSP. Migrating requires a `/auth/logout` endpoint, CSRF token plumbing for state-changing requests, and frontend changes to `frontend/src/api.ts` and `frontend/src/auth.ts`. With the new strict CSP in place and no real users, the residual risk is small enough to handle in a dedicated change.
-- **Excalidraw bump.** `npm audit fix --force` installs `@excalidraw/excalidraw@0.17.6`, a breaking-version downgrade off the current main branch. Behavior validation needs a manual pass over the diagramming feature.
-
-*Rationale.* The three applied changes are non-behavioral and reversible: security headers are response decoration, dependency point-bumps have small surface area (pypdf and pyjwt APIs in use are stable across the bump), and `npm audit fix` only touches transitive deps. The deferred items all carry behavioral risk or require parallel frontend changes and deserve their own focused commits with smoke testing.
-
-*Alternatives considered.*
-- *Defer everything until a single big "security PR".* Rejected because it keeps trivially-closeable CVEs open while waiting for the harder changes to land.
-- *Apply `npm audit fix --force` and bump FastAPI in this pass.* Rejected because both are behavior-affecting changes that should be tested in isolation, not bundled with a defensive-headers patch.
-- *Strict CSP everywhere, including `/docs`.* Rejected because it breaks Swagger UI's CDN-loaded assets. The relaxed CSP on docs paths still pins script/style sources to jsDelivr and `self` — a real improvement over no CSP — without losing the developer affordance.
-
-## Decision: Mermaid replaces Excalidraw for tutor-generated diagrams (2026-05-15)
-
-The `create_diagram` tutor tool previously asked the LLM to emit raw Excalidraw element JSON — boxes, arrows, `boundElements` cross-references, `startBinding`/`endBinding` pairs, and a dozen other low-level fields per element. The model frequently produced malformed scenes: orphan arrows with no bindings, shapes missing their inbound edges, or arrays of nodes with no connecting edges at all. The pipeline now asks the model for **Mermaid source code** and renders it on the client with `mermaid.js`. The tool's `parameters` schema changed from `{elements: <Excalidraw JSON string>, title}` to `{source: <Mermaid source>, title}`, and the SSE `diagram` event payload changed from `{elements: [...]}` to `{source: "..."}`. `@excalidraw/excalidraw` is removed as a dependency.
-
-*Rationale.* Mermaid is a small, well-defined DSL designed for exactly the diagram types a tutor draws — flowcharts, hierarchies, sequences, state machines, ER diagrams, mind maps. The LLM goes from generating ~200 lines of fragile JSON per diagram to ~5 lines of declarative source, which dramatically reduces the malformed-output failure mode. The conversion-to-render is now a stable, well-tested library path (`mermaid.render(id, source)`) instead of a chain of LLM correctness assumptions. As a side effect, the security audit's deferred `@excalidraw/excalidraw` major-version bump is moot — the package is gone, and the frontend's reported npm audit count drops from 12 vulnerabilities (1 high, 11 moderate) to 0.
-
-*Alternatives considered.*
-- *Server-side repair of LLM-produced Excalidraw JSON.* Rejected: it would only mask the underlying fragility (the model still has to produce a structurally complex format correctly most of the time), and the repair logic would need to grow as new failure modes emerge. Quick patch, not a fix.
-- *Keep Excalidraw, switch input to Mermaid via `@excalidraw/mermaid-to-excalidraw`.* The Excalidraw team's own recommended path, and it preserves the hand-drawn aesthetic. Rejected for a masters project where polish is a secondary goal: the conversion library introduces another moving part, and the underlying excalidraw security advisories still apply. Worth revisiting if the project ever needs the hand-drawn look as a brand differentiator.
-- *PlantUML / Graphviz.* Stronger for class/ER diagrams than Mermaid was historically, but PlantUML needs a Java server and Graphviz needs WASM bundles. Mermaid's coverage of the relevant diagram types is now wide enough that the operational simplicity wins.
-- *Hybrid (Mermaid for structural, AI-generated raster images for spatial / free-form).* Useful if a tutoring case genuinely fails Mermaid's expressiveness, but the existing `find_image` tool (Pexels + web search) already covers real-world photographs. Deferred until a concrete failure case appears.
-- *Render Mermaid as Excalidraw-style sketchy SVG via Mermaid's `look: "handDrawn"` config.* Available in Mermaid 11.x, recovers some of the Excalidraw aesthetic without the dependency. Not enabled in this pass — clean SVG is what defaults the audit and writeup care about — but it's a one-line toggle if the aesthetic becomes a priority.
-
-## Decision: Assignments, calendar feeds, and BKT-driven smart reminders (2026-05-15)
-
-Sapient now models student deadlines as first-class entities: a manual `Assignment` (title, due date, subject, notes, source URL) and a `CalendarFeed` that points at an iCal/webcal URL (e.g. a Canvas course calendar). Assignments imported from a feed carry `source="canvas"` and a stable `source_uid` so re-syncs are idempotent. A `/assignments/reminders` endpoint produces a unified, severity-sorted list combining upcoming-due alerts (`overdue` / `urgent` / `soon`) with mastery alerts derived from the existing BKT knowledge state and learning-map `needs_review` flags. The frontend exposes this through a global `/calendar` page, a dashboard preview, and a per-subject upcoming-strip.
-
-*Rationale.* The tutor was already modeling what a student *knows* (BKT) and *should learn next* (learning map). Adding what they *owe and when* closes the loop: reminders can now say "your essay is due in 2 days and your BKT mastery on composition is low — start with that." Importing via standard iCal/webcal rather than the Canvas REST API means the integration works with any Canvas instance the student already has access to, with no per-institution OAuth setup. A masters writeup benefits from being able to demonstrate the three signals composing.
-
-*Alternatives considered.*
-- *Canvas REST API (OAuth).* More structured data (rubrics, submission state), but requires per-institution OAuth app registration and a Canvas tenant the student admins. Rejected as too much operational lift for the project; iCal export is universally available behind a personal-secret URL.
-- *Treat reminders as a pure cron job that writes to a `notifications` table.* Cleaner separation, but adds a scheduler dependency. The on-read computation in `build_smart_reminders` is cheap (one indexed query + one profile read) and avoids the staleness problem entirely. Revisit if reminder generation ever needs to fan out to email/push.
-- *Use the LLM to summarize reminders.* Would produce nicer copy, but introduces LLM latency on every dashboard load and a non-determinism cost during evaluation. The current rule-based copy ("your essay is due in 2 days, prioritize composition while preparing") is explainable and testable.
-
-*Security: SSRF in the iCal fetcher (audited and fixed in the same pass).* The initial implementation called `httpx.get(url, follow_redirects=True)` on user-supplied feed URLs with only a scheme check. That was a clear SSRF: a student could submit `http://169.254.169.254/latest/meta-data/...` (AWS instance metadata) or `http://localhost:8000/auth/...` and have the server fetch it. `fetch_ical_events` now resolves the host, rejects any address that is loopback, private (RFC1918), link-local, multicast, reserved, or unspecified, manually follows up to 3 redirects with re-validation at each hop, and caps the response at 5 MiB. Access control on the routes themselves was already correct — every endpoint scopes by `user_id` from the JWT, and `_get_assignment` / `_get_feed` enforce ownership.
-
-*Known limitation.* The IP-validation approach does not defend against DNS rebinding, where an attacker controls a DNS record that resolves to a public IP at validation time and a private IP at connection time. The standard defense (resolve once, then connect by IP with a `Host:` header) breaks SNI for HTTPS. For a masters project with no real users, this residual risk is accepted; a production deployment should pin the resolved IP into the httpx transport or use a SOCKS proxy that enforces egress policy.
-
-## Decision: Human-in-the-loop study material management (2026-05-15)
-
-The tutor still auto-generates quizzes, flashcards (key ideas), diagrams, and images during chat, but every artifact type is now also (a) **user-authorable** with a dedicated form and (b) **user-summonable** on demand from the subject page, not only as a side effect of conversation. New surface area:
-
-- **Manual save from chat.** Assistant messages have a bookmark button that captures the current text selection (or the whole message if nothing is selected) into the notes. Diagram and image cards have their own Save buttons. Saved snippets carry an `artifact_type` (`text`, `diagram`, or `image`) plus structured `artifact_data` on `KeyIdea`, so the note panel can re-render the original Mermaid source or image thumbnail rather than just text.
-- **Manual quiz authoring.** `POST /quizzes` accepts a user-written `multiple_choice` or `short_answer` quiz with full server-side validation (options ≥ 2, `correct_answer` must match one option exactly for MC). Stored in a per-subject "Manual quizzes" conversation so existing conversation-scoped flows (history, BKT attribution) still work without a separate `manual_quizzes` table.
-- **Manual flashcard authoring.** Reuses the existing `POST /key-ideas` endpoint — flashcards are already KeyIdeas under the hood (the SR fields turn any note into a flashcard). The new modal just exposes that authoring surface.
-- **On-demand generation per subject.** `POST /projects/{subject}/quizzes/generate` and `POST /projects/{subject}/flashcards/generate` produce a fresh batch using the subject (and recent notes) as context. Distinct from the existing `weak-quiz` endpoint, which requires struggled-with topics or failed attempts; these generators work on a fresh subject with no history.
-
-*Rationale.* An LLM tutor that owns the entire learning loop — what you cover, what you remember, what you're quizzed on — is fragile in two ways. It's only as good as the model's choices in a given conversation, and it gives the learner no way to direct the system toward what they actually need next. Putting the user in the loop matters for both pedagogy and product: pedagogically, *generation effect* and *self-explanation* are well-documented retention boosters, so the act of writing your own flashcard is itself part of learning; product-wise, "I want five practice questions on this topic right now" is a request the user can articulate better than any heuristic. The autogeneration paths remain because they're convenient and they capture material that would otherwise be lost in chat history — but the human-in-the-loop additions guarantee the learner can always intervene, edit, add, or curate what the system stores about them.
-
-*Alternatives considered.*
-- *Auto-only, no manual authoring.* Simpler product surface, but the user has no agency over what gets remembered or quizzed on. Particularly bad in domains where the model misjudges what's important — students from underrepresented sub-disciplines would silently get worse coverage.
-- *Manual-only, no LLM generation.* Lower trust risk, but loses the assistant's main value. Students rarely have the energy to author a full quiz set from scratch; the on-demand generator + author hybrid covers both peaks (engaged user authoring a key concept) and troughs (tired user wanting practice now).
-- *Distinct `Note`, `Quiz`, and `Flashcard` tables for manual entries.* Cleaner separation but doubles the surface area: every consumer (search, BKT, SR scheduler, sidebar panel) would need to know about both auto and manual paths. Extending the existing `KeyIdea` and `Quiz` tables with an `artifact_type` field on the former and a synthetic "Manual …" conversation for the latter keeps a single source of truth per artifact type.
-- *Save snippets into a separate `clip` model.* Considered — would let snippets carry richer metadata (origin message, timestamp range, role) — but tutors mostly produce things students want to remember as *notes*. Conflating snippets and notes means they show up in the same review pipeline (search, SR, learning-map attribution) without a separate UX.
-- *Inline message-level attachment of artifacts.* The `quizzes.message_id` column added alongside this work was driven by the same principle: the user should be able to see exactly which response produced a given quiz, not be presented with a blob of artifacts disconnected from the conversation. Inline rendering of diagrams, images, and quizzes per assistant message is the read-side counterpart to the write-side authoring surfaces.
-
-## Decision: RAGAS 100-row eval run, embedding-quota recovery, and metric interpretation (2026-05-18)
-
-The full RAGAS evaluation now covers all 100 rows of `rag-datasets/rag-mini-bioasq` (previously 20). Final aggregates over n=100, gpt-4o judge, gemini-2.5-flash generator:
-
-| metric | score |
-|---|---|
-| faithfulness | 0.962 |
-| answer_relevancy | 0.819 |
-| context_precision | 0.847 |
-| context_recall | 0.828 |
-| factual_correctness | 0.456 |
-
-Three things changed mechanically to make the 80-row extension possible: the ingestion path now caches each embedding to `evals/eval_embedding_cache.json` as soon as the Gemini call succeeds (so a 429 mid-batch never costs prior progress); the RAGAS judge's transient-error markers were extended to recognize `APIConnectionError` / "Connection error." / "remote end closed" / "broken pipe" (a laptop sleep mid-run had killed the socket and the script exited instead of backing off); and the per-row judge checkpoint at `evals/ragas_scores_checkpoint.json` was already row-and-metric granular enough that the restart resumed at row 31's `answer_relevancy` without re-judging anything.
-
-*Rationale.* The 20-row baseline was a smoke test, not an evaluation; n=20 with bimodal per-row scores produces confidence intervals wide enough to swallow any plausible system change. n=100 still isn't enough for tight CIs on subgroup analysis, but it crosses the threshold where mean-shifts of ~5 percentage points on the per-row metrics become detectable, which is what we need for ranking model and retriever variants in the writeup. The fixes themselves were the cheap path: per-passage caching means the next re-ingest (different chunking, different embedding model, different `k`) is incremental rather than another 1,636-call burst, and the broader retry markers convert "kill the run" into "back off and retry" for any future networking glitch.
-
-*Alternatives considered.*
-- *Switch the eval-time embedder to OpenAI `text-embedding-3-small` via an `EVAL_EMBED_PROVIDER=openai` knob.* This was the documented fallback if Gemini's daily quota stayed exhausted — both the eval ingestion and the retriever's query side would have read the same env var, keeping cosine similarity consistent. Rejected once a prepaid Gemini balance unblocked the quota: the whole point of the RAG eval is to measure the production retrieval path, and swapping the embedding model breaks production parity. Kept on the shelf as a guaranteed-to-work fallback for any future masters-project deadline where Gemini availability is the bottleneck.
-- *Use Gemini's `batchEmbedContents` (up to 100 texts per request).* Would have cut request count by ~100× and worked under either tier. Not implemented because the prepaid balance made it unnecessary, and adding a batch path now would diverge the eval embedder from `app/services/embedding_service.py`'s single-call production behavior — a needless source of "but production runs one-by-one, your eval ran in batches of 100" objections during writeup defense. Worth doing if the production retriever ever moves to a batch-ingest pipeline.
-- *Defer the 80-row extension and ship the writeup on n=20.* Rejected because the eval section is one of the few places where masters-rigor and product-rigor diverge: a product would be fine with n=20 as a regression gate, but a masters writeup that claims a number needs that number to be defensible.
-- *Match RAGAS's eval-time embedder to the production embedder (Gemini), instead of using OpenAI `text-embedding-3-small` for `answer_relevancy`.* Rejected — the RAGAS judge embeddings serve `answer_relevancy`, which is an *evaluation* signal, not a production retrieval signal. Keeping the judge stack entirely on OpenAI (LLM + embeddings) keeps the eval evidence one provider away from the system being evaluated, which is what reduces self-preferential bias when the generator is Gemini.
-- *Replace `factual_correctness` with a custom rubric.* The metric scored 0.456 — far below the other four — and the floor is driven by valid-but-differently-framed answers, not actual wrong answers (row 21's ivabradine question is the canonical example: the generator reported trial outcomes, the BioASQ reference described the mechanism, both correct, claim-overlap ≈ 0). A free-form "is this medically accurate" prompt to the judge would correlate better with human judgment. Not done in this pass because (a) the standard RAGAS number is what a reviewer recognizes, and (b) the gap between `factual_correctness` and `faithfulness` *is itself an interpretive finding* worth keeping in the writeup. A custom-judge metric can be added alongside, not in place of, the RAGAS metric if the writeup needs a head-to-head.
-
-*Known limitation.* `factual_correctness` should not be read as "the system is half wrong." It's a strict claim-set F1 against a single short reference answer, and BioASQ references are often partial. The faithfulness + context-recall pair (0.962 / 0.828) is the better signal for "does the system answer the question correctly given retrieved evidence."
-
-## Decision: TutorBench 100-scenario pedagogical eval and the `OPENAI_API_KEY` alias-shadow bug (2026-05-18)
-
-The pedagogical eval (`evals/tutoring_eval.py`) now runs against 100 ScaleAI/TutorBench scenarios (text-only USE_CASE_1_TEXT after the multimodal filter), scoring tutor responses on six dimensions with a gpt-4o judge. Final n=100 means:
-
-| dimension | mean (1-5) |
-|---|---|
-| scaffolding | 4.70 |
-| engagement | 4.73 |
-| misconception | 4.72 |
-| depth | 4.82 |
-| connections | 4.41 |
-| grounding | 4.83 |
-| **overall** | **4.70** |
-
-The single weak dimension is `connections` — the tutor links the current concept to adjacent material less consistently than it scaffolds or grounds. This is the most actionable finding for future tuning. Two mechanical changes shipped with this run: the same `connection error` / `apiconnectionerror` / `remote end closed` retry markers added to the RAGAS judge are now in `_is_retryable`, so a laptop-sleep mid-run gets backed off instead of crashing the process; and one stuck-on-first-scenario investigation surfaced a real configuration bug that's now documented below.
-
-*Rationale.* RAGAS measures whether the RAG path produces faithful, grounded answers — but the tutor's product value is *teaching*, not retrieval-conditioned QA, and RAGAS doesn't measure that. TutorBench (ScaleAI, 2024) is the right complement: each scenario carries a rubric of "ideal tutor behaviors" produced by domain experts, and the six-dimension judge prompt maps those rubrics onto the tutor's actual response. Running n=100 (vs. the prior 15 hand-written local scenarios) crosses the same statistical-detectability threshold as the RAGAS upsize: the per-dimension means are now stable enough to rank model and prompt variants in the writeup. Keeping the gpt-4o judge consistent across both evals (RAGAS and TutorBench) means the judge-side variance is a constant, not a confound, when comparing absolute scores.
-
-*Configuration bug discovered during this run (worth documenting because it's not obvious from the code alone).* The first three launches failed immediately with `400 INVALID_ARGUMENT: API_KEY_INVALID` on every Gemini call. The cause was the eval launcher exporting `OPENAI_API_KEY` in the shell so the judge could read it, combined with `Settings.llm_api_key` being declared in `app/core/config.py` with `validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY")` — an intentional choice that lets users with a single OpenAI key drive the app without renaming. Pydantic-settings consults shell env before the `.env` file and tries aliases in order: when both `LLM_API_KEY` (in `.env`, the Gemini key) and `OPENAI_API_KEY` (set in the launch shell, the OpenAI key) are present, the shell-set `OPENAI_API_KEY` wins via the alias, and the resulting `settings.llm_api_key` is an OpenAI `sk-proj-...` token passed to `ChatGoogleGenerativeAI`. Google rejects it as `API_KEY_INVALID`, which is structurally correct but semantically misleading — it looks like a Google quota or auth problem and points the investigator at the wrong system. The fix is to pass the OpenAI key as `EVAL_OPENAI_API_KEY` (which is not part of any alias chain — `evals/tutoring_eval.py:_get_openai_eval_key()` and the equivalent in `evals/ragas_judge_checkpoint.py` look it up directly via `os.getenv`), so pydantic continues to read `LLM_API_KEY` from `.env` for Gemini.
-
-*Alternatives considered (for the bug).*
-- *Drop `OPENAI_API_KEY` from the `AliasChoices` and force `LLM_API_KEY` only.* Cleaner, but breaks the OpenAI-first onboarding story that motivated the alias originally. Rejected; the eval is the rare case where both keys legitimately exist in the same process, and the eval launchers can be told to use `EVAL_OPENAI_API_KEY` instead.
-- *Make the eval launcher read both keys out of `.env` itself and pass each via its non-aliased name.* Already the approach for `EVAL_OPENAI_API_KEY`. Worth doing as a documented launch pattern in `evals/README.md` rather than continuing to discover it once per eval script.
-- *Detect the misuse in `Settings` validation (reject a Google-shaped `LLM_API_KEY` that doesn't start with `AIza`/`AQ.`).* Tempting, but key formats change and a hard-coded prefix check is a future source of false-positive rejections. The alias-shadow case is rare enough in normal operation that a documented warning is the right granularity.
-- *Surface the underlying cause through a wrapper that introspects which alias actually resolved.* Pydantic-settings doesn't expose this cleanly, and instrumenting it adds complexity for a launch-time misuse. The launch-pattern documentation route is cheaper.
-
-*Alternatives considered (for the eval itself).*
-- *Keep the original 15 hand-written local scenarios.* The local set was useful as a smoke test but is non-comparable to external benchmarks and easy to overfit to. The new `evals/tutoring_responses_checkpoint.local-source.json.bak` keeps the old run on disk in case it's needed for retrospective comparison, but the writeup will quote TutorBench numbers as the headline.
-- *Include the multimodal TutorBench batches.* Possible by setting `EVAL_TUTORING_INCLUDE_MULTIMODAL=1`, but the tutor's image-handling path (image upload → Gemini vision) is not exercised by the eval harness as currently written — the multimodal scenarios would receive a textual "image unavailable" stub and the scores would conflate image-pipeline behavior with tutoring behavior. Deferred; a future eval should pass image URLs through the production materials-ingest path so the multimodal scores measure the real system.
-- *Use a stronger / different judge (gpt-4o-mini, o3, Claude as judge).* gpt-4o is the standard reference for academic RAG/tutoring evals and matches RAGAS-side, which is the rationale for fixing it. A future ablation could re-score the same checkpointed tutor responses with a different judge — the per-scenario checkpoint already preserves the responses, so changing the judge is cheap.
-- *Score on fewer / different dimensions.* The six dimensions (scaffolding, engagement, misconception, depth, connections, grounding) were chosen to be orthogonal-ish coverage of the pedagogy literature. Pruning to four would tighten the table but lose signal — `connections` is exactly the dimension that's separable from the others in the data, and dropping it would have hidden the only actionable weakness this run found.
-
-*Known limitation.* The 4.70 overall mean is in the same "default high band" that cross-provider gpt-4o-as-judge tends to produce for any competent system. Read it as a *baseline to beat* in future runs (different model, different prompt, different retrieval config), not as "the tutor is near-perfect." The relative gap between `connections 4.41` and the next-lowest dimension at 4.70 is the kind of signal the eval is actually for — within-run dimensional contrast survives the judge's overall calibration drift, where absolute scores do not.
-
-## Decision: Retrieval eval re-run at n=100 against the full 1,636-passage corpus, plus cross-eval consistency check (2026-05-18)
-
-The label-driven retrieval eval (`evals/retrieval_eval.py`) was re-run after the 100-row BioASQ corpus was ingested. It computes recall@k, precision@k, and MRR over the 100 QA rows using the dataset's ground-truth `relevant_passage_ids`, so there is no LLM judge in the loop — only one embedding call per question against the production retriever. Unlike RAGAS and TutorBench, this run completes in ~2 minutes and produces fully deterministic numbers.
-
-Final aggregates (n=100, corpus = 1,136 referenced + 500 distractors = 1,636 passages):
-
-| metric | k=1 | k=3 | k=5 | k=10 |
-|---|---|---|---|---|
-| recall@k | 0.140 | 0.330 | 0.463 | 0.612 |
-| precision@k | 0.950 | 0.903 | 0.834 | 0.641 |
-| MRR | **0.965** | | | |
-
-*Rationale (for re-running rather than reusing the prior 20-row CSV).* The previous `evals/retrieval_results.csv` was generated when pgvector held only 222 referenced passages (rows 0-19) plus 200 distractors — 422 passages total. At that scale the haystack is small enough that the retriever has an unrealistically easy time, and the metrics overstate production performance. Re-running against the 1,636-passage corpus exercises the retriever against a haystack roughly 4× larger and on 5× more queries, which is the regime the RAGAS and TutorBench runs already evaluate. With all three evals now reporting on the same 100-row slice, the writeup can present a single "eval at n=100" view across retrieval (label-based), RAG quality (LLM-judged with ground-truth references), and pedagogy (LLM-judged against expert rubrics).
-
-*Reading the numbers (and the reason this needs to be in the writeup).* The headline is **MRR=0.965** with **precision@1=0.95**: the first relevant passage lands at rank 1 almost every time, and the top-1 hit is correct 95% of the time. The `recall@1=0.14` number looks alarming in isolation but is **structurally bounded** — each BioASQ question has many ground-truth relevant passages (`n_relevant` per question often 10-35), so recall@1 is bounded above by `1/n_relevant`, which means a perfect retriever still reads ~0.05-0.20 here. **`recall@10=0.61` is the more useful recall number**: at the production `RAG_TOP_K=4`, the retriever surfaces roughly 46% of the supporting evidence, which is consistent with RAGAS's `context_recall=0.83` (the LLM judge counts semantically related chunks as supporting even when they are not in the strict ground-truth ID set, which is the expected direction of disagreement). The precision-decay curve (`0.95 → 0.64` from k=1 to k=10) is the curve a reranker would flatten, and the reranker pluming is already configured (`RAG_RERANKER_ENABLED=false` by default, `LANGSEARCH_*` envs ready) — a follow-up ablation can flip it on and measure the lift on this same eval.
-
-*Cross-eval consistency check.* Two independent measurements of the retrieval path agree on direction and ordering: precision@1 from the label-driven eval (0.95) and `context_precision` from RAGAS (0.85) both say the top hit is usually right; recall@10 (0.61) and `context_recall` (0.83) both say the retriever leaves real headroom, with RAGAS slightly more generous as expected. This kind of independent corroboration is the main writeup payoff of keeping all three evals — a single judge-based number is a hypothesis; a judge-based number that matches a label-based number is evidence.
-
-*Alternatives considered.*
-- *Skip the re-run and quote the prior 20-row, 422-passage numbers.* Rejected: those numbers describe a haystack 4× smaller than what the rest of the eval suite runs against, and presenting them next to the n=100 RAGAS and TutorBench tables would invite the obvious "but the retriever was tested against fewer distractors" objection. The re-run cost ~100 embedding calls — trivial against the prepaid balance.
-- *Reduce `recall@1`'s prominence by reporting only recall@5/@10.* Tempting, since `recall@1=0.14` reads badly without the bounding-by-`n_relevant` context. Rejected: every retrieval eval in the literature reports recall@1 alongside higher-k versions, and silently dropping it would look like the kind of selective reporting reviewers flag. The interpretive note in the writeup is the right fix.
-- *Run with `RAG_RERANKER_ENABLED=true` so the headline numbers include the reranker.* The reranker is the production *option*, not the production *default*, and switching it on for the headline conflates "what does the system do today" with "what could it do." The deferred reranker ablation is the right structure: report no-reranker headline numbers, then a separate row in the writeup showing the lift the reranker provides.
-- *Add nDCG@k.* nDCG is the standard graded-relevance metric in IR, but BioASQ's labels are binary (relevant / not), so nDCG collapses to a recall-flavored summary that doesn't carry information beyond recall@k. Worth adding when an eval has graded judgments; not here.
-- *Increase distractor count from 500 to e.g. 2,000.* Stresses the retriever harder and would lower precision@k. Rejected for this pass because the cross-eval consistency story relies on the corpus being the same one RAGAS and TutorBench measured against; changing the haystack now means re-running RAGAS too. Future ablation candidate.
-
-*Known limitation.* The label-based metrics measure agreement with BioASQ's curated `relevant_passage_ids`, which are a *partial* labeling — passages not in the labeled set but still factually supportive of the answer count as misses here, even though a downstream LLM grounded on them would produce a correct answer. This is exactly why the eval is paired with RAGAS's `context_recall` (LLM-judged) rather than presented alone.
+[8] Fly.io, ["Pricing,"](https://fly.io/docs/about/pricing/) and ["Autostop/autostart Machines,"](https://fly.io/docs/launch/autostop-autostart/) accessed May 2026.

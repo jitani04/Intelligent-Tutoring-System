@@ -53,7 +53,6 @@ export function StartMaterialsPage() {
   return (
     <div className="flow-page">
       <div className="flow-card">
-        <div className="flow-step">Step 2 of 3</div>
         <h1>Upload course material</h1>
         <p className="flow-copy">
           Optional. Uploads keep answers grounded in your actual material.

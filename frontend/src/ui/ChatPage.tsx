@@ -673,25 +673,20 @@ export function ChatPage() {
     await submitDraft();
   }
 
-  function handleQuizAnswered(result: AttemptResult, answer: string) {
+  function handleQuizAnswered(_result: AttemptResult, _answer: string) {
     if (context?.subject) {
       void queryClient.invalidateQueries({ queryKey: ["project-profile", context.subject] });
       void queryClient.invalidateQueries({ queryKey: ["project-progress", context.subject] });
       void queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
     }
-    const msg = result.is_correct
-      ? `I answered "${answer}" — that was correct!`
-      : `I answered "${answer}" but got it wrong. The correct answer was "${result.correct_answer}". Can you explain why?`;
-    void send(msg);
   }
 
-  function handleQuizSkipped(result: AttemptResult) {
+  function handleQuizSkipped(_result: AttemptResult) {
     if (context?.subject) {
       void queryClient.invalidateQueries({ queryKey: ["project-profile", context.subject] });
       void queryClient.invalidateQueries({ queryKey: ["project-progress", context.subject] });
       void queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
     }
-    void send(`I skipped that quiz question. The correct answer was "${result.correct_answer}". Can you explain it before we move on?`);
   }
 
   async function saveSnippetToNotes(args: {
@@ -973,14 +968,7 @@ export function ChatPage() {
   }
 
   const title = conversation?.title?.trim() || context?.subject || (conversation ? `Study session #${conversation.id}` : "New study session");
-  const subtitleParts: string[] = [];
-  if (context?.subject) {
-    if (conversation) subtitleParts.push(`Session #${conversation.id}`);
-    else subtitleParts.push("New study session");
-  } else {
-    subtitleParts.push("General study");
-  }
-  const subtitle = subtitleParts.join(" · ");
+  const subtitle = context?.subject ? context.subject : "General study";
   const tutorName = userQuery.data?.tutor_name || "Sapient";
   const tutorInitials = initialsForName(tutorName);
 
@@ -1271,15 +1259,15 @@ export function ChatPage() {
                       </div>
                     </div>
                   ))}
-                  {msgQuizzes.map((q) => (
-                    <div key={`quiz-${q.quiz_id}`} className="msg msg-artifact msg-artifact-quiz">
+                  {msgImages.map((image) => (
+                    <div key={`image-${image.id}`} className="msg msg-artifact msg-artifact-image">
                       <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
                       <div className="msg-body">
                         <div className="msg-sender msg-artifact-label">
-                          <span className="msg-artifact-tag">Quiz</span>
+                          <span className="msg-artifact-tag">Image</span>
                           <span className="msg-artifact-source">from {tutorName}</span>
                         </div>
-                        <QuizCard quiz={q} onAnswered={handleQuizAnswered} onSkipped={handleQuizSkipped} />
+                        <ImageArtifactCard image={image} onSave={handleSaveImage} saved={savedSnippetKeys.has(`image-${image.id}`)} />
                       </div>
                     </div>
                   ))}
@@ -1295,15 +1283,15 @@ export function ChatPage() {
                       </div>
                     </div>
                   ))}
-                  {msgImages.map((image) => (
-                    <div key={`image-${image.id}`} className="msg msg-artifact msg-artifact-image">
+                  {msgQuizzes.map((q) => (
+                    <div key={`quiz-${q.quiz_id}`} className="msg msg-artifact msg-artifact-quiz">
                       <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
                       <div className="msg-body">
                         <div className="msg-sender msg-artifact-label">
-                          <span className="msg-artifact-tag">Image</span>
+                          <span className="msg-artifact-tag">Quiz</span>
                           <span className="msg-artifact-source">from {tutorName}</span>
                         </div>
-                        <ImageArtifactCard image={image} onSave={handleSaveImage} saved={savedSnippetKeys.has(`image-${image.id}`)} />
+                        <QuizCard quiz={q} onAnswered={handleQuizAnswered} onSkipped={handleQuizSkipped} />
                       </div>
                     </div>
                   ))}
@@ -1333,30 +1321,6 @@ export function ChatPage() {
                 </div>
               )}
 
-              {pendingQuizzes.map((q) => (
-                <div key={`pending-quiz-${q.quiz_id}`} className="msg msg-artifact msg-artifact-quiz">
-                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
-                  <div className="msg-body">
-                    <div className="msg-sender msg-artifact-label">
-                      <span className="msg-artifact-tag">Quiz</span>
-                      <span className="msg-artifact-source">from {tutorName}</span>
-                    </div>
-                    <QuizCard quiz={q} onAnswered={handleQuizAnswered} onSkipped={handleQuizSkipped} />
-                  </div>
-                </div>
-              ))}
-              {pendingResources.map((r) => (
-                <div key={`pending-resource-${r.id}`} className="msg msg-artifact msg-artifact-resource">
-                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
-                  <div className="msg-body">
-                    <div className="msg-sender msg-artifact-label">
-                      <span className="msg-artifact-tag">{r.kind === "video" ? "Video" : "Article"}</span>
-                      <span className="msg-artifact-source">recommended by {tutorName}</span>
-                    </div>
-                    <ResourceCard resource={r} />
-                  </div>
-                </div>
-              ))}
               {pendingDiagrams.map((d) => (
                 <div key={`pending-diagram-${d.id}`} className="msg msg-artifact msg-artifact-diagram">
                   <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
@@ -1378,6 +1342,30 @@ export function ChatPage() {
                       <span className="msg-artifact-source">from {tutorName}</span>
                     </div>
                     <ImageArtifactCard image={image} onSave={handleSaveImage} saved={savedSnippetKeys.has(`image-${image.id}`)} />
+                  </div>
+                </div>
+              ))}
+              {pendingResources.map((r) => (
+                <div key={`pending-resource-${r.id}`} className="msg msg-artifact msg-artifact-resource">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="msg-sender msg-artifact-label">
+                      <span className="msg-artifact-tag">{r.kind === "video" ? "Video" : "Article"}</span>
+                      <span className="msg-artifact-source">recommended by {tutorName}</span>
+                    </div>
+                    <ResourceCard resource={r} />
+                  </div>
+                </div>
+              ))}
+              {pendingQuizzes.map((q) => (
+                <div key={`pending-quiz-${q.quiz_id}`} className="msg msg-artifact msg-artifact-quiz">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="msg-sender msg-artifact-label">
+                      <span className="msg-artifact-tag">Quiz</span>
+                      <span className="msg-artifact-source">from {tutorName}</span>
+                    </div>
+                    <QuizCard quiz={q} onAnswered={handleQuizAnswered} onSkipped={handleQuizSkipped} />
                   </div>
                 </div>
               ))}
@@ -1559,8 +1547,12 @@ export function ChatPage() {
             {subjectMaterialsQuery.isLoading ? (
               <p className="muted" style={{ padding: "0.5rem 0" }}>Loading…</p>
             ) : subjectMaterials.length === 0 ? (
-              <div style={{ padding: "0.5rem 0" }}>
-                <p className="muted" style={{ marginBottom: "0.75rem" }}>No materials attached yet.</p>
+              <div className="sources-empty">
+                <FileText size={22} strokeWidth={1.6} />
+                <strong>No materials attached yet</strong>
+                <p>
+                  Upload readings or slides so Sapient can cite your actual course material during this session.
+                </p>
                 <Link
                   to={`/projects/${encodeURIComponent(context.subject)}?tab=materials`}
                   className="button button-secondary"

@@ -1,14 +1,40 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
 import { Navigate, useNavigate } from "react-router-dom";
 
 import { login, loginWithGoogle, register } from "../api";
 import { isAuthenticated, setToken } from "../auth";
+import { getGoogleAuthStatus } from "../googleAuth";
 import type { AuthResult } from "../types";
 import { ThemeToggle } from "./ThemeToggle";
 
 type ModalMode = "signin" | "signup";
+
+function LandingDemoVideo({
+  title,
+  variant,
+  children,
+}: {
+  title: string;
+  variant?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`landing-demo-video ${variant ? `landing-demo-video-${variant}` : ""}`}>
+      <div className="landing-demo-topbar">
+        <span />
+        <span />
+        <span />
+        <strong>{title}</strong>
+      </div>
+      <div className="landing-demo-screen">
+        {children}
+      </div>
+      <div className="landing-demo-progress" />
+    </div>
+  );
+}
 
 export function LandingPage() {
   const navigate = useNavigate();
@@ -21,6 +47,7 @@ export function LandingPage() {
   const [loading, setLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("");
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const googleAuthStatus = getGoogleAuthStatus(googleClientId);
   const busyLabel = loadingLabel || (mode === "signup" ? "Creating account…" : "Signing in…");
 
   useEffect(() => {
@@ -57,6 +84,13 @@ export function LandingPage() {
     setError(null);
     setLoadingLabel("");
     setMode(m);
+  }
+
+  function switchMode(nextMode: ModalMode) {
+    if (loading || mode === nextMode) return;
+    setError(null);
+    setLoadingLabel("");
+    setMode(nextMode);
   }
 
   async function handleAuthResult(result: AuthResult) {
@@ -104,9 +138,15 @@ export function LandingPage() {
   return (
     <div className="landing-shell">
       <nav className="landing-nav">
-        <span className="landing-wordmark">Sapient</span>
+        <span className="landing-brand">
+          <img className="landing-brand-logo" src="/favicon.svg" alt="" aria-hidden="true" />
+          <span className="landing-wordmark">Sapient</span>
+        </span>
         <div className="landing-nav-right">
           <ThemeToggle variant="icon" />
+          <button className="button button-primary" onClick={() => openModal("signup")} type="button">
+            Create account
+          </button>
           <button className="button button-secondary" onClick={() => openModal("signin")} type="button">
             Sign in
           </button>
@@ -129,6 +169,28 @@ export function LandingPage() {
               Sign in
             </button>
           </div>
+          <div className="landing-hero-demo motion-reveal motion-rise motion-delay-3" aria-hidden="true">
+            <LandingDemoVideo title="Sapient study session" variant="hero">
+              <div className="landing-demo-chat">
+                <div className="landing-demo-message landing-demo-message-user">Explain my lecture notes on memory allocation.</div>
+                <div className="landing-demo-message landing-demo-message-ai">
+                  <span className="landing-demo-typing landing-demo-typing-1" />
+                  <span className="landing-demo-typing landing-demo-typing-2" />
+                  <span className="landing-demo-typing landing-demo-typing-3" />
+                </div>
+                <div className="landing-demo-source-strip">
+                  <span>notes.pdf p. 4</span>
+                  <span>lecture 2 slide 12</span>
+                </div>
+              </div>
+              <div className="landing-demo-side">
+                <span>Mastery</span>
+                <div className="landing-demo-meter"><i /></div>
+                <span>Next review</span>
+                <strong>Tomorrow, 9:00 AM</strong>
+              </div>
+            </LandingDemoVideo>
+          </div>
         </section>
 
         <section className="landing-showcase landing-showcase-tinted motion-reveal motion-rise">
@@ -141,7 +203,8 @@ export function LandingPage() {
             </p>
           </div>
           <div className="landing-showcase-visual" aria-hidden="true">
-            <div className="landing-answer-card">
+            <LandingDemoVideo title="Cited answer" variant="sources">
+              <div className="landing-answer-card">
               <div className="landing-answer-line landing-answer-line-1" />
               <div className="landing-answer-line landing-answer-line-2" />
               <div className="landing-answer-line landing-answer-line-3" />
@@ -149,7 +212,8 @@ export function LandingPage() {
                 <span className="landing-source-chip">Fine Art · slide 12</span>
                 <span className="landing-source-chip">notes.pdf · p. 4</span>
               </div>
-            </div>
+              </div>
+            </LandingDemoVideo>
           </div>
         </section>
 
@@ -163,7 +227,8 @@ export function LandingPage() {
             </p>
           </div>
           <div className="landing-showcase-visual" aria-hidden="true">
-            <svg className="landing-mastery-chart" viewBox="0 0 260 140" preserveAspectRatio="none">
+            <LandingDemoVideo title="Mastery model" variant="mastery">
+              <svg className="landing-mastery-chart" viewBox="0 0 260 140" preserveAspectRatio="none">
               <line className="landing-mastery-grid" x1="32" y1="30" x2="252" y2="30" />
               <line className="landing-mastery-grid" x1="32" y1="60" x2="252" y2="60" />
               <line className="landing-mastery-grid" x1="32" y1="90" x2="252" y2="90" />
@@ -180,11 +245,12 @@ export function LandingPage() {
               <text className="landing-mastery-xtick" x="32" y="134">Day 1</text>
               <text className="landing-mastery-xtick" x="142" y="134">Day 7</text>
               <text className="landing-mastery-xtick" x="252" y="134" textAnchor="end">Day 14</text>
-            </svg>
-            <div className="landing-mastery-legend">
-              <span className="landing-legend-dot landing-legend-dot-band" />
-              needs-review band (mastery &lt; 0.62)
-            </div>
+              </svg>
+              <div className="landing-mastery-legend">
+                <span className="landing-legend-dot landing-legend-dot-band" />
+                needs-review band (mastery &lt; 0.62)
+              </div>
+            </LandingDemoVideo>
           </div>
         </section>
 
@@ -199,7 +265,8 @@ export function LandingPage() {
             </p>
           </div>
           <div className="landing-showcase-visual" aria-hidden="true">
-            <div className="landing-schedule-stack">
+            <LandingDemoVideo title="Review schedule" variant="schedule">
+              <div className="landing-schedule-stack">
               <div className="landing-schedule-card">
                 <span className="landing-schedule-when">Today</span>
                 <span className="landing-schedule-card-label">SQL · LEFT JOIN</span>
@@ -215,7 +282,8 @@ export function LandingPage() {
                 <span className="landing-schedule-card-label">Bio · mitosis phases</span>
                 <div className="landing-schedule-bar landing-schedule-bar-3" />
               </div>
-            </div>
+              </div>
+            </LandingDemoVideo>
           </div>
         </section>
 
@@ -230,7 +298,8 @@ export function LandingPage() {
             </p>
           </div>
           <div className="landing-showcase-visual" aria-hidden="true">
-            <div className="landing-reminder-stack">
+            <LandingDemoVideo title="Calendar reminders" variant="calendar">
+              <div className="landing-reminder-stack">
               <div className="landing-reminder-card landing-reminder-card-urgent">
                 <span className="landing-reminder-meta">Due in 2 days · Canvas</span>
                 <span className="landing-reminder-title">Essay: Modernism in poetry</span>
@@ -245,7 +314,8 @@ export function LandingPage() {
                 <span className="landing-reminder-meta">Next week</span>
                 <span className="landing-reminder-title">Bio · cell cycle quiz</span>
               </div>
-            </div>
+              </div>
+            </LandingDemoVideo>
           </div>
         </section>
 
@@ -260,7 +330,8 @@ export function LandingPage() {
             </p>
           </div>
           <div className="landing-showcase-visual" aria-hidden="true">
-            <div className="landing-resource-stack">
+            <LandingDemoVideo title="Recommended resources" variant="resources">
+              <div className="landing-resource-stack">
               <div className="landing-resource-card">
                 <div className="landing-resource-thumb">
                   <span className="landing-resource-play">▶</span>
@@ -278,7 +349,8 @@ export function LandingPage() {
                   <span className="landing-resource-reason">The canonical reference once you have the basics.</span>
                 </div>
               </div>
-            </div>
+              </div>
+            </LandingDemoVideo>
           </div>
         </section>
 
@@ -294,7 +366,8 @@ export function LandingPage() {
             </p>
           </div>
           <div className="landing-showcase-visual" aria-hidden="true">
-            <div className="landing-quiz-card">
+            <LandingDemoVideo title="Quiz checkpoint" variant="quiz">
+              <div className="landing-quiz-card">
               <span className="landing-quiz-tag">Multiple choice · SQL</span>
               <p className="landing-quiz-q">Which join returns rows with no match on the right side?</p>
               <div className="landing-quiz-option landing-quiz-option-correct">LEFT JOIN</div>
@@ -305,7 +378,8 @@ export function LandingPage() {
                 <div className="landing-quiz-mastery-bar"><span style={{ width: "73%" }} /></div>
                 <span>0.73</span>
               </div>
-            </div>
+              </div>
+            </LandingDemoVideo>
           </div>
         </section>
 
@@ -347,7 +421,7 @@ export function LandingPage() {
       </main>
 
       <footer className="landing-footer">
-        A masters project on stateful AI tutoring
+        Sapient 2026
       </footer>
 
       {mode !== null && (
@@ -361,19 +435,14 @@ export function LandingPage() {
           >
             <div className="landing-modal-head">
               <div>
-                <span className="landing-kicker-sm">Account</span>
-                <h2>{mode === "signup" ? "Create account" : "Welcome back"}</h2>
+                <h2>{mode === "signup" ? "Create your account" : "Sign in to Sapient"}</h2>
+                <p className="landing-modal-sub">
+                  {mode === "signup"
+                    ? "Start saving your study sessions, notes, and learning progress."
+                    : "Sign in to continue your study sessions."}
+                </p>
               </div>
               <button className="modal-close-x" disabled={loading} onClick={() => setMode(null)} type="button">×</button>
-            </div>
-
-            <div className="modal-tabs-row">
-              <button className={`modal-tab-btn ${mode === "signin" ? "active" : ""}`} disabled={loading} onClick={() => setMode("signin")} type="button">
-                Sign in
-              </button>
-              <button className={`modal-tab-btn ${mode === "signup" ? "active" : ""}`} disabled={loading} onClick={() => setMode("signup")} type="button">
-                Create account
-              </button>
             </div>
 
             <div className="google-auth-box">
@@ -382,7 +451,7 @@ export function LandingPage() {
                   <span className="auth-loading-spinner" />
                   <span>{busyLabel}</span>
                 </div>
-              ) : googleClientId ? (
+              ) : googleAuthStatus.enabled && googleClientId ? (
                 <GoogleLogin
                   onError={() => setError("Google sign-in failed.")}
                   onSuccess={(response) => void handleGoogleSuccess(response)}
@@ -390,7 +459,7 @@ export function LandingPage() {
                   useOneTap={false}
                 />
               ) : (
-                <p className="muted">Set VITE_GOOGLE_CLIENT_ID to enable Google sign-in.</p>
+                <p className="muted">{googleAuthStatus.message}</p>
               )}
             </div>
 
@@ -432,6 +501,16 @@ export function LandingPage() {
                   {loading ? busyLabel : mode === "signup" ? "Create account" : "Sign in"}
                 </button>
               </div>
+              <p className="auth-mode-switch">
+                {mode === "signup" ? "Already have an account?" : "New here?"}{" "}
+                <button
+                  disabled={loading}
+                  onClick={() => switchMode(mode === "signup" ? "signin" : "signup")}
+                  type="button"
+                >
+                  {mode === "signup" ? "Sign in" : "Create an account"}
+                </button>
+              </p>
             </form>
           </div>
         </div>

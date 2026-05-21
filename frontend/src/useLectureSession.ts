@@ -3,13 +3,16 @@ import { useRef, useState } from "react";
 import { RateLimitError, createConversation, fetchSpeech, streamChat } from "./api";
 import type { ChatStreamEvent, DiagramData, ImageData, KeyIdea, RetrievedSource } from "./types";
 
+export type TimelineEntry =
+  | { kind: "key_idea"; idea: KeyIdea }
+  | { kind: "diagram"; diagram: DiagramData }
+  | { kind: "image"; image: ImageData };
+
 interface SpeechChunk {
   displayText: string;
   spokenText: string;
   audioUrlPromise: Promise<string>;
-  keyIdeas: KeyIdea[];
-  diagrams: DiagramData[];
-  images: ImageData[];
+  items: TimelineEntry[];
   pauseAfterMs?: number;
 }
 
@@ -24,6 +27,7 @@ export interface LectureSession {
   currentDiagram: DiagramData | null;
   images: ImageData[];
   currentImage: ImageData | null;
+  timeline: TimelineEntry[];
   sources: RetrievedSource[];
   error: string | null;
 }
@@ -44,9 +48,32 @@ const EMPTY: LectureSession = {
   currentDiagram: null,
   images: [],
   currentImage: null,
+  timeline: [],
   sources: [],
   error: null,
 };
+
+function applyTimelineItems(s: LectureSession, items: TimelineEntry[]): LectureSession {
+  if (items.length === 0) return s;
+  const newKeyIdeas: KeyIdea[] = [];
+  const newDiagrams: DiagramData[] = [];
+  const newImages: ImageData[] = [];
+  for (const item of items) {
+    if (item.kind === "key_idea") newKeyIdeas.push(item.idea);
+    else if (item.kind === "diagram") newDiagrams.push(item.diagram);
+    else newImages.push(item.image);
+  }
+  return {
+    ...s,
+    timeline: [...s.timeline, ...items],
+    keyIdeas: newKeyIdeas.length > 0 ? [...s.keyIdeas, ...newKeyIdeas] : s.keyIdeas,
+    diagrams: newDiagrams.length > 0 ? [...s.diagrams, ...newDiagrams] : s.diagrams,
+    images: newImages.length > 0 ? [...s.images, ...newImages] : s.images,
+    currentKeyIdea: newKeyIdeas.length > 0 ? newKeyIdeas[newKeyIdeas.length - 1] : s.currentKeyIdea,
+    currentDiagram: newDiagrams.length > 0 ? newDiagrams[newDiagrams.length - 1] : s.currentDiagram,
+    currentImage: newImages.length > 0 ? newImages[newImages.length - 1] : s.currentImage,
+  };
+}
 
 const CODE_DISPLAY_SPOKEN_PROMPT = "Read the code I displayed.";
 const CODE_DISPLAY_PAUSE_MS = 10_000;
@@ -187,21 +214,20 @@ export function useLectureSession(subject: string | null) {
     }
 
     isPlayingRef.current = true;
+    // Apply artifacts (notes, diagrams) immediately so the notebook stays in sync with the stream,
+    // but defer the spoken transcript text until audio actually starts — otherwise the user reads
+    // the line several hundred ms before they hear it.
     setSession((s) => ({
-      ...s,
+      ...applyTimelineItems(s, chunk.items),
       agentSpeaking: true,
-      transcript: chunk.displayText,
-      keyIdeas: chunk.keyIdeas.length > 0 ? [...s.keyIdeas, ...chunk.keyIdeas] : s.keyIdeas,
-      diagrams: chunk.diagrams.length > 0 ? [...s.diagrams, ...chunk.diagrams] : s.diagrams,
-      images: chunk.images.length > 0 ? [...s.images, ...chunk.images] : s.images,
-      currentKeyIdea: chunk.keyIdeas.length > 0 ? chunk.keyIdeas[chunk.keyIdeas.length - 1] : s.currentKeyIdea,
-      currentDiagram: chunk.diagrams.length > 0 ? chunk.diagrams[chunk.diagrams.length - 1] : s.currentDiagram,
-      currentImage: chunk.images.length > 0 ? chunk.images[chunk.images.length - 1] : s.currentImage,
     }));
 
     chunk.audioUrlPromise
       .then((url) => {
         if (!url) {
+          // No audio (TTS failure / non-speak chunk): still surface the text so the user isn't
+          // left wondering what was said.
+          setSession((s) => ({ ...s, transcript: chunk.displayText }));
           advanceAfterPause();
           return;
         }
@@ -214,6 +240,9 @@ export function useLectureSession(subject: string | null) {
         audio.playbackRate = playbackRateRef.current;
         audioRef.current = audio;
         currentAudioUrlRef.current = url;
+        audio.onplay = () => {
+          setSession((s) => ({ ...s, transcript: chunk.displayText }));
+        };
         audio.onended = () => {
           URL.revokeObjectURL(url);
           if (currentAudioUrlRef.current === url) currentAudioUrlRef.current = null;
@@ -235,17 +264,9 @@ export function useLectureSession(subject: string | null) {
       .catch(() => advanceAfterPause());
   }
 
-  function appendArtifacts(keyIdeas: KeyIdea[], diagrams: DiagramData[], images: ImageData[]) {
-    if (keyIdeas.length === 0 && diagrams.length === 0 && images.length === 0) return;
-    setSession((s) => ({
-      ...s,
-      keyIdeas: keyIdeas.length > 0 ? [...s.keyIdeas, ...keyIdeas] : s.keyIdeas,
-      diagrams: diagrams.length > 0 ? [...s.diagrams, ...diagrams] : s.diagrams,
-      images: images.length > 0 ? [...s.images, ...images] : s.images,
-      currentKeyIdea: keyIdeas.length > 0 ? keyIdeas[keyIdeas.length - 1] : s.currentKeyIdea,
-      currentDiagram: diagrams.length > 0 ? diagrams[diagrams.length - 1] : s.currentDiagram,
-      currentImage: images.length > 0 ? images[images.length - 1] : s.currentImage,
-    }));
+  function appendItems(items: TimelineEntry[]) {
+    if (items.length === 0) return;
+    setSession((s) => applyTimelineItems(s, items));
   }
 
   async function send(message: string, options: SendOptions = {}) {
@@ -288,7 +309,11 @@ export function useLectureSession(subject: string | null) {
 
     // Local refs for this stream only — keeps each send() isolated.
     const tokenBuf = { current: "" };
-    const pending = { keyIdeas: [] as KeyIdea[], diagrams: [] as DiagramData[], images: [] as ImageData[] };
+    const pending = { items: [] as TimelineEntry[] };
+    // The first chunk flushes at a lower threshold so the user hears the opening line
+    // sooner — TTS round-trip is the dominant first-token latency, so getting it started
+    // earlier shortens the perceived "thinking" gap.
+    const flushState = { firstChunkSent: false };
 
     function enqueueChunk(text: string) {
       if (genRef.current !== myGen) return;
@@ -296,11 +321,9 @@ export function useLectureSession(subject: string | null) {
       const displayText = codeDisplay ?? cleanSpokenText(text);
       const spokenText = codeDisplay ? CODE_DISPLAY_SPOKEN_PROMPT : cleanSpokenText(text);
       if (!displayText.trim() || !spokenText.trim()) return;
-      const keyIdeas = pending.keyIdeas.splice(0);
-      const diagrams = pending.diagrams.splice(0);
-      const images = pending.images.splice(0);
+      const items = pending.items.splice(0);
       if (!speak) {
-        appendArtifacts(keyIdeas, diagrams, images);
+        appendItems(items);
         return;
       }
       const audioUrlPromise = fetchSpeech(spokenText).catch(() => "");
@@ -308,11 +331,10 @@ export function useLectureSession(subject: string | null) {
         displayText,
         spokenText,
         audioUrlPromise,
-        keyIdeas,
-        diagrams,
-        images,
+        items,
         pauseAfterMs: codeDisplay ? CODE_DISPLAY_PAUSE_MS : undefined,
       });
+      flushState.firstChunkSent = true;
       if (!isPlayingRef.current) playNext();
     }
 
@@ -327,12 +349,15 @@ export function useLectureSession(subject: string | null) {
         tryFlush();
         return;
       }
-      if (buf.length >= 120) {
-        const match = /[.!?]\s/.exec(buf.slice(80));
+      const minBuf = flushState.firstChunkSent ? 120 : 40;
+      const searchFrom = flushState.firstChunkSent ? 80 : 20;
+      if (buf.length >= minBuf) {
+        const match = /[.!?]\s/.exec(buf.slice(searchFrom));
         if (match) {
-          const idx = 80 + match.index + match[0].length;
+          const idx = searchFrom + match.index + match[0].length;
           enqueueChunk(buf.slice(0, idx));
           tokenBuf.current = buf.slice(idx);
+          tryFlush();
         }
       }
     }
@@ -348,34 +373,34 @@ export function useLectureSession(subject: string | null) {
       } else if (event.event === "sources") {
         setSession((s) => ({ ...s, sources: event.data.sources }));
       } else if (event.event === "key_idea") {
-        pending.keyIdeas.push({
-          id: event.data.id,
-          concept: event.data.concept,
-          summary: event.data.summary,
-          subject: subject ?? null,
-          sr_repetitions: 0,
-          sr_due_date: new Date().toISOString(),
-          created_at: new Date().toISOString(),
+        pending.items.push({
+          kind: "key_idea",
+          idea: {
+            id: event.data.id,
+            concept: event.data.concept,
+            summary: event.data.summary,
+            subject: subject ?? null,
+            sr_repetitions: 0,
+            sr_due_date: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
         });
       } else if (event.event === "diagram") {
         if (speak) {
-          pending.diagrams.push(event.data);
+          pending.items.push({ kind: "diagram", diagram: event.data });
         } else {
-          appendArtifacts([], [event.data], []);
+          appendItems([{ kind: "diagram", diagram: event.data }]);
         }
       } else if (event.event === "image") {
         if (speak) {
-          pending.images.push(event.data);
+          pending.items.push({ kind: "image", image: event.data });
         } else {
-          appendArtifacts([], [], [event.data]);
+          appendItems([{ kind: "image", image: event.data }]);
         }
       } else if (event.event === "end") {
         enqueueChunk(tokenBuf.current);
         tokenBuf.current = "";
-        const ki = pending.keyIdeas.splice(0);
-        const dg = pending.diagrams.splice(0);
-        const img = pending.images.splice(0);
-        appendArtifacts(ki, dg, img);
+        appendItems(pending.items.splice(0));
         setSession((s) => ({ ...s, agentThinking: false }));
       } else if (event.event === "error") {
         const friendly = event.data.rate_limited && event.data.retry_after_seconds

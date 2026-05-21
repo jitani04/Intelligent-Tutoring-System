@@ -2,9 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ArrowRight, BookOpen, CalendarDays, Plus } from "lucide-react";
 
-import { getCurrentUser, listAssignments, listConversations, listProjectProfiles, listSmartReminders } from "../api";
+import { getCurrentUser, listAssignments, listConversations, listProjectProfiles } from "../api";
+import { conversationLastActivityTime } from "../conversations";
 import { normalizeSubject } from "../subjects";
 import type { Conversation } from "../types";
+import { useStartSessionModal } from "./StartSessionModalContext";
 
 type SubjectTheme = {
   image: string;
@@ -86,7 +88,7 @@ function timeOfDayGreeting(): string {
   return "Good evening";
 }
 
-function formatDate(value: string): string {
+function formatDate(value: string | number): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
@@ -95,6 +97,7 @@ function formatDue(value: string): string {
 }
 
 export function DashboardPage() {
+  const { openStartSession } = useStartSessionModal();
   const { data: user } = useQuery({
     queryKey: ["me"],
     queryFn: getCurrentUser,
@@ -117,30 +120,26 @@ export function DashboardPage() {
   });
 
   const upcomingAssignments = (() => {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    return assignments.filter((a) => new Date(a.due_at).getTime() >= startOfToday.getTime());
+    const now = Date.now();
+    return assignments.filter((a) => new Date(a.due_at).getTime() >= now);
   })();
 
-  const { data: reminders = [] } = useQuery({
-    queryKey: ["smart-reminders"],
-    queryFn: listSmartReminders,
-    staleTime: 30_000,
-  });
+  const showCalendarBand = upcomingAssignments.length > 0;
+  const calendarPanelCount = Number(upcomingAssignments.length > 0);
 
   const projectProfileBySubject = new Map(projectProfiles.map((profile) => [normalizeSubject(profile.subject), profile]));
 
   const projects = (() => {
-    const map = new Map<string, { convs: Conversation[]; lastActive: string }>();
+    const map = new Map<string, { convs: Conversation[]; lastActive: number }>();
     for (const c of conversations) {
       const subject = c.subject?.trim();
       // Only conversations explicitly tied to a subject become a "subject" tile.
       // Skip subject-less chats so they don't materialize a phantom "General".
       if (!subject) continue;
       const subjectKey = normalizeSubject(subject);
-      const existing = map.get(subjectKey) ?? { convs: [], lastActive: c.created_at };
+      const existing = map.get(subjectKey) ?? { convs: [], lastActive: conversationLastActivityTime(c) };
       existing.convs.push(c);
-      if (c.created_at > existing.lastActive) existing.lastActive = c.created_at;
+      existing.lastActive = Math.max(existing.lastActive, conversationLastActivityTime(c));
       map.set(subjectKey, existing);
     }
     return Array.from(map.entries()).map(([subjectKey, { convs, lastActive }]) => {
@@ -151,7 +150,7 @@ export function DashboardPage() {
         theme: subjectTheme(subject),
         coverImageUrl: projectProfileBySubject.get(subjectKey)?.cover_image_url ?? null,
       };
-    }).sort((a, b) => b.lastActive.localeCompare(a.lastActive));
+    }).sort((a, b) => b.lastActive - a.lastActive);
   })();
 
   const displayName = user?.name?.trim() || user?.email.split("@")[0] || "there";
@@ -160,66 +159,57 @@ export function DashboardPage() {
   return (
     <div className="dashboard">
       <div className="dashboard-hero">
-        <h1 className="dashboard-greeting">{timeOfDayGreeting()}, {firstName}.</h1>
+        <h1 className="dashboard-greeting">{timeOfDayGreeting()}, {firstName}</h1>
       </div>
 
-      <section className="dashboard-calendar-band">
-        <div className="dashboard-calendar-grid">
-          <div className="dashboard-calendar-panel">
-            <div className="dashboard-calendar-panel-title">Upcoming deadlines</div>
-            {upcomingAssignments.length === 0 ? (
-              <p className="dashboard-calendar-empty">No upcoming deadlines.</p>
-            ) : (
-              upcomingAssignments.slice(0, 2).map((assignment) => (
-                <Link
-                  className="dashboard-deadline-row"
-                  key={assignment.id}
-                  to={assignment.subject ? `/projects/${encodeURIComponent(assignment.subject)}` : "/calendar"}
-                >
-                  <CalendarDays size={15} strokeWidth={2} />
-                  <span>{assignment.title}</span>
-                  <strong>{formatDue(assignment.due_at)}</strong>
-                </Link>
-              ))
+      {showCalendarBand && (
+        <section className="dashboard-calendar-band">
+          <div className={`dashboard-calendar-grid ${calendarPanelCount === 1 ? "dashboard-calendar-grid-single" : ""}`}>
+            {upcomingAssignments.length > 0 && (
+              <div className="dashboard-calendar-panel">
+                <div className="dashboard-calendar-panel-title">Upcoming deadlines</div>
+                {upcomingAssignments.slice(0, 2).map((assignment) => (
+                  <Link
+                    className="dashboard-deadline-row"
+                    key={assignment.id}
+                    to={assignment.subject ? `/projects/${encodeURIComponent(assignment.subject)}` : "/calendar"}
+                  >
+                    <CalendarDays size={15} strokeWidth={2} />
+                    <span>{assignment.title}</span>
+                    <strong>{formatDue(assignment.due_at)}</strong>
+                  </Link>
+                ))}
+              </div>
             )}
           </div>
-          <div className="dashboard-calendar-panel">
-            <div className="dashboard-calendar-panel-title">Smart reminders</div>
-            {reminders.length === 0 ? (
-              <p className="dashboard-calendar-empty">Nothing needs attention right now.</p>
-            ) : (
-              reminders.slice(0, 1).map((reminder) => (
-                <Link
-                  className={`dashboard-reminder-row dashboard-reminder-${reminder.severity}`}
-                  key={reminder.id}
-                  to={reminder.subject ? `/projects/${encodeURIComponent(reminder.subject)}` : "/calendar"}
-                >
-                  <span>{reminder.title}</span>
-                  <strong>{reminder.body}</strong>
-                </Link>
-              ))
-            )}
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <div className="dashboard-collection">
         <div className="dashboard-collection-bar">
           <div className="dashboard-collection-heading">
             <span className="dashboard-collection-title">Your subjects</span>
           </div>
-          <Link to="/start/topic" className="button button-primary dashboard-collection-action">
+          <button className="button button-primary dashboard-collection-action" onClick={() => openStartSession()} type="button">
             <Plus size={15} strokeWidth={2.2} />
             New subject
-          </Link>
+          </button>
         </div>
 
         {projects.length === 0 ? (
           <div className="dashboard-empty-state">
             <div className="dashboard-empty-state-icon"><BookOpen size={28} strokeWidth={1.6} /></div>
             <h3>No subjects yet</h3>
-            <p>Start your first session to create a subject.</p>
-            <Link to="/start/topic" className="button button-primary">Start a study session</Link>
+            <p>
+              Create one subject for each class, exam, or skill. Sapient will keep its sessions,
+              materials, notes, and flashcards together.
+            </p>
+            <div className="empty-state-tips" aria-label="Subject examples">
+              <span>Calculus II</span>
+              <span>Human Computer Interaction</span>
+              <span>Interview prep</span>
+            </div>
+            <button className="button button-primary" onClick={() => openStartSession()} type="button">Create a subject</button>
           </div>
         ) : (
           <div className="dashboard-showcase-grid">

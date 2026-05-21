@@ -4,16 +4,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Circle, Download, ExternalLink, LockKeyhole, MessageCircle, MoreHorizontal, Pencil, Play, Plus, Trash2 } from "lucide-react";
 
-import { RateLimitError, createConversation, createKeyIdea, createManualQuiz, deleteConversation, deleteKeyIdea, deleteProjectSubject, deleteResource, generateMindMap, generateSubjectFlashcards, generateSubjectQuiz, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getProjectProfile, getProjectProgress, listAllKeyIdeas, listAssignments, listConversations, listMaterials, listSubjectResources, updateConversationTitle, updateKeyIdea, updateLearningMapProgress, updateProjectMindMap } from "../api";
+import { RateLimitError, createConversation, createKeyIdea, createManualQuiz, deleteConversation, deleteKeyIdea, deleteLectureNote, deleteProjectSubject, deleteResource, generateMindMap, generateSubjectFlashcards, generateSubjectQuiz, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getLectureNote, getProjectProfile, getProjectProgress, listAllKeyIdeas, listAssignments, listConversations, listLectureNotes, listMaterials, listSubjectResources, updateConversationTitle, updateKeyIdea, updateLearningMapProgress, updateProjectMindMap } from "../api";
+import { sortConversationsByRecentActivity } from "../conversations";
 import { formatSubjectName, normalizeSubject } from "../subjects";
-import type { Conversation, Flashcard, KeyIdea, KnowledgeStateEntry, LearningMapStatus, MindMap, MindMapNode, PracticeQuizItem, ProjectProgress, SessionSummary } from "../types";
+import type { Conversation, Flashcard, KeyIdea, KnowledgeStateEntry, LearningMapStatus, LectureNote, MindMap, MindMapNode, PracticeQuizItem, ProjectProgress, SessionSummary } from "../types";
 import { FlashcardsView } from "./FlashcardsPage";
 import { LectureModeOverlay } from "./LectureModeOverlay";
+import { LectureNoteViewer } from "./LectureNoteViewer";
 import { MaterialsView } from "./MaterialsPage";
 import { ResourceCard } from "./ResourceCard";
+import { useStartSessionModal } from "./StartSessionModalContext";
 import { WeakQuizModal } from "./WeakQuizModal";
 
-type ProjectTab = "overview" | "notes" | "materials" | "quizzes" | "flashcards" | "resources";
+type ProjectTab = "overview" | "notes" | "lectures" | "materials" | "quizzes" | "flashcards" | "resources";
 
 interface LearningPathNode {
   id: string;
@@ -208,7 +211,7 @@ function ManualFlashcardDialog({
   );
 }
 
-const PROJECT_TABS: ProjectTab[] = ["overview", "notes", "materials", "quizzes", "flashcards", "resources"];
+const PROJECT_TABS: ProjectTab[] = ["overview", "notes", "lectures", "materials", "quizzes", "flashcards", "resources"];
 
 function parseProjectTab(value: string | null): ProjectTab {
   if (value && (PROJECT_TABS as string[]).includes(value)) return value as ProjectTab;
@@ -218,6 +221,7 @@ function parseProjectTab(value: string | null): ProjectTab {
 const TAB_LABEL: Record<ProjectTab, string> = {
   overview: "Overview",
   notes: "Notes",
+  lectures: "Lectures",
   materials: "Materials",
   quizzes: "Quizzes",
   flashcards: "Flashcards",
@@ -584,6 +588,7 @@ export function ProjectPage() {
   const displaySubject = formatSubjectName(decoded);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { openStartSession } = useStartSessionModal();
 
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [generatingId, setGeneratingId] = useState<number | null>(null);
@@ -597,6 +602,9 @@ export function ProjectPage() {
   const mindmapWarningParam = searchParams.get("warning") === "mindmap_unavailable";
   const [noteSearch, setNoteSearch] = useState("");
   const [deletingNoteId, setDeletingNoteId] = useState<number | null>(null);
+  const [viewingLectureNote, setViewingLectureNote] = useState<LectureNote | null>(null);
+  const [loadingLectureNoteId, setLoadingLectureNoteId] = useState<number | null>(null);
+  const [deletingLectureNoteId, setDeletingLectureNoteId] = useState<number | null>(null);
   const [noteEditor, setNoteEditor] = useState<NoteEditorTarget | null>(null);
   const [savingNote, setSavingNote] = useState(false);
   const [noteEditError, setNoteEditError] = useState<string | null>(null);
@@ -695,6 +703,36 @@ export function ProjectPage() {
     staleTime: 30_000,
   });
 
+  const { data: lectureNotes = [] } = useQuery({
+    queryKey: ["lecture-notes", decoded],
+    queryFn: () => listLectureNotes(decoded),
+    enabled: Boolean(decoded),
+    staleTime: 30_000,
+  });
+
+  async function handleOpenLectureNote(id: number) {
+    setLoadingLectureNoteId(id);
+    try {
+      const note = await getLectureNote(id);
+      setViewingLectureNote(note);
+    } catch (err) {
+      console.error("Failed to load lecture note", err);
+    } finally {
+      setLoadingLectureNoteId(null);
+    }
+  }
+
+  async function handleDeleteLectureNote(id: number) {
+    if (!window.confirm("Delete this lecture page?")) return;
+    setDeletingLectureNoteId(id);
+    try {
+      await deleteLectureNote(id);
+      await queryClient.invalidateQueries({ queryKey: ["lecture-notes", decoded] });
+    } finally {
+      setDeletingLectureNoteId(null);
+    }
+  }
+
   const { data: subjectMaterials = [] } = useQuery({
     queryKey: ["materials", decoded],
     queryFn: () => listMaterials(decoded),
@@ -708,6 +746,10 @@ export function ProjectPage() {
     enabled: Boolean(decoded),
     staleTime: 30_000,
   });
+  const upcomingSubjectAssignments = useMemo(
+    () => subjectAssignments.filter((assignment) => new Date(assignment.due_at).getTime() >= Date.now()),
+    [subjectAssignments],
+  );
 
   const { data: dueFlashcards } = useQuery({
     queryKey: ["flashcards-due", decoded],
@@ -831,7 +873,7 @@ export function ProjectPage() {
 
   const sessions = conversations
     .filter((c) => normalizeSubject(c.subject) === normalizedSubject)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    .sort(sortConversationsByRecentActivity);
 
   const newSessionMutation = useMutation({
     mutationFn: () => createConversation(decoded),
@@ -1318,11 +1360,10 @@ export function ProjectPage() {
             </button>
             <button
               className="button button-primary project-hero-primary"
-              disabled={newSessionMutation.isPending}
-              onClick={() => newSessionMutation.mutate()}
+              onClick={() => openStartSession({ subject: decoded })}
               type="button"
             >
-              {newSessionMutation.isPending ? "Creating..." : "New study session"}
+              New study session
             </button>
             <details className="project-action-menu">
               <summary aria-label="Subject actions" title="Subject actions">
@@ -1384,11 +1425,20 @@ export function ProjectPage() {
         />
       )}
 
+      {viewingLectureNote && (
+        <LectureNoteViewer
+          note={viewingLectureNote}
+          onClose={() => setViewingLectureNote(null)}
+        />
+      )}
+
       <div className="settings-tabs project-tabs" role="tablist">
         {PROJECT_TABS.map((tab) => {
           const badge =
             tab === "notes" && subjectNotes.length > 0
               ? ` (${subjectNotes.length})`
+              : tab === "lectures" && lectureNotes.length > 0
+              ? ` (${lectureNotes.length})`
               : tab === "materials" && subjectMaterials.length > 0
               ? ` (${subjectMaterials.length})`
               : tab === "flashcards" && dueCount > 0
@@ -1556,19 +1606,73 @@ export function ProjectPage() {
         </section>
       )}
 
+      {activeTab === "lectures" && (
+        <section className="notes-notebook">
+          <div className="notes-notebook-header">
+            <div>
+              <h2>Lectures</h2>
+              <p>Saved notebooks from your lecture sessions. Open to view or download as PDF.</p>
+            </div>
+          </div>
+
+          {lectureNotes.length === 0 ? (
+            <div className="notebook-empty">
+              <h3>No saved lectures yet</h3>
+              <p>End a lecture session for {displaySubject} and the notebook page will appear here automatically.</p>
+            </div>
+          ) : (
+            <div className="lecture-pages-list">
+              {lectureNotes.map((page) => (
+                <button
+                  key={page.id}
+                  className="lecture-page-card"
+                  onClick={() => void handleOpenLectureNote(page.id)}
+                  type="button"
+                  disabled={loadingLectureNoteId === page.id}
+                >
+                  <div className="lecture-page-card-title">{page.title}</div>
+                  <div className="lecture-page-card-meta">
+                    {new Date(page.created_at).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                    {" · "}
+                    {page.entry_count} entr{page.entry_count === 1 ? "y" : "ies"}
+                  </div>
+                  <div className="lecture-page-card-actions" onClick={(e) => e.stopPropagation()}>
+                    <span className="lecture-page-card-action">
+                      {loadingLectureNoteId === page.id ? "Opening..." : "Open"}
+                    </span>
+                    <button
+                      className="lecture-page-card-action lecture-page-card-action-danger"
+                      disabled={deletingLectureNoteId === page.id}
+                      onClick={() => void handleDeleteLectureNote(page.id)}
+                      type="button"
+                    >
+                      {deletingLectureNoteId === page.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {activeTab === "overview" && (
         <>
-      {subjectAssignments.length > 0 && (
+      {upcomingSubjectAssignments.length > 0 && (
         <section className="project-upcoming-strip">
           <div className="project-upcoming-head">
             <div>
               <span>Upcoming</span>
-              <strong>{subjectAssignments.length} deadline{subjectAssignments.length === 1 ? "" : "s"}</strong>
+              <strong>{upcomingSubjectAssignments.length} deadline{upcomingSubjectAssignments.length === 1 ? "" : "s"}</strong>
             </div>
             <Link to="/calendar" className="text-link">Open calendar</Link>
           </div>
           <div className="project-upcoming-list">
-            {subjectAssignments.slice(0, 3).map((assignment) => (
+            {upcomingSubjectAssignments.slice(0, 3).map((assignment) => (
               <article className="project-upcoming-item" key={assignment.id}>
                 <CalendarDays size={16} strokeWidth={2} />
                 <div>
@@ -1705,7 +1809,6 @@ export function ProjectPage() {
                     <aside className="learning-node-detail learning-node-edit-panel visible">
                       <div className="learning-node-detail-head">
                         <div>
-                          <span className="learning-node-eyebrow">Edit topic</span>
                           <h3>{selectedDraftNode.topic || "Untitled topic"}</h3>
                         </div>
                         <button type="button" onClick={() => setDraftSelectedId(null)} aria-label="Close topic editor">
@@ -1865,7 +1968,6 @@ export function ProjectPage() {
                       <>
                         <div className="learning-node-detail-head">
                           <div>
-                            <span className="learning-node-eyebrow">Topic detail</span>
                             <h3>{selectedLearningNode.topic}</h3>
                           </div>
                           <button type="button" onClick={() => setSelectedLearningNodeId(null)} aria-label="Close topic detail">
@@ -2128,10 +2230,18 @@ export function ProjectPage() {
               <div className="empty-state">
                 <div className="empty-state-icon"><MessageCircle size={26} strokeWidth={1.6} /></div>
                 <h3>No study sessions yet</h3>
-                <p>Start your first study session for this subject.</p>
-                <button className="button button-primary" onClick={() => newSessionMutation.mutate()} type="button">
-                  Start study session
-                </button>
+                <p>
+                  Start with a question, a guided lecture, or a quiz. Sapient will save useful notes,
+                  quizzes, and progress signals back to this subject.
+                </p>
+                <div className="empty-state-actions">
+                  <button className="button button-primary" onClick={() => openStartSession({ subject: decoded })} type="button">
+                    Start study session
+                  </button>
+                  <button className="button button-secondary" onClick={() => setLectureOpen(true)} type="button">
+                    Open lecture mode
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="content-card" style={{ padding: 0, overflow: "hidden" }}>

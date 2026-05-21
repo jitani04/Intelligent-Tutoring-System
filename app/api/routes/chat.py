@@ -51,6 +51,12 @@ TEACHING_PACING_PROMPT = (
     "a tutorial, a textbook, a course, or 'where can I learn more' — call the find_resource tool, do not describe "
     "categories of resources in prose. Pick the most fitting topic and kind (video or article) and call it. If the "
     "answer benefits from both a video and an article, call find_resource twice (once for each)."
+    "\n\nNo-duplication rule for tool-rendered cards: when you call generate_quiz, create_diagram, find_image, or "
+    "find_resource, the resulting card already shows the full artifact (question + options + explanation for quiz, "
+    "the rendered Mermaid diagram, the image with caption, the resource title + link + reason). Do NOT also write "
+    "those contents in your message text — that produces duplicate content shown twice to the student. Your message "
+    "around a tool call should set context ('here's a quick check', 'this diagram shows how the parts connect') and "
+    "then continue teaching; the card is the source of truth for what it contains."
 )
 
 
@@ -211,36 +217,90 @@ async def _build_learning_map_prompt_context(
         node["locked"] = any(status_by_id.get(item) not in {"in_progress", "mastered"} for item in prerequisite_ids)
 
     recommended = next((node for node in map_nodes if node["status"] == "needs_review"), None)
-    reason = "This topic is marked for review."
+    reason = "previously covered but the student is struggling with it"
+    if recommended is None:
+        recommended = next(
+            (node for node in map_nodes if node["status"] == "in_progress"), None
+        )
+        reason = "the student has started this topic but has not mastered it yet"
     if recommended is None:
         recommended = next(
             (node for node in map_nodes if node["status"] == "not_started" and not node["locked"]),
             None,
         )
-        reason = "This is the next unlocked topic in the learning path."
-    if recommended is None:
-        recommended = next((node for node in map_nodes if node["status"] == "in_progress"), None)
-        reason = "The student has started this topic but has not mastered it yet."
+        reason = "this is the next unlocked topic in the learning path"
 
-    lines = [
-        "Student learning map context:",
-        "Use this map to adapt tutoring. Prioritize needs_review topics, connect explanations to prerequisites, avoid jumping too far ahead unless the student asks, and explain locked topics by naming what to learn first.",
+    def _format_node(node: dict[str, object]) -> str:
+        parts: list[str] = [str(node["topic"])]
+        if node.get("mastery") is not None:
+            parts.append(f"BKT mastery {node['mastery']}%")
+        subtopics = node.get("subtopics") or []
+        if subtopics:
+            parts.append(f"subtopics: {', '.join(str(item) for item in subtopics)}")
+        prerequisites = node.get("prerequisites") or []
+        if prerequisites:
+            parts.append(f"prerequisites: {', '.join(str(item) for item in prerequisites)}")
+        if node.get("locked"):
+            parts.append("locked until prerequisites are covered")
+        return "  - " + "; ".join(parts)
+
+    covered_nodes = [node for node in map_nodes if node["status"] == "mastered"]
+    in_progress_nodes = [node for node in map_nodes if node["status"] == "in_progress"]
+    needs_review_nodes = [node for node in map_nodes if node["status"] == "needs_review"]
+    not_covered_nodes = [node for node in map_nodes if node["status"] == "not_started"]
+
+    lines: list[str] = [
+        f"Student learning map for {subject}:",
+        f"This is the curriculum for {subject}. It is the source of truth for what the student has covered, what they have not, and what to teach next. Treat the goal topic as the focus of this conversation unless the student explicitly redirects.",
+        "",
     ]
-    if recommended:
-        lines.append(f"- Recommended next: {recommended['topic']} ({reason})")
-    else:
-        lines.append("- Recommended next: Student appears caught up on this map.")
 
-    mastered = sum(1 for node in map_nodes if node["status"] == "mastered")
-    needs_review = sum(1 for node in map_nodes if node["status"] == "needs_review")
-    lines.append(f"- Progress summary: {mastered}/{len(map_nodes)} topics mastered; {needs_review} need review.")
-    lines.append("- Topics:")
-    for node in map_nodes:
-        mastery = f"; BKT mastery: {node['mastery']}%" if node.get("mastery") is not None else ""
-        prereq = f"; prerequisites: {', '.join(node['prerequisites'])}" if node["prerequisites"] else ""
-        locked = "; prerequisite not complete" if node["locked"] else ""
-        subtopics = ", ".join(node["subtopics"]) if node["subtopics"] else "no subtopics listed"
-        lines.append(f"  - {node['topic']}: {node['status']}{mastery}{prereq}{locked}; subtopics: {subtopics}")
+    lines.append(f"Covered (mastered, {len(covered_nodes)}/{len(map_nodes)}):")
+    if covered_nodes:
+        lines.extend(_format_node(node) for node in covered_nodes)
+    else:
+        lines.append("  - (none yet)")
+
+    if in_progress_nodes:
+        lines.append("")
+        lines.append(f"In progress ({len(in_progress_nodes)}):")
+        lines.extend(_format_node(node) for node in in_progress_nodes)
+
+    if needs_review_nodes:
+        lines.append("")
+        lines.append(f"Needs review (previously covered but struggling, {len(needs_review_nodes)}):")
+        lines.extend(_format_node(node) for node in needs_review_nodes)
+
+    lines.append("")
+    lines.append(f"Not yet covered ({len(not_covered_nodes)}):")
+    if not_covered_nodes:
+        lines.extend(_format_node(node) for node in not_covered_nodes)
+    else:
+        lines.append("  - (none — student has reached every topic on the map)")
+
+    lines.append("")
+    if recommended is None:
+        lines.append("Goal: the student has reached every topic on this map. Reinforce, quiz, or extend rather than introducing new curriculum.")
+    else:
+        lines.append(f"Goal: cover \"{recommended['topic']}\" next — {reason}.")
+        prereqs = recommended.get("prerequisites") or []
+        if recommended.get("locked") and prereqs:
+            lines.append(
+                f"  (This goal is locked until the student covers: {', '.join(str(item) for item in prereqs)}. "
+                "Teach those prerequisites first.)"
+            )
+        subtopics = recommended.get("subtopics") or []
+        if subtopics:
+            lines.append(
+                f"  Subtopics to cover within the goal: {', '.join(str(item) for item in subtopics)}."
+            )
+
+    lines.append("")
+    lines.append("How to use this map:")
+    lines.append("- Drive every response toward the goal topic. If the student asks something off-path, answer briefly and steer back.")
+    lines.append("- Never claim a not-yet-covered topic is already known; never re-teach a covered topic unless the student asks or it is in needs-review.")
+    lines.append("- When explaining the goal, connect it to already-covered topics by name so the student sees the progression.")
+    lines.append("- If the goal is locked, teach the missing prerequisites first and say so explicitly.")
     return "\n".join(lines)
 
 

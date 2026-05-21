@@ -1,5 +1,6 @@
 import { getToken } from "./auth";
-import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, Material, MindMap, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, Resource, SearchResponse, SessionSummary, SmartReminder, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
+import { sortConversationsByRecentActivity } from "./conversations";
+import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, LectureNote, LectureNoteSummary, LectureTimelineEntry, Material, MindMap, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, Resource, SearchResponse, SessionSummary, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -133,7 +134,8 @@ export async function listConversations(): Promise<Conversation[]> {
   const response = await fetch(`${API_BASE_URL}/conversations`, {
     headers: buildHeaders(),
   });
-  return parseJson(response);
+  const conversations = await parseJson<Conversation[]>(response);
+  return conversations.sort(sortConversationsByRecentActivity);
 }
 
 export async function createConversation(
@@ -277,13 +279,6 @@ export async function deleteAssignment(assignmentId: number): Promise<void> {
   if (!response.ok) {
     await parseJson(response);
   }
-}
-
-export async function listSmartReminders(): Promise<SmartReminder[]> {
-  const response = await fetch(`${API_BASE_URL}/assignments/reminders`, {
-    headers: buildHeaders(),
-  });
-  return parseJson(response);
 }
 
 export async function listCalendarFeeds(): Promise<CalendarFeed[]> {
@@ -694,6 +689,45 @@ export async function deleteKeyIdea(ideaId: number): Promise<void> {
   }
 }
 
+export async function createLectureNote(input: {
+  conversation_id: number | null;
+  subject: string | null;
+  title: string;
+  timeline: LectureTimelineEntry[];
+}): Promise<LectureNote> {
+  const response = await fetch(`${API_BASE_URL}/lecture-notes`, {
+    method: "POST",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return parseJson(response);
+}
+
+export async function listLectureNotes(subject?: string): Promise<LectureNoteSummary[]> {
+  const qs = subject ? `?subject=${encodeURIComponent(subject)}` : "";
+  const response = await fetch(`${API_BASE_URL}/lecture-notes${qs}`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function getLectureNote(noteId: number): Promise<LectureNote> {
+  const response = await fetch(`${API_BASE_URL}/lecture-notes/${noteId}`, {
+    headers: buildHeaders(),
+  });
+  return parseJson(response);
+}
+
+export async function deleteLectureNote(noteId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/lecture-notes/${noteId}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    await parseJson(response);
+  }
+}
+
 export async function generateSummary(conversationId: number): Promise<SessionSummary> {
   const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/summary`, {
     method: "POST",
@@ -732,8 +766,75 @@ export async function fetchSpeech(text: string, voice?: string): Promise<string>
   if (!response.ok) {
     throw new Error(`TTS failed: ${response.status}`);
   }
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
+
+  const supportsMseMp3 =
+    typeof MediaSource !== "undefined" &&
+    typeof MediaSource.isTypeSupported === "function" &&
+    MediaSource.isTypeSupported("audio/mpeg");
+
+  if (!supportsMseMp3 || !response.body) {
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  }
+
+  // Stream MP3 bytes into a MediaSource so <audio> can start playing before the response
+  // finishes. The returned URL is valid immediately; data flows in the background.
+  const mediaSource = new MediaSource();
+  const url = URL.createObjectURL(mediaSource);
+  const reader = response.body.getReader();
+
+  const onSourceOpen = () => {
+    let sourceBuffer: SourceBuffer;
+    try {
+      sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+    } catch {
+      try { mediaSource.endOfStream("decode"); } catch { /* already closed */ }
+      return;
+    }
+
+    const queue: Uint8Array[] = [];
+    let streamDone = false;
+
+    const drain = () => {
+      if (sourceBuffer.updating) return;
+      const next = queue.shift();
+      if (next) {
+        try {
+          sourceBuffer.appendBuffer(next as unknown as BufferSource);
+        } catch {
+          try { mediaSource.endOfStream("decode"); } catch { /* already closed */ }
+        }
+        return;
+      }
+      if (streamDone && mediaSource.readyState === "open") {
+        try { mediaSource.endOfStream(); } catch { /* already closed */ }
+      }
+    };
+
+    sourceBuffer.addEventListener("updateend", drain);
+
+    void (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            streamDone = true;
+            drain();
+            return;
+          }
+          queue.push(value);
+          drain();
+        }
+      } catch {
+        try {
+          if (mediaSource.readyState === "open") mediaSource.endOfStream("network");
+        } catch { /* already closed */ }
+      }
+    })();
+  };
+
+  mediaSource.addEventListener("sourceopen", onSourceOpen, { once: true });
+  return url;
 }
 
 export async function deleteMaterial(materialId: number): Promise<void> {

@@ -85,14 +85,32 @@ export function SearchPage() {
       </div>
 
       {!searched && (
-        <div className="search-empty">
-          <p className="muted">Type at least 2 characters to search.</p>
+        <div className="search-empty empty-state">
+          <div className="empty-state-icon"><FileText size={26} strokeWidth={1.6} /></div>
+          <h3>Search your study memory</h3>
+          <p>
+            Type at least two characters to search across prior tutor messages, saved notes, and uploaded material chunks.
+          </p>
+          <div className="empty-state-tips" aria-label="Search examples">
+            <span>Try a concept</span>
+            <span>Try a file name</span>
+            <span>Try a phrase from your notes</span>
+          </div>
         </div>
       )}
 
       {searched && !loading && results && !hasResults && (
-        <div className="search-empty">
-          <p className="muted">No results for <strong>"{query.trim()}"</strong>.</p>
+        <div className="search-empty empty-state">
+          <div className="empty-state-icon"><FileText size={26} strokeWidth={1.6} /></div>
+          <h3>No results for "{query.trim()}"</h3>
+          <p>
+            Search only covers content Sapient has seen: session messages, saved notes, and ingested materials.
+            Try a broader term or add study material to this subject.
+          </p>
+          <div className="empty-state-actions">
+            <Link className="button button-secondary" to="/dashboard">Open subjects</Link>
+            <Link className="button button-secondary" to="/notes">View notes</Link>
+          </div>
         </div>
       )}
 

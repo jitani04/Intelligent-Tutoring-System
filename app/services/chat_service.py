@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -31,7 +32,11 @@ AGENT_TOOLS = [
             "description": (
                 "Generate a structured quiz question to formally assess student understanding. "
                 "Use this when you want a tracked knowledge check, not just a conversational question. "
-                "Prefer multiple_choice for concept checks; short_answer for applied or open-ended questions."
+                "Prefer multiple_choice for concept checks; short_answer for applied or open-ended questions. "
+                "IMPORTANT: do NOT also write the question text, the answer options, or the explanation in "
+                "your message — the quiz card renders all of that. Your accompanying message should at most "
+                "set up the quiz in one short sentence ('Here's a quick check:'); the card is the source of "
+                "truth and repeating it produces duplicate content."
             ),
             "parameters": {
                 "type": "object",
@@ -111,7 +116,9 @@ AGENT_TOOLS = [
                 "RULES:\n"
                 "- Output ONLY the Mermaid source. Do NOT wrap it in ``` fences or markdown.\n"
                 "- Keep it small: aim for 4–12 nodes. Bigger diagrams overwhelm students.\n"
-                "- Quote node labels that contain spaces or punctuation: `A[\"Fine Art\"]`.\n"
+                "- ALWAYS wrap node labels in double quotes: `A[\"Fine Art\"]`. Never write unquoted "
+                "labels — parentheses, colons, commas, equals signs, single quotes, or any non-alphanumeric "
+                "character inside `[]` will break the parser unless the whole label is quoted.\n"
                 "- Use short, descriptive labels — no full sentences.\n"
                 "- Prefer top-down (`TD`) for hierarchies, left-right (`LR`) for processes.\n\n"
                 "EXAMPLE (hierarchy):\n"
@@ -181,8 +188,10 @@ AGENT_TOOLS = [
                 "Call this tool at most twice per turn, and only if the second call is meaningfully different "
                 "from the first — e.g. one video + one article, or two clearly different sub-topics. Do NOT "
                 "call it twice with near-identical queries; the deduper will skip duplicates and the student "
-                "will see nothing the second time. The card is shown inline and saved to the student's "
-                "Resources tab."
+                "will see nothing the second time. "
+                "IMPORTANT: do NOT also write the URL, the resource title, or a description of the resource "
+                "in your message — the resource card renders the title, link, and reason. Your accompanying "
+                "message should focus on teaching content, not on summarizing what the card already shows."
             ),
             "parameters": {
                 "type": "object",
@@ -411,6 +420,24 @@ async def _save_quiz(
     return quiz
 
 
+_MERMAID_UNQUOTED_LABEL = re.compile(r'\[([^"\[\]]*[()<>{}|][^\[\]]*)\]')
+
+
+def _quote_mermaid_node_labels(source: str) -> str:
+    """Auto-quote node labels that contain Mermaid-syntactic characters.
+
+    The model is told to wrap all node labels in double quotes, but it
+    occasionally slips on the easier cases like `A[Filtered Data (CS Majors)]`.
+    Mermaid then refuses to render the whole card. This pass wraps any
+    `[<unquoted content>]` that contains `()`, `<>`, `{}`, or `|` in quotes
+    before the diagram SSE event fires.
+    """
+    def _wrap(match: "re.Match[str]") -> str:
+        inner = match.group(1).replace('"', '\\"')
+        return f'["{inner}"]'
+    return _MERMAID_UNQUOTED_LABEL.sub(_wrap, source)
+
+
 async def _save_resource(
     *,
     session: AsyncSession,
@@ -634,10 +661,30 @@ async def stream_chat(
         if tool_calls_data and ai_message_chunk is not None:
             lc_tool_messages = []
             pending_quiz_events: list[dict[str, Any]] = []
+            quiz_questions_this_turn: set[str] = set()
+            diagram_sources_this_turn: set[str] = set()
+            image_queries_this_turn: set[str] = set()
+            key_idea_concepts_this_turn: set[str] = set()
+            web_search_queries_this_turn: set[str] = set()
 
             for tc in tool_calls_data:
                 if tc["name"] == "generate_quiz":
                     args = tc["args"]
+                    question_key = (args.get("question") or "").strip().lower()
+                    if question_key and question_key in quiz_questions_this_turn:
+                        lc_tool_messages.append(
+                            LCToolMessage(
+                                content=(
+                                    "A quiz with the same question was already shown in this turn. "
+                                    "Skip this duplicate — either continue teaching, or call "
+                                    "generate_quiz with a clearly different question if you want a "
+                                    "second concept check."
+                                ),
+                                tool_call_id=tc["id"],
+                            )
+                        )
+                        continue
+                    quiz_questions_this_turn.add(question_key)
                     quiz = await _save_quiz(
                         session=session,
                         conversation_id=conversation_id,
@@ -651,7 +698,16 @@ async def stream_chat(
                     quiz_ids_this_turn.append(quiz.id)
                     lc_tool_messages.append(
                         LCToolMessage(
-                            content=f"Quiz (ID: {quiz.id}) saved and displayed to the student.",
+                            content=(
+                                f"Quiz (ID: {quiz.id}) saved and displayed to the student in a card. "
+                                "The card already shows the question text, all answer options, and the "
+                                "explanation that appears after they answer. STRICT RULE: do NOT re-state "
+                                "the question, the options, or the explanation in your reply text — that "
+                                "duplicates the card and confuses the student. Your reply should EITHER "
+                                "be empty, OR be one short sentence introducing the quiz ('Here's a quick "
+                                "check on what we just covered.'), OR continue with the next teaching "
+                                "concept. Never list the options A/B/C/D in text."
+                            ),
                             tool_call_id=tc["id"],
                         )
                     )
@@ -672,9 +728,31 @@ async def stream_chat(
                         source = source.split("\n", 1)[1] if "\n" in source else ""
                         if source.endswith("```"):
                             source = source[: -3].rstrip()
+                    source = _quote_mermaid_node_labels(source)
+                    diagram_key = source.lower()
+                    if diagram_key and diagram_key in diagram_sources_this_turn:
+                        lc_tool_messages.append(
+                            LCToolMessage(
+                                content=(
+                                    "An identical diagram was already shown in this turn. Skip the "
+                                    "duplicate. Call create_diagram again only with meaningfully "
+                                    "different Mermaid source."
+                                ),
+                                tool_call_id=tc["id"],
+                            )
+                        )
+                        continue
+                    if diagram_key:
+                        diagram_sources_this_turn.add(diagram_key)
                     lc_tool_messages.append(
                         LCToolMessage(
-                            content="Diagram created and displayed to the student.",
+                            content=(
+                                "Diagram created and displayed to the student in a rendered card. "
+                                "STRICT RULE: do NOT describe the diagram's nodes, edges, or layout in "
+                                "your reply text — the rendered diagram speaks for itself. Reference the "
+                                "diagram by purpose ('the diagram above shows the lifecycle') if useful, "
+                                "but do not re-state its contents."
+                            ),
                             tool_call_id=tc["id"],
                         )
                     )
@@ -689,6 +767,21 @@ async def stream_chat(
                     args = tc["args"]
                     query = str(args.get("query", "")).strip()
                     caption = str(args.get("caption", "")).strip()
+                    image_query_key = query.lower()
+                    if image_query_key and image_query_key in image_queries_this_turn:
+                        lc_tool_messages.append(
+                            LCToolMessage(
+                                content=(
+                                    f"An image for '{query}' was already shown this turn. Skip the "
+                                    "duplicate. Call find_image again only with a clearly different "
+                                    "query."
+                                ),
+                                tool_call_id=tc["id"],
+                            )
+                        )
+                        continue
+                    if image_query_key:
+                        image_queries_this_turn.add(image_query_key)
                     image_result: dict[str, str] | None = None
 
                     if image_service is not None and query:
@@ -722,7 +815,12 @@ async def stream_chat(
                             "source_url": image_result["source_url"],
                             "source": image_result["source"],
                         })
-                        tool_content = f"Image for '{query}' found and displayed to the student."
+                        tool_content = (
+                            f"Image for '{query}' found and displayed to the student in a card with a "
+                            "caption. STRICT RULE: do NOT describe what the image looks like or repeat "
+                            "the caption in your reply — the card and caption are visible. Continue "
+                            "teaching as if the student has seen the image."
+                        )
                     else:
                         tool_content = (
                             f"No suitable image could be displayed for '{query}'."
@@ -807,7 +905,11 @@ async def stream_chat(
                             })
                             tool_content = (
                                 f"{kind.capitalize()} resource for '{topic}' shown to the student and "
-                                "saved to their Resources tab."
+                                "saved to their Resources tab. The card already displays the title, the "
+                                "URL, the source domain, and your one-line reason. STRICT RULE: do NOT "
+                                "re-state the title, the URL, the domain, or the reason in your reply — "
+                                "that duplicates the card. Continue teaching or pause for the student to "
+                                "click through."
                             )
                         else:
                             tool_content = (
@@ -821,6 +923,20 @@ async def stream_chat(
 
                 elif tc["name"] == "save_key_idea":
                     args = tc["args"]
+                    concept_key = (args.get("concept") or "").strip().lower()
+                    if concept_key and concept_key in key_idea_concepts_this_turn:
+                        lc_tool_messages.append(
+                            LCToolMessage(
+                                content=(
+                                    f"Key idea '{args.get('concept')}' was already saved this turn. "
+                                    "Skip the duplicate. Continue teaching or save a different concept."
+                                ),
+                                tool_call_id=tc["id"],
+                            )
+                        )
+                        continue
+                    if concept_key:
+                        key_idea_concepts_this_turn.add(concept_key)
                     idea = await _save_key_idea(
                         session=session,
                         user_id=user_id,
@@ -845,6 +961,21 @@ async def stream_chat(
                     args = tc["args"]
                     query = str(args.get("query", "")).strip()
                     freshness = str(args.get("freshness") or "noLimit")
+                    web_query_key = query.lower()
+                    if web_query_key and web_query_key in web_search_queries_this_turn:
+                        lc_tool_messages.append(
+                            LCToolMessage(
+                                content=(
+                                    f"Web search for '{query}' was already run this turn. Skip the "
+                                    "duplicate. Use the prior results or call web_search with a "
+                                    "different query."
+                                ),
+                                tool_call_id=tc["id"],
+                            )
+                        )
+                        continue
+                    if web_query_key:
+                        web_search_queries_this_turn.add(web_query_key)
                     results = (
                         await web_search_service.search(query=query, freshness=freshness)
                         if web_search_service is not None and query

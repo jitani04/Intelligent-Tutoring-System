@@ -1,22 +1,26 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import { createConversation, getDueFlashcards, reviewFlashcard } from "../api";
 import type { Flashcard } from "../types";
 
-const RATINGS: { label: string; quality: number; className: string }[] = [
-  { label: "Again", quality: 1, className: "flash-btn-again" },
-  { label: "Hard",  quality: 3, className: "flash-btn-hard" },
-  { label: "Good",  quality: 4, className: "flash-btn-good" },
-  { label: "Easy",  quality: 5, className: "flash-btn-easy" },
+const RATINGS: { label: string; quality: number; className: string; hint: string }[] = [
+  { label: "Forgot",  quality: 1, className: "flash-btn-again", hint: "Show this again soon" },
+  { label: "Sort of", quality: 3, className: "flash-btn-hard",  hint: "Review sooner" },
+  { label: "Knew it", quality: 5, className: "flash-btn-easy",  hint: "Push it further out" },
 ];
 
 function intervalLabel(days: number): string {
+  if (days <= 0) return "later today";
   if (days === 1) return "tomorrow";
-  if (days < 7) return `${days} days`;
-  if (days < 30) return `${Math.round(days / 7)} week${Math.round(days / 7) !== 1 ? "s" : ""}`;
-  return `${Math.round(days / 30)} month${Math.round(days / 30) !== 1 ? "s" : ""}`;
+  if (days < 7) return `in ${days} days`;
+  if (days < 30) {
+    const weeks = Math.round(days / 7);
+    return `in ${weeks} week${weeks !== 1 ? "s" : ""}`;
+  }
+  const months = Math.round(days / 30);
+  return `in ${months} month${months !== 1 ? "s" : ""}`;
 }
 
 export function FlashcardsView({ subject }: { subject: string }) {
@@ -142,32 +146,65 @@ export function FlashcardsView({ subject }: { subject: string }) {
 
         {flipped && (
           <div className="flash-ratings">
-            <p className="flash-ratings-label">How well did you remember this?</p>
+            <p className="flash-ratings-label">Did you remember it?</p>
             <div className="flash-ratings-row">
-              {RATINGS.map(({ label, quality, className }) => (
-                <button
-                  key={label}
-                  className={`flash-rate-btn ${className}`}
-                  disabled={submitting}
-                  onClick={() => void handleRate(quality)}
-                  type="button"
-                >
-                  <span className="flash-rate-label">{label}</span>
-                  <span className="flash-rate-interval">
-                    {quality < 3 ? "now" : intervalLabel(
-                      quality === 3 ? current.sr_interval :
-                      quality === 4 ? (current.sr_repetitions === 0 ? 1 : current.sr_repetitions === 1 ? 6 : Math.round(current.sr_interval * current.sr_ease_factor)) :
-                      (current.sr_repetitions === 0 ? 1 : current.sr_repetitions === 1 ? 6 : Math.round(current.sr_interval * Math.min(2.5, current.sr_ease_factor + 0.1)))
-                    )}
-                  </span>
-                </button>
-              ))}
+              {RATINGS.map(({ label, quality, className, hint }) => {
+                const nextDays =
+                  quality < 3
+                    ? 0
+                    : quality === 3
+                      ? Math.max(1, current.sr_interval)
+                      : current.sr_repetitions === 0
+                        ? 1
+                        : current.sr_repetitions === 1
+                          ? 6
+                          : Math.round(current.sr_interval * Math.min(2.5, current.sr_ease_factor + 0.1));
+                return (
+                  <button
+                    key={label}
+                    className={`flash-rate-btn ${className}`}
+                    disabled={submitting}
+                    onClick={() => void handleRate(quality)}
+                    title={hint}
+                    type="button"
+                  >
+                    <span className="flash-rate-label">{label}</span>
+                    <span className="flash-rate-interval">{intervalLabel(nextDays)}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
       </div>
 
-      <div className="flash-counter">{index + 1} / {total}</div>
+      <div className="flash-nav">
+        <button
+          aria-label="Previous card"
+          className="flash-nav-btn"
+          disabled={index === 0 || submitting}
+          onClick={() => {
+            setIndex((i) => Math.max(0, i - 1));
+            setFlipped(false);
+          }}
+          type="button"
+        >
+          <ChevronLeft size={18} strokeWidth={2} />
+        </button>
+        <div className="flash-counter">{index + 1} / {total}</div>
+        <button
+          aria-label="Next card"
+          className="flash-nav-btn"
+          disabled={index >= total - 1 || submitting}
+          onClick={() => {
+            setIndex((i) => Math.min(total - 1, i + 1));
+            setFlipped(false);
+          }}
+          type="button"
+        >
+          <ChevronRight size={18} strokeWidth={2} />
+        </button>
+      </div>
     </>
   );
 }

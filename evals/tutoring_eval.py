@@ -393,7 +393,7 @@ async def main() -> None:
     os.environ["GOOGLE_API_KEY"] = api_key
 
     chat_model_name = os.getenv("EVAL_CHAT_MODEL", settings.llm_model)
-    judge_model_name = os.getenv("EVAL_TUTORING_JUDGE_MODEL", os.getenv("EVAL_JUDGE_MODEL", "gpt-4o"))
+    judge_model_name = os.getenv("EVAL_TUTORING_JUDGE_MODEL", os.getenv("EVAL_JUDGE_MODEL", "gpt-4o-mini"))
     openai_key = _get_openai_eval_key()
     if not openai_key:
         raise SystemExit(

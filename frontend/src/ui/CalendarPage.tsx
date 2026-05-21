@@ -9,9 +9,10 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  X,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
   createAssignment,
@@ -21,14 +22,13 @@ import {
   listAssignments,
   listCalendarFeeds,
   listProjectProfiles,
-  listSmartReminders,
   syncCalendarFeed,
   updateAssignment,
 } from "../api";
 import { formatSubjectName } from "../subjects";
-import type { Assignment, AssignmentInput, CalendarFeed, SmartReminder } from "../types";
+import type { Assignment, AssignmentInput, CalendarFeed } from "../types";
 
-const WEEK_DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const WEEK_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABEL = (year: number, month: number) =>
   new Date(year, month, 1).toLocaleString([], { month: "long", year: "numeric" });
 
@@ -49,6 +49,18 @@ function formatDueLong(value: string): string {
   return new Date(value).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function formatDueFull(value: string): string {
+  return new Date(value).toLocaleString([], {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
@@ -60,12 +72,6 @@ function sameDay(a: Date, b: Date): boolean {
 function dueDateKey(value: string): string {
   const date = new Date(value);
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
-
-function reminderTone(reminder: SmartReminder): string {
-  if (reminder.severity === "overdue" || reminder.severity === "urgent") return "urgent";
-  if (reminder.severity === "soon") return "soon";
-  return "review";
 }
 
 function assignmentTone(assignment: Assignment, now: Date): "overdue" | "today" | "soon" | "later" {
@@ -82,9 +88,9 @@ function sourceLabel(source: string): string {
 }
 
 function buildMonthCells(year: number, month: number): Date[] {
-  // First Monday on or before the 1st of the visible month.
+  // First Sunday on or before the 1st of the visible month.
   const firstOfMonth = new Date(year, month, 1);
-  const dayOfWeek = (firstOfMonth.getDay() + 6) % 7; // Mon = 0
+  const dayOfWeek = firstOfMonth.getDay(); // Sun = 0
   const gridStart = new Date(year, month, 1 - dayOfWeek);
   const cells: Date[] = [];
   for (let i = 0; i < 42; i += 1) {
@@ -98,6 +104,7 @@ export function CalendarPage() {
   const today = useMemo(() => startOfDay(new Date()), []);
   const [visibleMonth, setVisibleMonth] = useState(() => ({ year: today.getFullYear(), month: today.getMonth() }));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
 
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
   const [showCanvasForm, setShowCanvasForm] = useState(false);
@@ -115,11 +122,6 @@ export function CalendarPage() {
   const assignmentsQuery = useQuery({
     queryKey: ["assignments", "upcoming"],
     queryFn: () => listAssignments(),
-    staleTime: 30_000,
-  });
-  const remindersQuery = useQuery({
-    queryKey: ["smart-reminders"],
-    queryFn: listSmartReminders,
     staleTime: 30_000,
   });
   const feedsQuery = useQuery({
@@ -160,19 +162,52 @@ export function CalendarPage() {
   const upcomingList = useMemo(() => {
     const all = assignmentsQuery.data ?? [];
     if (!selectedDate) {
-      const todayStart = today.getTime();
+      const now = Date.now();
+      const weekAhead = now + 7 * 24 * 60 * 60 * 1000;
       return all
-        .filter((a) => new Date(a.due_at).getTime() >= todayStart)
+        .filter((a) => {
+          const due = new Date(a.due_at).getTime();
+          return due >= now && due <= weekAhead;
+        })
         .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime());
     }
     const key = `${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`;
     return assignmentsByDay.get(key) ?? [];
-  }, [assignmentsQuery.data, assignmentsByDay, selectedDate, today]);
+  }, [assignmentsQuery.data, assignmentsByDay, selectedDate]);
+
+  const selectedAssignment = useMemo(
+    () => (assignmentsQuery.data ?? []).find((assignment) => assignment.id === selectedAssignmentId) ?? null,
+    [assignmentsQuery.data, selectedAssignmentId],
+  );
+
+  useEffect(() => {
+    if (!selectedAssignment) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSelectedAssignmentId(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedAssignment]);
+
+  function selectDate(date: Date) {
+    setSelectedDate((current) => current && sameDay(current, date) ? null : date);
+    setSelectedAssignmentId(null);
+  }
+
+  function selectAssignment(assignment: Assignment) {
+    const due = new Date(assignment.due_at);
+    setSelectedDate(startOfDay(due));
+    setVisibleMonth({ year: due.getFullYear(), month: due.getMonth() });
+    setSelectedAssignmentId(assignment.id);
+  }
 
   const invalidateCalendar = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["assignments"] }),
-      queryClient.invalidateQueries({ queryKey: ["smart-reminders"] }),
       queryClient.invalidateQueries({ queryKey: ["calendar-feeds"] }),
     ]);
   };
@@ -270,6 +305,9 @@ export function CalendarPage() {
 
   function handleDeleteAssignment(assignment: Assignment) {
     if (!window.confirm(`Delete "${assignment.title}"?`)) return;
+    if (selectedAssignmentId === assignment.id) {
+      setSelectedAssignmentId(null);
+    }
     deleteAssignmentMutation.mutate(assignment.id);
   }
 
@@ -284,9 +322,8 @@ export function CalendarPage() {
     <div className="page-shell calendar-page">
       <header className="calendar-hero">
         <div>
-          <span className="calendar-eyebrow">Planning</span>
           <h1>Calendar</h1>
-          <p>Track assignments, Canvas deadlines, and study reminders in one place.</p>
+          <p>Track assignments and Canvas deadlines in one place.</p>
         </div>
         <div className="calendar-hero-actions">
           <button className="button button-secondary" onClick={() => setShowCanvasForm((open) => !open)} type="button">
@@ -436,7 +473,7 @@ export function CalendarPage() {
             const hasOverdue = dayAssignments.some((a) => assignmentTone(a, now) === "overdue");
 
             return (
-              <button
+              <div
                 className={[
                   "month-cell",
                   isThisMonth ? "" : "month-cell-outside",
@@ -445,25 +482,37 @@ export function CalendarPage() {
                   hasOverdue ? "month-cell-has-overdue" : "",
                 ].filter(Boolean).join(" ")}
                 key={cell.toISOString()}
-                onClick={() => setSelectedDate(isSelected ? null : cell)}
-                type="button"
+                onClick={() => selectDate(cell)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    selectDate(cell);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
               >
                 <span className="month-cell-date">{cell.getDate()}</span>
                 {visible.length > 0 && (
                   <div className="month-cell-chips">
                     {visible.map((assignment) => (
-                      <span
-                        className={`month-cell-chip month-cell-chip-${assignmentTone(assignment, now)}`}
+                      <button
+                        className={`month-cell-chip month-cell-chip-button month-cell-chip-${assignmentTone(assignment, now)}`}
                         key={assignment.id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          selectAssignment(assignment);
+                        }}
                         title={`${assignment.title} · ${formatDueShort(assignment.due_at)}`}
+                        type="button"
                       >
                         {assignment.title}
-                      </span>
+                      </button>
                     ))}
                     {extra > 0 && <span className="month-cell-chip month-cell-chip-more">+{extra} more</span>}
                   </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
@@ -474,15 +523,22 @@ export function CalendarPage() {
           <section className="calendar-section">
             <div className="calendar-section-header">
               <div>
-                <h2>{selectedDate ? selectedDate.toLocaleString([], { weekday: "long", month: "long", day: "numeric" }) : "Upcoming"}</h2>
+                <h2>{selectedDate ? selectedDate.toLocaleString([], { weekday: "long", month: "long", day: "numeric" }) : "This week"}</h2>
                 <p>
                   {selectedDate
                     ? `${upcomingList.length} deadline${upcomingList.length === 1 ? "" : "s"} on this day`
-                    : `${upcomingList.length} active assignment${upcomingList.length === 1 ? "" : "s"}`}
+                    : `${upcomingList.length} deadline${upcomingList.length === 1 ? "" : "s"} in the next 7 days`}
                 </p>
               </div>
               {selectedDate && (
-                <button className="button button-ghost" onClick={() => setSelectedDate(null)} type="button">
+                <button
+                  className="button button-ghost"
+                  onClick={() => {
+                    setSelectedDate(null);
+                    setSelectedAssignmentId(null);
+                  }}
+                  type="button"
+                >
                   Clear
                 </button>
               )}
@@ -493,22 +549,47 @@ export function CalendarPage() {
             {!assignmentsQuery.isLoading && upcomingList.length === 0 ? (
               <div className="calendar-empty">
                 <CalendarDays size={28} strokeWidth={1.6} />
-                <h3>{selectedDate ? "Nothing due that day" : "No assignments yet"}</h3>
+                <h3>{selectedDate ? "Nothing due that day" : "Nothing due this week"}</h3>
                 <p>
                   {selectedDate
                     ? "Pick another day or clear the filter to see everything."
-                    : "Add a deadline or connect Canvas to start planning around your coursework."}
+                    : "Pick a date on the calendar to see deadlines further out, or add a new assignment below."}
                 </p>
+                {!selectedDate ? (
+                  <div className="empty-state-actions">
+                    <button className="button button-primary" onClick={() => setShowAssignmentForm(true)} type="button">
+                      Add assignment
+                    </button>
+                    <button className="button button-secondary" onClick={() => setShowCanvasForm(true)} type="button">
+                      Connect Canvas
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="calendar-assignment-list">
                 {upcomingList.map((assignment) => {
                   const tone = assignmentTone(assignment, now);
                   return (
-                    <article className={`calendar-assignment calendar-assignment-${tone}`} key={assignment.id}>
+                    <article
+                      className={`calendar-assignment calendar-assignment-${tone} ${selectedAssignmentId === assignment.id ? "calendar-assignment-selected" : ""}`}
+                      key={assignment.id}
+                      onClick={() => selectAssignment(assignment)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          selectAssignment(assignment);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
                       <button
                         className="calendar-complete-btn"
-                        onClick={() => completeMutation.mutate({ id: assignment.id, completed: !assignment.completed })}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          completeMutation.mutate({ id: assignment.id, completed: !assignment.completed });
+                        }}
                         title="Mark complete"
                         type="button"
                       >
@@ -526,7 +607,7 @@ export function CalendarPage() {
                           {assignment.subject ? (
                             <>
                               <span>·</span>
-                              <Link to={`/projects/${encodeURIComponent(assignment.subject)}`}>
+                              <Link to={`/projects/${encodeURIComponent(assignment.subject)}`} onClick={(event) => event.stopPropagation()}>
                                 {formatSubjectName(assignment.subject)}
                               </Link>
                             </>
@@ -536,11 +617,18 @@ export function CalendarPage() {
                       </div>
                       <div className="calendar-assignment-actions">
                         {assignment.source_url ? (
-                          <a href={assignment.source_url} target="_blank" rel="noreferrer" title="Open source">
+                          <a href={assignment.source_url} target="_blank" rel="noreferrer" title="Open source" onClick={(event) => event.stopPropagation()}>
                             <ExternalLink size={15} strokeWidth={2} />
                           </a>
                         ) : null}
-                        <button onClick={() => handleDeleteAssignment(assignment)} title="Delete assignment" type="button">
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteAssignment(assignment);
+                          }}
+                          title="Delete assignment"
+                          type="button"
+                        >
                           <Trash2 size={15} strokeWidth={2} />
                         </button>
                       </div>
@@ -553,34 +641,6 @@ export function CalendarPage() {
         </main>
 
         <aside className="calendar-side">
-          <section className="calendar-section calendar-reminders">
-            <div className="calendar-section-header">
-              <div>
-                <h2>Smart reminders</h2>
-                <p>Based on deadlines, BKT mastery, and learning map status.</p>
-              </div>
-            </div>
-            {remindersQuery.isLoading ? <p className="muted">Checking reminders...</p> : null}
-            {!remindersQuery.isLoading && (remindersQuery.data ?? []).length === 0 ? (
-              <p className="calendar-side-empty">No reminders right now.</p>
-            ) : (
-              <div className="calendar-reminder-list">
-                {(remindersQuery.data ?? []).map((reminder) => (
-                  <article className={`calendar-reminder calendar-reminder-${reminderTone(reminder)}`} key={reminder.id}>
-                    <span className="calendar-reminder-severity">{reminder.severity}</span>
-                    <h3>{reminder.title}</h3>
-                    <p>{reminder.body}</p>
-                    {reminder.subject ? (
-                      <Link className="calendar-reminder-link" to={`/projects/${encodeURIComponent(reminder.subject)}`}>
-                        Open {formatSubjectName(reminder.subject)}
-                      </Link>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
           <section className="calendar-section calendar-feeds">
             <div className="calendar-section-header">
               <div>
@@ -589,7 +649,13 @@ export function CalendarPage() {
               </div>
             </div>
             {(feedsQuery.data ?? []).length === 0 ? (
-              <p className="calendar-side-empty">No Canvas feeds connected.</p>
+              <div className="calendar-side-empty">
+                <strong>No Canvas feeds connected</strong>
+                <span>Paste an iCal/webcal link once, then sync course deadlines from here.</span>
+                <button className="button button-secondary" onClick={() => setShowCanvasForm(true)} type="button">
+                  Connect feed
+                </button>
+              </div>
             ) : (
               <div className="calendar-feed-list">
                 {(feedsQuery.data ?? []).map((feed) => (
@@ -620,6 +686,81 @@ export function CalendarPage() {
           </section>
         </aside>
       </div>
+
+      {selectedAssignment ? (
+        <div
+          className="modal-backdrop calendar-detail-backdrop"
+          onClick={() => setSelectedAssignmentId(null)}
+          role="presentation"
+        >
+          <section
+            className="modal-box calendar-detail-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calendar-detail-title"
+          >
+            <div className="calendar-detail-head">
+              <div>
+                <span className={`source-pill source-pill-${selectedAssignment.source === "canvas" ? "canvas" : "sapient"}`}>
+                  {sourceLabel(selectedAssignment.source)}
+                </span>
+                <h2 id="calendar-detail-title">{selectedAssignment.title}</h2>
+              </div>
+              <button
+                className="calendar-detail-close"
+                onClick={() => setSelectedAssignmentId(null)}
+                type="button"
+                aria-label="Close assignment details"
+              >
+                <X size={15} strokeWidth={2} />
+              </button>
+            </div>
+
+            <dl className="calendar-detail-list">
+              <div>
+                <dt>Due</dt>
+                <dd>{formatDueFull(selectedAssignment.due_at)}</dd>
+              </div>
+              {selectedAssignment.subject ? (
+                <div>
+                  <dt>Subject</dt>
+                  <dd>
+                    <Link to={`/projects/${encodeURIComponent(selectedAssignment.subject)}`}>
+                      {formatSubjectName(selectedAssignment.subject)}
+                    </Link>
+                  </dd>
+                </div>
+              ) : null}
+              <div>
+                <dt>Status</dt>
+                <dd>{selectedAssignment.completed ? "Completed" : "Not completed"}</dd>
+              </div>
+            </dl>
+
+            {selectedAssignment.description ? (
+              <p className="calendar-detail-description">{selectedAssignment.description}</p>
+            ) : null}
+
+            <div className="calendar-detail-actions">
+              <button
+                className="button button-secondary"
+                onClick={() => completeMutation.mutate({ id: selectedAssignment.id, completed: !selectedAssignment.completed })}
+                type="button"
+              >
+                <CheckCircle2 size={15} strokeWidth={2} />
+                {selectedAssignment.completed ? "Mark incomplete" : "Mark complete"}
+              </button>
+              {selectedAssignment.source_url ? (
+                <a className="button button-secondary" href={selectedAssignment.source_url} target="_blank" rel="noreferrer">
+                  <ExternalLink size={15} strokeWidth={2} />
+                  Open source
+                </a>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

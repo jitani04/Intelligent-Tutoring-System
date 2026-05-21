@@ -189,7 +189,7 @@ balanced.
 | `EVAL_FORCE_HTTPX`            | 1                        | Force httpx transport (avoids aiohttp warning noise) |
 | `EVAL_CHAT_MODEL`             | `LLM_MODEL`              | Gemini model for answer generation                   |
 | `EVAL_OPENAI_API_KEY`         | (unset)                  | OpenAI key for Ragas and tutoring judges             |
-| `EVAL_JUDGE_MODEL`            | `gpt-4o`                 | OpenAI model for Ragas judgment                      |
+| `EVAL_JUDGE_MODEL`            | `gpt-4o-mini`            | OpenAI model for Ragas judgment                      |
 | `EVAL_JUDGE_EMBEDDING_MODEL`  | `text-embedding-3-small` | OpenAI embeddings for Ragas answer relevancy         |
 | `EVAL_TUTORING_JUDGE_MODEL`   | `EVAL_JUDGE_MODEL`       | OpenAI model for pedagogical rubric judgment         |
 | `EVAL_TUTORING_SOURCE`        | `tutorbench`             | Tutoring eval source: `tutorbench` or `local`        |

@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { createConversation, generateMindMap } from "../api";
+import { createConversation, generateMindMap, setupProject } from "../api";
 import { clearPendingStudyContext, getPendingStudyContext } from "../studyState";
 
 export function StartMethodPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const pendingContext = getPendingStudyContext();
   const [error, setError] = useState<string | null>(null);
 
@@ -16,6 +17,7 @@ export function StartMethodPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      await setupProject(pendingContext.subject, null, null, null);
       const conversation = await createConversation(pendingContext.subject);
       try {
         await generateMindMap(pendingContext.subject);
@@ -24,7 +26,9 @@ export function StartMethodPage() {
       }
       return conversation;
     },
-    onSuccess: (c) => {
+    onSuccess: async (c) => {
+      await queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
+      await queryClient.invalidateQueries({ queryKey: ["project-profile", pendingContext.subject] });
       clearPendingStudyContext();
       navigate(`/projects/${encodeURIComponent(pendingContext.subject)}/setup?session=${c.id}`, { replace: true });
     },
@@ -34,7 +38,6 @@ export function StartMethodPage() {
   return (
     <div className="flow-page">
       <div className="flow-card">
-        <div className="flow-step">Step 3 of 3</div>
         <h1>How Sapient works</h1>
         <p className="flow-copy">
           A direct teaching loop: explain the concept clearly, check understanding, give hints

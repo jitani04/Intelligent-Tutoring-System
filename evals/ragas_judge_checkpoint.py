@@ -29,8 +29,15 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from dotenv import load_dotenv
+
 from ragas.embeddings import OpenAIEmbeddings
 from ragas.llms import llm_factory
+
+# pydantic Settings loads .env into the Settings object but not into os.environ,
+# so OPENAI_API_KEY / OPENAI_TTS_API_KEY in .env are invisible to os.getenv().
+# Eval scripts run outside the app process, so load .env explicitly here.
+load_dotenv()
 from ragas.metrics.collections import (
     AnswerRelevancy,
     ContextPrecision,
@@ -137,7 +144,7 @@ async def main() -> None:
             "OpenAI eval judge key not set. Set EVAL_OPENAI_API_KEY or OPENAI_API_KEY "
             "with chat-completions and embeddings access."
         )
-    judge_model = os.getenv("EVAL_JUDGE_MODEL", "gpt-4o")
+    judge_model = os.getenv("EVAL_JUDGE_MODEL", "gpt-4o-mini")
     embedding_model = os.getenv("EVAL_JUDGE_EMBEDDING_MODEL", "text-embedding-3-small")
 
     from openai import AsyncOpenAI

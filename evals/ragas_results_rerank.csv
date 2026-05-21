@@ -1,0 +1,230 @@
+row,question,ground_truth,answer_preview,faithfulness,answer_relevancy,context_precision,context_recall,factual_correctness
+0,Is Hirschsprung disease a mendelian or a multifactorial disorder?,"Coding sequence mutations in RET, GDNF, EDNRB, EDN3, and SOX10 are involved in the development of Hirschsprung disease. The majority of these genes was shown to be related to Mendelian syndromic forms","Hirschsprung's disease (HSCR) exhibits both Mendelian and non-Mendelian inheritance patterns, indicating it is a complex disorder.
+
+Specifically:
+*   Non-syndromic, non-familial, short-segment HSCR ap",1.0,0.632726159722164,0.9999999999666667,1.0,0.63
+1,List signaling molecules (ligands) that interact with the receptor EGFR?,"The 7 known EGFR ligands  are: epidermal growth factor (EGF), betacellulin (BTC), epiregulin (EPR), heparin-binding EGF (HB-EGF), transforming growth factor-α [TGF-α], amphiregulin (AREG) and epigen (","The signaling molecules (ligands) that interact with the receptor EGFR are:
+
+*   EGF
+*   Heparin-binding EGF-like growth factor (HB-EGF)
+*   Transforming growth factor-α (TGF-α)
+*   Betacellulin (BTC)",1.0,0.9228141268358158,0.8055555555287036,1.0,0.86
+2,Is the protein Papilin secreted?,"Yes,  papilin is a secreted protein","Yes, Papilin is a secreted protein.
+
+Source 1 states that ""Papilins are homologous, secreted extracellular matrix proteins."" Source 3 also identifies ""mig-6/papilin"" as one of ""two genes encoding secr",1.0,0.9199138519371454,0.999999999975,1.0,0.4
+3,Are long non coding RNAs spliced?,Long non coding RNAs appear to be spliced through the same pathway as the mRNAs,"Yes, long non-coding RNAs (lncRNAs) are spliced.
+
+According to the provided context:
+*   LncRNAs are generated through pathways similar to protein-coding genes, possessing similar splicing signals and",1.0,0.8714137909871654,0.9999999999666667,1.0,0.44
+4,Is RANKL secreted from the cells?,Receptor activator of nuclear factor κB ligand (RANKL) is a cytokine predominantly secreted by osteoblasts.,"Yes, Receptor activator of nuclear factor κB ligand (RANKL) is predominantly secreted by osteoblasts.",1.0,0.7189728236359145,0.5833333333041666,1.0,0.67
+5,Does metformin interfere thyroxine absorption?,No. There are not reported data indicating that metformin reduce with thyroxine absorption.,The provided context does not contain information about whether metformin interferes with thyroxine absorption. It mentions that aluminum hydroxide may interfere with the bioavailability of thyroxine.,1.0,0.0,0.0,0.0,0.67
+6,Which miRNAs could be used as potential biomarkers for epithelial ovarian cancer?,"miR-200a, miR-100, miR-141, miR-200b, miR-200c, miR-203, miR-510, miR-509-5p, miR-132, miR-26a, let-7b, miR-145, miR-182, miR-152, miR-148a, let-7a, let-7i, miR-21, miR-92 and miR-93 could be used as ","Based on the provided context, the following miRNAs could be used as potential biomarkers for epithelial ovarian cancer:
+
+*   **miR-21, miR-92, miR-93, miR-126, miR-29a, miR-155, miR-127, miR-99b** (S",0.6,1.0000000000000002,0.3333333333,0.45,0.4
+7,Which acetylcholinesterase inhibitors are used for treatment of myasthenia gravis?,Pyridostigmine and neostygmine are acetylcholinesterase inhibitors that are used as first-line therapy for symptomatic treatment of myasthenia gravis. Pyridostigmine is the most widely used acetylchol,Pyridostigmine is an acetylcholinesterase inhibitor used for the treatment of myasthenia gravis (MG). It is the most commonly and widely used acetylcholinesterase inhibitor and is recommended as a fir,1.0,0.5841657921407659,0.99999999995,0.3333333333333333,0.62
+8,Has Denosumab (Prolia) been approved by FDA?,"Yes, Denosumab was approved by the FDA in 2010.","Yes, Denosumab (Prolia) has been approved by the FDA for several conditions:
+
+*   Treatment of postmenopausal osteoporosis (Source 1, Source 2).
+*   Prevention of skeletal-related events (SREs) in adu",1.0,0.8727331369805217,0.999999999975,1.0,0.0
+9,List the human genes encoding for the dishevelled proteins?,"DVL-1
+DVL-2
+DVL-3",The human genes encoding for dishevelled proteins are DVL-1 and DVL-3.,1.0,0.9461273571217074,0.49999999995,0.6666666666666666,0.0
+10,Name synonym of Acrokeratosis paraneoplastica.,"Acrokeratosis paraneoplastic (Bazex syndrome) is a rare, but distinctive paraneoplastic dermatosis characterized by erythematosquamous lesions located at the acral sites and is most commonly associate",Acrokeratosis paraneoplastica is also known as Bazex syndrome.,1.0,0.9266601447635102,0.999999999975,1.0,0.4
+11,Which are the classes of anti-arrhythmic drugs according to Vaughan-Williams classification?,"Antiarrhythmic drugs can be divided into four Vaughan Williams classes (I-IV). Class I antiarrhythmic agents have as a common action, blockade of the sodium channels. Class II agents are antisympathet","According to the Vaughan Williams classification, antiarrhythmic drugs are divided into four classes: Class I, Class II, Class III, and Class IV.",1.0,0.9385113073162316,0.9999999999666667,1.0,0.29
+12,Which are the different isoforms of the mammalian Notch receptor?,"Notch signaling is an evolutionarily conserved mechanism, used to regulate cell fate decisions. Four Notch receptors have been identified in man: Notch-1, Notch-2, Notch-3 and Notch-4.","The different isoforms of the mammalian Notch receptor are Notch1, Notch2, Notch3, and Notch4.",1.0,0.990235188486352,0.9999999999666667,1.0,0.5
+13,Which are the major characteristics of cellular senescence?,"The defining characteristics of cellular senescence are altered morphology, arrested cell-cycle progression, development of aberrant gene expression with proinflammatory behavior, and telomere shorten",The major characteristics of cellular senescence include slower proliferation and altered morphology.,1.0,0.9922496879275936,0.0,0.0,0.33
+14,Orteronel was developed for treatment of which cancer?,Orteronel was developed for treatment of castration-resistant prostate cancer.,Orteronel was developed for the treatment of prostate cancer.,1.0,0.7710252138244472,0.999999999975,1.0,1.0
+15,Is the monoclonal antibody Trastuzumab (Herceptin) of potential use in the treatment of prostate cancer?,"Although is still controversial, Trastuzumab (Herceptin) can be of potential use in the treatment of prostate cancer overexpressing HER2, either alone or in combination with other drugs.","Trastuzumab (Herceptin) as a single agent demonstrated poor efficacy in treating hormone-refractory prostate cancer (HRPC).
+
+However, there is some potential for its use in combination therapies. A ph",1.0,0.7277190009020528,0.999999999975,1.0,0.27
+16,Which are the Yamanaka factors?,"The Yamanaka factors are the OCT4, SOX2, MYC, and KLF4 transcription factors","The Yamanaka factors are Oct3/4 (or Oct4), Sox2, Klf4, and c-Myc.",1.0,0.9800822473129113,0.999999999975,1.0,1.0
+17,What is the aim of the Human Chromosome-centric Proteome Project (C-HPP)?,"The chromosome-centric human proteome project aims to systematically map all human proteins, chromosome by chromosome, in a gene-centric manner through dedicated efforts from national and internationa",The aim of the Human Chromosome-centric Proteome Project (C-HPP) is to map and annotate all proteins encoded by the genes on each human chromosome. It seeks to systematically map the entire human prot,1.0,1.0,0.999999999975,1.0,0.46
+18,Where is the protein Pannexin1 located?,The protein Pannexin1 is localized to the plasma membranes.,"Pannexin1 (Panx1) is widely expressed in the Central Nervous System (CNS), including the inner and outer retinae in mammals. It is described as ""fairly ubiquitous"" and traffics to the plasma membrane.",0.8181818181818182,0.6925467347451714,0.3333333333,1.0,0.2
+19,Which currently known mitochondrial diseases have been attributed to POLG mutations?,Mutations in the POLG gene have emerged as one of the most common causes of inherited mitochondrial disease in children and adults. They are responsible for a heterogeneous group of at least 6 major p,"Currently known mitochondrial diseases and related conditions attributed to POLG mutations include:
+
+*   Alpers syndrome
+*   Progressive external ophthalmoplegia (including autosomal recessive and aut",1.0,0.933292758748468,0.99999999995,1.0,0.8
+20,What is the effect of ivabradine in heart failure after myocardial infarction?,"Ιvabradine decreases heart rate and reduces myocardial oxygen demand, increases diastolic perfusion time and improves energetics in ischemic myocardium. Ivabradine protects the myocardium during ische","Ivabradine has several beneficial effects in heart failure after myocardial infarction:
+
+*   It significantly decreases heart rate.
+*   It promotes less frequent hospitalizations, recurrent non-fatal ",1.0,0.9379262287119013,0.999999999975,1.0,0.4
+21,What is the mode of inheritance of Wilson's disease?,Wilson's disease (WD) is an autosomal recessive disorder.,Wilson's disease has an autosomal recessive mode of inheritance.,1.0,0.992002652375065,0.999999999975,1.0,1.0
+22,Are transcription and splicing connected?,"Yes. There is strong evidence that splicing and transcription are intimately coupled in metazoans, with  genome wide surveys show that most splicing occurs during transcription. Chromatin structure, R","Yes, transcription and splicing are connected.
+
+The provided context indicates that transcription and pre-mRNA splicing are coordinated and, in some cases, functionally coupled processes, with splicin",1.0,0.9554728741589201,0.999999999975,1.0,0.62
+23,What is the mode of inheritance of Facioscapulohumeral muscular dystrophy (FSHD)?,Facioscapulohumeral muscular dystrophy has an autosomal dominant inheritance pattern.,Facioscapulohumeral muscular dystrophy (FSHD) is characterized by an autosomal dominant mode of inheritance.,1.0,0.9921517120864237,0.999999999975,1.0,1.0
+24,Is Alu hypomethylation associated with breast cancer?,"Yes, Alu elements were found to be hypomethylated in breast cancer, especially in the HER2-enriched subtype. Furthermore, Alu hypomethylation was identified as a late event during breast cancer progre","Yes, Alu hypomethylation is associated with breast cancer.
+
+In invasive breast cancer (IBC), Alu hypomethylation correlated with negative estrogen receptor (ER) status. Alu methylation status was also",1.0,0.9549495174192207,0.9999999999,1.0,0.8
+25,Which proteins participate in the formation of the ryanodine receptor quaternary macromolecular complex?,"Junctin is a major transmembrane protein in cardiac junctional sarcoplasmic reticulum, which forms a quaternary complex with the ryanodine receptor (Ca(2+) release channel), triadin, and calsequestrin","The ryanodine receptor quaternary macromolecular complex is formed by the ryanodine receptor, calsequestrin, triadin (or triadin 1), and junctin.",0.0,0.9072862648755614,0.999999999975,1.0,0.67
+26,What kind of chromatography is HILIC?,Hydrophilic Interaction Chromatography (HILIC),HILIC is Hydrophilic-interaction liquid chromatography.,1.0,0.8474029941159084,0.999999999975,1.0,1.0
+27,What is the effect of TRH on myocardial contractility?,TRH improves myocardial contractility,"Thyrotropin-releasing hormone (TRH) generally improves or increases myocardial contractility.
+
+Specifically:
+*   TRH improved myocardial contractility, measured by parameters such as dp/dtmax, -dp/dtm",0.8947368421052632,0.9059771952533454,0.999999999975,1.0,0.15
+28,Proteomic analyses need prior knowledge of the organism complete genome. Is the complete genome of the bacteria of the genus Arthrobacter available?,"Yes, the complete genome sequence of Arthrobacter (two strains) is deposited in GenBank.","Yes, the complete genome is available for some bacteria of the genus Arthrobacter. Specifically, the complete genome sequence and annotation are available for *Arthrobacter phenanthrenivorans* and *Ar",1.0,0.8629164250283198,0.9999999999666667,1.0,0.33
+29,What is the structural fold of bromodomain proteins?,"The structure fold of the bromodomains is an all-alpha-helical fold, which includes a left-handed four-helix bundle topology, with two short additional helices in a long connecting loop.","Bromodomains typically exhibit an all-alpha-helical fold. More specifically, the bromodomain of P/CAF has an unusual left-handed up-and-down four-helix bundle, and the GCN5 bromodomain has a left-hand",1.0,0.7949250825403243,0.8055555555287036,1.0,0.25
+30,List the endoscopic diagnoses that have been reported in children with autism,"Endoscopic examinations in autistic children have been reported to show : I or II reflux esophagitis,  Achalasia, chronic gastritis and chronic duodenitis,  mild acute and chronic inflammation of the ","Endoscopic diagnoses reported in children with autism include:
+
+*   Esophageal achalasia
+*   Grade I or II reflux esophagitis
+*   Chronic gastritis
+*   Chronic duodenitis
+*   Ileo-colonic lymphoid nod",0.9166666666666666,0.9411308665338618,0.4166666666458333,1.0,0.67
+31,What are the outcomes of Renal sympathetic denervation?,"Significant decreases and progressively higher reductions of systolic and diastolic blood pressure were observed after RSD. The complication rate was minimal.
+Renal sympathetic denervation also reduce","Renal sympathetic denervation has several observed outcomes:
+
+*   **Blood Pressure Reduction:** It leads to significant and sustained reductions in blood pressure, including systolic and diastolic blo",1.0,0.9385833001426982,0.999999999975,1.0,0.44
+32,Which MAP kinase phosphorylates the transcription factor c-jun?,c-Jun is phosphorylated by c-Jun NH2-terminal kinase (JNK).,"The c-Jun NH2-terminal kinase (Jnk), also known as c-Jun N-terminal protein kinase (JNK), phosphorylates the transcription factor c-Jun. This phosphorylation occurs at activating sites Ser-63 and Ser-",1.0,0.7441065750429224,0.999999999975,1.0,0.5
+33,"What is the meaning of the acronym ""TAILS"" used in protein N-terminomics?","TAILS stands for ""Terminal Amine Isotopic Labeling of Substrates""","The acronym ""TAILS"" stands for ""terminal amine isotopic labeling of substrates"".",1.0,0.7965869811308087,0.9999999999666667,1.0,1.0
+34,Do mutations of AKT1 occur in meningiomas?,"Yes, AKT1 mutation occurs in meningiomas.","Yes, mutations of AKT1 occur in meningiomas.
+
+Source 1 states that a subset of meningiomas lacking NF2 alterations harbored recurrent oncogenic mutations in AKT1 (p.Glu17Lys). Source 2 also reports th",1.0,0.9999999999999997,0.9999999999666667,1.0,0.4
+35,What are the main indications of lacosamide?,"Lacosamide is an anti-epileptic drug, licensed for refractory partial-onset seizures. In addition to this, it has demonstrated analgesic activity in various animal models. Apart from this, LCM has dem",Lacosamide is licensed for refractory partial-onset seizures. It is also in a late stage of clinical development as an adjunctive treatment for patients with uncontrolled partial-onset seizures and is,1.0,0.7599792069775333,0.8333333332916666,0.6666666666666666,0.22
+36,Which fusion protein is involved in the development of Ewing sarcoma?,"Ewing sarcoma is the second most common bone malignancy in children and young adults. In almost 95% of the cases, it is driven by oncogenic fusion protein EWS/FLI1, which acts as an aberrant transcrip",The EWS-FLI-1 (or EWS/FLI1) fusion protein is involved in the development of Ewing sarcoma.,1.0,0.8637408220167901,0.999999999975,1.0,0.29
+37,List Hemolytic Uremic Syndrome Triad.,"Hemolytic uremic syndrome (HUS) is a clinical syndrome characterized by the triad of anaemia, thrombocytopenia, renal failure.","Hemolytic Uremic Syndrome (HUS) is characterized by a triad of:
+*   Microangiopathic hemolytic anemia
+*   Thrombocytopenia
+*   Acute renal failure",1.0,0.685466539059223,0.999999999975,1.0,0.67
+38,Does physical activity influence gut hormones?,Yes.,"Yes, physical activity influences gut hormones.
+
+Strenuous physical exercise leads to an immediate increase in the release of gut hormones such as gastrin, cholecystokinin (CCK), and pancreatic polype",1.0,0.9654761785449247,0.999999999975,1.0,0.0
+39,What are the effects of depleting protein  km23-1 (DYNLRB1)  in a cell?,"The knockdown of km23-1 results in numerous effects at the cellular level, such as decreased cell migration. Additionaly, km23-1 is involved in signalling pathways and its knockdown results in decreas","Depleting protein km23-1 (DYNLRB1) in a cell has several effects:
+
+*   It decreases RhoA activation in Mv1Lu epithelial cells [Source 1].
+*   It inhibits cell migration of human colon carcinoma cells ",0.5714285714285714,0.9864060805380368,0.9999999999,0.6666666666666666,0.0
+40,Treatment of which disease was investigated in the MR CLEAN study?,Multicenter Randomized CLinical trial of Endovascular treatment for Acute ischemic stroke in the Netherlands (MR CLEAN) study investigated endovascular treatment for acute ischemic stroke.,The MR CLEAN study investigated acute ischemic stroke.,1.0,0.7873209048167457,0.9999999999666667,1.0,0.67
+41,Which factors activate zygotic gene expression during the maternal-to-zygotic transition in zebrafish?,"Nanog, Pou5f1 and SoxB1 activate zygotic gene expression during the maternal-to-zygotic transition. Maternal Nanog, Pou5f1 and SoxB1 are required to initiate the zygotic developmental program and indu","In zebrafish, Nanog, Pou5f1 (also called Oct4), and SoxB1 regulate zygotic gene activation during the maternal-to-zygotic transition. These maternal factors are required to initiate the zygotic develo",1.0,0.9323204192298458,0.9999999999,1.0,0.8
+42,Is irritable bowel syndrome more common in women with endometriosis?,"Yes, irritable bowel syndrome (IBS) is more common in women with endometriosis. It has been shown that 15% of the patients with endometriosis also had IBS. Women with endometriosis are more likely to ","Yes, irritable bowel syndrome (IBS) is common in women with endometriosis.
+
+In one study, 76 women (21.4%) undergoing operative laparoscopy for suspected endometriosis had previously been diagnosed wi",1.0,0.9156113714731573,0.999999999975,0.75,0.44
+43,What is evaluated using the EORTC QLQ – INFO25 questionnaire?,The European Organisation for Research and Treatment of Cancer Quality of Life Group information questionnaire (EORTC QLQ-INFO 25) evaluates the level of information patients have received in differen,"The EORTC QLQ-INFO25 questionnaire evaluates the information received by cancer patients. Specifically, it assesses the level of information patients have received in different areas of their disease,",1.0,0.960808664570958,0.999999999975,1.0,0.86
+44,Does BNP increase after intensive exercise in athletes?,"BNP and NTproBNP increase early after exercise in healthy athletes performing different types of sports. It is unknown the reason of this increase. The transient increases in BNP, NT-pro-BNP and tropo","Yes, N-terminal pro-brain natriuretic peptide (NT-proBNP) or brain natriuretic peptide (BNP) has been observed to increase in a major part of healthy athletes after prolonged strenuous exercise.
+
+Spec",1.0,0.8017322473777596,0.9999999999666667,1.0,0.18
+45,What is the association of estrogen replacement therapy and intracranial meningioma risk?,"The association between hormone replacement therapy and meningioma risk is controversial. Increased risk of meningioma was demonstrated in estrogen-only hormonal replacement therapy. However, other st","The provided context is insufficient to specifically detail the association of estrogen replacement therapy and intracranial meningioma risk. While the context discusses ""hormone replacement therapy"" ",1.0,0.8928857508598381,0.8333333332916666,1.0,0.55
+46,Are there web based self management strategies for chronic pain ?,Results suggest the potential value of self-management for chronic pain patients and the potential acceptability of web-based delivery of intervention content.  ,"Yes, there are web-based self-management strategies for chronic pain.
+
+Several sources describe the development and evaluation of such interventions:
+*   One study focused on developing an interactive",1.0,0.9785276231492301,0.999999999975,1.0,0.4
+47,Is Weaver syndrome similar to Sotos?,"Overgrowth conditions are a heterogeneous group of disorders characterised by increased growth and variable features, including macrocephaly, distinctive facial appearance and various degrees of learn","Yes, Weaver syndrome is similar to Sotos syndrome.
+
+Both are childhood overgrowth syndromes characterized by criteria such as height and head circumference >97th percentile, advanced bone age, and dev",0.7692307692307693,0.9339069840457853,0.999999999975,1.0,0.3
+48,Which enzyme is targeted by Evolocumab?,Evolocumab (AMG145) is a fully human monoclonal antibody to proprotein convertase subtilisin/kexin type 9 (PCSK9) that demonstrated marked reductions in plasma low-density lipoprotein cholesterol conc,Evolocumab targets the enzyme proprotein convertase subtilisin/kexin type 9 (PCSK9).,1.0,0.9515568343362596,0.999999999975,1.0,0.5
+49,Are ultraconserved elements often transcribed?,"Yes.  Especially, a large fraction of non-exonic UCEs is transcribed across all developmental stages examined from only one DNA strand.","Yes, a large fraction of non-exonic ultraconserved elements (UCEs) are transcribed across all examined developmental stages. This concurrent presence of enhancer and transcript function in non-exonic ",1.0,0.7545616508873595,0.999999999975,1.0,0.25
+50,What is the methyl donor of DNA (cytosine-5)-methyltransferases?,"S-adenosyl-L-methionine (AdoMet, SAM) is the methyl donor of DNA (cytosine-5)-methyltransferases. DNA (cytosine-5)-methyltransferases catalyze the transfer of a methyl group from S-adenosyl-L-methioni",The methyl donor of DNA (cytosine-5)-methyltransferases is S-adenosyl-L-methionine (AdoMet or SAM).,1.0,0.9999993619942341,0.999999999975,1.0,0.67
+51,Is peripheral neuroepithelioma related to Ewing sarcoma?,"Experimental data support the concept that Ewing sarcoma and peripheral neuroepithelioma are both peripheral primitive neuroectodermal neoplasms, differing only in the extent of neuroectodermal phenot","Yes, peripheral neuroepithelioma is related to Ewing sarcoma.
+
+According to the provided context:
+*   Ewing's sarcoma (ES) and peripheral neuroepithelioma (PN) are closely related tumors [Source 1].
+*",1.0,0.9999998532865683,0.999999999975,1.0,0.91
+52,Which signaling pathway does sonidegib inhibit?,Sonidegib is a Hedghog signalling pathway inhibitor.,Sonidegib inhibits the hedgehog signaling pathway.,1.0,0.8613913244915447,0.999999999975,1.0,1.0
+53,In which phase of the cell cycle arrest is impaired in Fanconi anemia?,"In response to damage induced by DNA cross-linking agents, the S-phase checkpoint is inefficient in Fanconi anemia (FA) cells, leading to accumulation of secondary lesions, such as single- and double-","In Fanconi anemia (FA) cells, the S-phase checkpoint is inefficient, leading to a failure to arrest DNA synthesis in response to damage induced by DNA cross-linking agents. The FA pathway is required ",1.0,0.6762718813237925,0.999999999975,1.0,0.44
+54,Which DNA sequences are more prone for the formation of R-loops?,"R-loops, transcriptionally-induced RNA:DNA hybrids, occurring at repeat tracts (CTG)n, (CAG)n, (CGG)n, (CCG)n and (GAA)n, are associated with diseases including myotonic dystrophy, Huntington's diseas","DNA sequences more prone to R-loop formation include:
+*   Promoter CpG islands, especially those with unusual sequence features.
+*   Expanded repeats of genes like FXN and FMR1.
+*   C-rich DNA templat",0.9,0.9464060249951641,0.49999999995,0.5,0.24
+55,Mutation of which gene is implicated in the familial isolated pituitary adenoma?,Mutation of aryl hydrocarbon receptor interacting protein (AIP) gene was implicated in the familial isolated pituitary adenoma (FIPA) syndrome. About 20% of the families with FIPA harbor inactivating ,Germline mutations of the aryl hydrocarbon receptor interacting protein (AIP) gene are implicated in familial isolated pituitary adenoma (FIPA).,1.0,0.7486349968182419,0.999999999975,1.0,0.67
+56,which mutations of troponin C gene have been found to cause hypertrophic cardiomyopathy?,The following mutations of troponin C gene have been found to cause hypertrophic cardiomyopathy: L29Q; A8V; A31S; E134D; c.363dupG; A23Q; D145E and C84Y,"Mutations of the Troponin C gene (TNNC1) that have been found to cause hypertrophic cardiomyopathy include:
+
+*   c.363dupG (also referred to as p.Gln122AlafsX30)
+*   L29Q
+*   A8V
+*   C84Y
+*   E134D
+* ",0.875,0.948929630482989,0.3333333333,0.875,1.0
+57,What is known about the effect of acupuncture in smoking cessation ?,"Ear acupressure (EAP) and ear acupuncture have been used for smoking cessation, and some positive results have been reported.
+Auricular (ear) acupressure has been purported to be beneficial in achievi","The effect of acupuncture in smoking cessation is varied and, in some cases, controversial according to the provided context.
+
+*   One study on 238 smoking students found a very low smoking cessation ",1.0,0.9504921575322695,0.8055555555287036,0.6666666666666666,0.12
+58,Which post-translational histone modifications are characteristic of constitutive heterochromatin?,"H3K9me3 is the major marker of constitutive heterochromatin. Other histone methylation marks usually found in constitutive heterochromatin, are H4K20me3 and H3K79me3. Classical histone modifications a","The post-translational histone modifications characteristic of constitutive heterochromatin include:
+*   Methylation of histone H3 at lysine 9 (H3-Lys9)
+*   Histone H3 acetylation
+*   Di-, and trimeth",0.8,0.9831803718863044,0.999999999975,0.2,0.4
+59,GV1001 vaccine targets which enzyme?,GV1001 is a 16-amino-acid vaccine peptide derived from the human telomerase reverse transcriptase sequence. It has been developed as a vaccine against various cancers.,GV1001 vaccine targets telomerase.,1.0,0.7247397026457061,0.7499999999625,1.0,0.5
+60,Which is the E3 ubiquitin ligase which ubiquitinates IkB leading to its proteasomal degradation?,"IκB degradation involves ubiquitination mediated by a specific E3 ubiquitin ligase SCF(β-TrCP). SCF(β-TrCP) -mediated IκB ubiquitination and degradation is a very efficient process, often resulting in","The E3 ubiquitin ligase that ubiquitinates IκB, leading to its proteasomal degradation, is SCF(β-TrCP) (also referred to as E3RS(IκB/β-TrCP), an SCF-type E3 ubiquitin ligase). The F-box component β-Tr",1.0,0.9235011214803647,0.9166666666361111,1.0,0.44
+61,Is c-met involved in the activation of the Akt pathway?,"HGF-induced activation of c-Met is playing a pivotal role in the stimulation of c-Src activation, resulting in induction of phosphatidylinositol 3-kinase complexes p85α/p110α and p85α/p110δ, which is ","Yes, c-Met is involved in the activation of the Akt pathway.
+
+Several sources support this:
+*   The activation of the PI3K/Akt pathway is induced by the HGF/c-Met axis (Source 1).
+*   Activation of C-",1.0,0.9880809500456443,0.999999999975,0.0,0.33
+62,Is pregnancy an additional risk during during H1N1 infection?,"Pregnant women are at increased risk for complications from pandemic influenza H1N1 virus infection. Pregnant women, because of their altered immunity and physiological adaptations, are at higher risk","Yes, pregnancy is an additional risk during H1N1 infection.
+
+Pregnant women are more susceptible to bacterial and viral infection because pregnancy suppresses the immune system, and they might be at i",1.0,0.9435244546988528,0.999999999975,1.0,0.38
+63,Are long non coding RNAs as conserved in sequence as protein coding genes?,No. Most long non coding RNAs  (lncRNAs) are under lower sequence constraints than protein-coding genes.,"The context provides conflicting information regarding the sequence conservation of long non-coding RNAs (lncRNAs) compared to protein-coding genes.
+
+One study found that, in contrast to conventional ",0.8888888888888888,0.0,0.99999999995,1.0,0.0
+64,Mutation of which gene is implicated in the Brain-lung-thyroid syndrome?,"Brain-lung-thyroid syndrome (BLTS) characterized by congenital hypothyroidism, respiratory distress syndrome, and benign hereditary chorea is caused by thyroid transcription factor 1 (NKX2-1/TTF1) mut",Mutation of the NKX2-1 gene (also known as TTF1) is implicated in Brain-lung-thyroid syndrome (BLTS).,1.0,0.8493570495762152,0.999999999975,1.0,0.67
+65,What is clathrin?,Clathrin helps build small vesicles in order to safely transport molecules within and between cells.,"The provided context describes clathrin as a component involved in clathrin-mediated endocytosis, a trafficking process in eukaryotic cells. It forms clathrin-coated vesicles (CCVs) at the plasma memb",1.0,0.0,0.8333333332916666,1.0,0.0
+66,What are the main results of PRKAR1A Knockdown?,"Suppression of protein kinase A regulatory subunit 1 alpha (PRKAR1A) has been proven to inhibit cholangiocarcinoma (CCA) cell growth and enhance apoptosis. Also, Knockdown of the cAMP-dependent protei","PRKAR1A knockdown has several main results depending on the cell type:
+
+In cholangiocarcinoma (CCA) cell lines:
+*   It inhibits CCA cell growth.
+*   It enhances apoptosis.
+*   It increases sensitivity",1.0,0.7765480828350486,0.0,0.5,0.24
+67,Is TENS machine effective in pain?,Transcutaneous electrical nerve stimulation is widely used in pain management,"Transcutaneous electrical nerve stimulation (TENS) is widely used in pain management, and its effectiveness depends on the stimulation being targeted appropriately [Source 1]. Studies have provided ev",1.0,0.8216579019391393,0.99999999995,1.0,0.33
+68,Is there any algorithm for enhancer identification from chromatin state?,yes,"Yes, there are algorithms for enhancer identification from chromatin state.
+
+One such algorithm is RFECS (Random Forest based Enhancer identification from Chromatin States), which is a Random-Forest b",1.0,0.9675892778898921,0.9999999999666667,1.0,0.0
+69,Which enzyme is targeted by the drug Imetelstat?,"Imetelstat sodium (GRN163L), is a 13-mer oligonucleotide N3'→P5' thio-phosphoramidate lipid conjugate, which represents the latest generation of telomerase inhibitors targeting the template region of ",Imetelstat targets the enzyme telomerase.,1.0,0.9302350625746906,0.999999999975,1.0,0.29
+70,Which interleukins are inhibited by Dupilumab?,"Dupilumab, a fully human monoclonal antibody that blocks interleukin-4 and interleukin-13, has shown efficacy in patients with asthma and elevated eosinophil levels.",Dupilumab inhibits the biological effects of both interleukin (IL)-4 and IL-13. It prevents IL-4/13 interactions with the α-subunit of the IL-4 receptor complex.,1.0,0.749643456454974,0.9999999999666667,1.0,0.4
+71,Which human genes are more commonly related to craniosynostosis?,The genes that are most commonly linked to craniosynostoses are the members of the Fibroblast Growth Factor Receptor family FGFR3 and to a lesser extent FGFR1 and FGFR2. Some variants of the disease h,"Mutations in the genes FGFR1, FGFR2, FGFR3, TWIST, and MSX2 are described as causing craniosynostosis as the main clinical feature (Source 1). Specifically, the MSX2 gene is associated with the autoso",1.0,0.8818463360098843,0.9999999999,0.25,0.0
+72,Are transcribed ultraconserved regions involved in cancer?,"Yes, it appears that there is widespread T-UCR (Transcribed - UltraConserved Region) involvement in diverse cellular processes that are deregulated in the process of tumourigenesis. Transcribed ultrac","Yes, transcribed ultraconserved regions (T-UCRs) are involved in cancer.
+
+Growing evidence indicates that T-UCRs are altered at the transcriptional level in human tumorigenesis, and their aberrant exp",1.0,0.8516497684594819,0.999999999975,1.0,0.38
+73,In which breast cancer patients can palbociclib be used?,"Palbociclib is useful for women with hormone receptor-positive, human epidermal growth factor receptor 2-negative breast cancer.","Palbociclib can be used in women with hormone receptor-positive, human epidermal growth factor receptor 2-negative breast cancer.",1.0,0.9256465934297284,0.9999999999,1.0,1.0
+74,Do patients with Pendred syndrome present congenital deafness?,Congenital deafness is one of the characteristics of Pendred syndrome patients.,"Yes, patients with Pendred syndrome present with congenital deafness.",1.0,0.9232049770488401,0.999999999975,1.0,1.0
+75,List side effects of SGLT2 inhibitors?,"SGLT2 inhibitors can be associated with urogenital infections related to the enhanced glycosuria, and low blood pressure.","SGLT2 inhibitors have several side effects, including:
+*   Repeated urinary tract infections
+*   Genital infections
+*   Increased hematocrit
+*   Decreased blood pressure
+*   Increased incidence of bla",1.0,0.9624252825839698,0.999999999975,1.0,0.6
+76,Is CD56 useful in Ewing sarcoma prognosis?,"Excellent prognosis in a subset of patients with Ewing sarcoma identified at diagnosis by CD56 using flow cytometryIn patients with localized nonpelvic disease, those expressing low/negative CD56 had ","The provided context mentions CD56 as an immunohistochemical marker used in the diagnosis of Ewing family of tumors (EFTs) or high-grade sarcomas compatible with extraskeletal Ewing sarcoma. However, ",1.0,0.0,0.0,0.0,0.0
+77,What is the method FASP used for?,"Filter Aided Sample Preparation (FASP), a type of proteomic reactor, in which samples dissolved in sodium dodecyl sulfate (SDS) are digested in an ultrafiltration unit.","The method FASP (Filter Aided Sample Preparation) is used for:
+*   Proteomic sample preparation.
+*   Digesting samples, where samples dissolved in sodium dodecyl sulfate (SDS) are digested in an ultra",1.0,0.7611305470120137,0.999999999975,1.0,0.4
+78,What is the role of extracellular signal-related kinases 1 and 2 (ERK1/2) proteins in craniosynostosis?,"Reduced dosage of ERF, which encodes an inhibitory ETS transcription factor directly bound by ERK1/2 causes complex craniosynostosis (premature fusion of the cranial sutures) in humans and mice. Featu","Extracellular signal-related kinases 1 and 2 (ERK1/2) directly bind to ERF, an inhibitory ETS transcription factor. Reduced dosage of ERF causes complex craniosynostosis. ERF is identified as a novel ",1.0,0.8483331997807108,0.9999999999,1.0,0.36
+79,Are there any urine biomarkers for chronic kidney disease?,"Chronic kidney disease (CKD), is a progressive loss in renal function over a period of months or years. The symptoms of worsening kidney function are non-specific, and might include feeling generally ","Yes, there are urine biomarkers for chronic kidney disease (CKD).
+
+The provided context mentions the following urine biomarkers:
+*   **Urine proteomic biomarkers** are considered promising diagnostic ",1.0,0.9231959951496996,0.0,0.2,0.0
+80,What is being measured with an accelerometer in back pain patients,"Accelerometer assessment measuring overall physical activity (PAL), constant strain postures (CSP), standing time (ST) and lying time (LT)...
+The following parameters of physical activity were recorde","An accelerometer is used to measure physical activity in daily life, body movement, overall physical activity (PAL), constant strain postures (CSP), standing time (ST), and lying time (LT) in back pai",1.0,0.9223395477952269,0.999999999975,0.5,0.71
+81,List the releases of JASPAR database,"JASPAR, JASPAR CORE, JASPAR FAM, JASPAR phyloFACTS, JASPAR 2008 update, JASPAR 2010, JASPAR 2014.","The releases of the JASPAR database mentioned in the context are:
+*   Third major release
+*   Fifth major release",0.5,0.8692706493995092,0.0,0.2857142857142857,0.0
+82,List symptoms of the IFAP syndrome.,"The IFAP syndrome is a rare X-linked genetic disorder characterized by the triad of follicular ichthyosis, atrichia, and photophobia.","Symptoms of the IFAP syndrome include:
+
+*   Ichthyosis follicularis (or follicular ichthyosis)
+*   Absence of hair (also described as atrichia, noncicatricial universal alopecia, or generalized alopec",1.0,0.9392867720289676,0.999999999975,1.0,0.25
+83,Which gene is required for the efficient function of clopidogrel?,The prodrug clopidogrel requires activation by cytochrome P-450 (CYP) enzymes for its antiplatelet effect. Variability in clopidogrel response might be influenced by polymorphisms in genes coding for ,"The P2Y12 gene, which codes for the target receptor protein for clopidogrel, and the CYP2C19 gene, which codes for a drug metabolism enzyme, are required for the efficient function of clopidogrel. Var",0.7142857142857143,0.9613668409686357,0.6388888888675925,1.0,0.29
+84,Is valproic acid effective for glioblastoma treatment?,"Yes, valproic acid prolong survival of glioblastoma patients. Valproic acid is an antiepileptic agent with histone deacetylase inhibitor activity shown to sensitize glioblastoma cells to radiation in ","Yes, valproic acid (VPA) is effective for glioblastoma treatment.
+
+*   A meta-analysis confirmed the benefit of using VPA, suggesting that glioblastoma patients may experience prolonged survival due t",0.8888888888888888,1.0,0.9999999999666667,0.5,0.46
+85,Which transcription factor is considered as a master regulator of lysosomal genes?,"Transcription factor EB (TFEB) is a master regulator of lysosomal biogenesis and autophagy, driving lysosome adaptation to environmental cues, such as starvation, and therefore targeting of TFEB may p",Transcription Factor EB (TFEB) is considered a master regulator of lysosomal genes.,1.0,0.5305972691874586,0.999999999975,1.0,0.4
+86,Which antibiotics target peptidoglycan biosynthesis?,"Under some conditions, both ramoplanin and vancomycin probes produce helicoid staining patterns along the cylindrical walls of B. subtilis cells. This work has implications for the design of ramoplani","Based on the provided context, the following antibiotics target peptidoglycan biosynthesis:
+
+*   Mersacidin
+*   Vancomycin
+*   Fosfomycin
+*   Ampicillin
+*   Muraymycins",1.0,1.0,0.49999999995,0.0,0.0
+87,Can Levoxyl (levothyroxine sodium) cause insomnia?,Levoxyl monotherapy is associated with increased insomnia compared to a combination of levothyroxine and liothyronine.,The provided context does not explicitly state that Levoxyl (levothyroxine sodium) can cause insomnia. While one source mentions a reduction in anxiety/insomnia in a combined treatment group compared ,1.0,0.9878600039997091,0.9999999999,1.0,0.86
+88,Is fatigue prevalent in patients receiving treatment for glioblastoma?,"Yes, fatigue is a common complication of glioblastoma patients receiving chemotherapy or radiotherapy.","Yes, fatigue is prevalent in patients receiving treatment for glioblastoma.
+
+Several studies indicate this:
+*   Fatigue is a commonly reported side effect in patients with glioblastoma relapse treated",1.0,1.0,0.999999999975,1.0,0.29
+89,List two common features of Tay syndrome.,Tay syndrome is a rare autosomal recessive genetic disorder characterized by congenital ichthyosis and trichothiodystrophy (abnormal brittle hair). Other less common features of this syndrome are phot,Two common features of Tay syndrome are congenital ichthyosis and abnormal brittle hair (trichothiodystrophy).,1.0,0.9744758844161662,0.9999999999666667,0.5,0.33
+90,Which cell types are known to be driving Rheumatoid Arthritis?,"Macrophages, T cells and their respective cytokines play a pivotal role in RA. Rheumatoid arthritis synovial fibroblasts (RASFs) constitute a quite unique cell type that distinguishes RA from other in","The cell types known to be driving Rheumatoid Arthritis (RA) include macrophages, T cells (specifically regulatory T cells and CD4 memory T cells), and resident, fibroblast-like cells, also referred t",1.0,0.9713774659068924,0.9999999999,1.0,0.5
+91,What is the association between personality trait of neuroticism and risk for Alzheimer's disease?,High neuroticism is associated with increased risk to develop Alzheimer's disease. Greater neuroticism is also associated more advanced Alzheimer's disease neuropathology and younger age of dementia o,"Elevated Neuroticism is associated with an increased risk of Alzheimer's disease (AD). This association is supported by findings that elevated Neuroticism is linked to AD risk, and that higher levels ",1.0,0.8155866414204832,0.999999999975,0.6666666666666666,0.53
+92,What is the mode of action of everolimus?,Everolimus is a drug that binds to mTORC1 and inhibits activation of the mTOR signalling pathway. It is used in targeted cancer therapy protocols or after transplantation for maintenance immunosuppres,"Everolimus, also known as RAD001, is an inhibitor of the mammalian target of rapamycin (mTOR). It interacts with mTOR and acts on the signaling pathway PI3K/AKT/mTOR. Specifically, it inhibits the Akt",1.0,0.8208811772779475,0.8055555555287036,1.0,0.31
+93,Have Quantitative Trait Loci affecting splicing (splicing QTLs) been linked to disease?,"Yes, mutations in the DNA that affect the splicing pattern of genes have been linked in transcriptome population studies to a number of diseases.","Yes, quantitative trait loci (QTLs) affecting splicing have been linked to disease.
+
+Specifically, cis-regulated expression quantitative trait loci (eQTLs) have been identified as potential susceptibi",0.75,0.8901663470024849,0.9999999999,0.0,0.0
+94,Which technique is used for detection of EWS/FLI1 fusion transcripts?,Molecular detection of EWS-FLI1 chimeric transcripts in Ewing family tumors is carried out by reverse transcription-polymerase chain reaction (RT-PCR).,"The technique used for the detection of EWS/FLI1 fusion transcripts is Reverse Transcriptase-Polymerase Chain Reaction (RT-PCR). Specifically, some studies employed a nested RT-PCR-based assay, while ",1.0,0.9901848926186075,0.999999999975,1.0,0.5
+95,Does the CTCF protein co-localize with cohesin?,"Recent genome-wide studies mapping the binding sites of CTCF and its interacting partner, cohesin, using chromatin immunoprecipitation coupled with deep sequencing (ChIP-seq) revealded that CTCF globa","Yes, the CTCF protein globally co-localizes with cohesin. This co-localization has been observed in genome-wide studies and at specific imprinted loci like H19/Igf2, Dlk1-Dio3, and Kcnq1/Kcnq1ot1. Con",1.0,0.9999999999999997,0.9999999999666667,1.0,0.57
+96,What is the application of the Bimolecular Fluorescence Complementation (BiFC) assay in Drosophila embryos?,Bimolecular fluorescence complementation (BiFC) is a powerful method for studying protein-protein interactions in different cell types and organisms. This method was recently developed in the fruit fl,The Bimolecular Fluorescence Complementation (BiFC) assay is applied in Drosophila embryos for the study of protein interactions in living cells. It is used to reveal and study protein interactions in,1.0,0.9764773305367865,0.9999999999666667,1.0,0.25
+97,Which pathological condition of the heart is known as hypertrophic cardiomyopathy (HCM)?,"Hypertrophic cardiomyopathy (HCM) has been recently recognized as the most common inherited cardiovascular disorder, affecting 1 in 500 adults worldwide. HCM is characterized by myocyte hypertrophy re","Hypertrophic cardiomyopathy (HCM) is a primary disease of the cardiac muscle, a clinically heterogeneous autosomal dominant heart disease, and the most common inherited cardiovascular disorder. It is ",1.0,0.8811859661260034,0.999999999975,1.0,0.53
+98,What is the genetic basis of Rubinstein-Taybi syndrome?,"Rubinstein-Taybi syndrome (RTS) is a rare autosomal dominant disorder (prevalence 1:125,000) characterised by broad thumbs and halluces, facial dysmorphism, psychomotor development delay, skeletal def","Rubinstein-Taybi syndrome (RTS) is an autosomal dominant genetic disorder. It is associated with the disruption of the CREB-binding protein gene (CBP), also known as CREBBP, which is located on chromo",1.0,0.8697564958859957,0.8055555555287036,0.75,0.57
+99,What is the function of the viral KP4 protein?,The virally encoded fungal toxin KP4  specifically blocks L-type voltage-gated calcium channels.,The viral Killer protein 4 (KP4) is a toxin that kills sensitive *Ustilago* strains and inhibits *Fusarium* and plant root growth by inhibiting calcium uptake. It also has an antifungal effect against,0.7777777777777778,0.8847618590910077,0.9999999999,0.0,0.2

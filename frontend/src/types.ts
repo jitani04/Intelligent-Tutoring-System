@@ -299,16 +299,6 @@ export interface CalendarFeedSyncResponse {
   total_events: number;
 }
 
-export interface SmartReminder {
-  id: string;
-  kind: string;
-  severity: "overdue" | "urgent" | "soon" | "review" | string;
-  title: string;
-  body: string;
-  subject: string | null;
-  assignment_id: number | null;
-  due_at: string | null;
-}
 
 export interface QuizData {
   quiz_id: number;
@@ -430,6 +420,29 @@ export interface KeyIdea {
   created_at: string;
   artifact_type?: KeyIdeaArtifactType | null;
   artifact_data?: KeyIdeaArtifactData | null;
+}
+
+export type LectureTimelineEntry =
+  | { kind: "key_idea"; idea: KeyIdea }
+  | { kind: "diagram"; diagram: DiagramData }
+  | { kind: "image"; image: ImageData };
+
+export interface LectureNoteSummary {
+  id: number;
+  conversation_id: number | null;
+  subject: string | null;
+  title: string;
+  entry_count: number;
+  created_at: string;
+}
+
+export interface LectureNote {
+  id: number;
+  conversation_id: number | null;
+  subject: string | null;
+  title: string;
+  timeline: LectureTimelineEntry[];
+  created_at: string;
 }
 
 export interface SessionSummary {

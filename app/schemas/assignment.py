@@ -61,12 +61,3 @@ class CalendarFeedSyncResponse(BaseModel):
     total_events: int
 
 
-class SmartReminderRead(BaseModel):
-    id: str
-    kind: str
-    severity: str
-    title: str
-    body: str
-    subject: str | None = None
-    assignment_id: int | None = None
-    due_at: str | None = None

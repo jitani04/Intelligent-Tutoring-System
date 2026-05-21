@@ -9,9 +9,12 @@ import "./styles.css";
 import { applyTheme, getStoredTheme } from "./theme";
 import { applyReadingPrefs } from "./readingPrefs";
 import { ReadingPrefsProvider } from "./ReadingPrefsContext";
+import { ConfirmProvider } from "./ConfirmDialog";
+import { getGoogleAuthStatus } from "./googleAuth";
 
 const queryClient = new QueryClient();
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const googleAuthStatus = getGoogleAuthStatus(googleClientId);
 applyTheme(getStoredTheme());
 applyReadingPrefs();
 
@@ -19,12 +22,16 @@ const app = (
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ReadingPrefsProvider>
-        <RouterProvider router={router} />
+        <ConfirmProvider>
+          <RouterProvider router={router} />
+        </ConfirmProvider>
       </ReadingPrefsProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  googleClientId ? <GoogleOAuthProvider clientId={googleClientId}>{app}</GoogleOAuthProvider> : app,
+  googleAuthStatus.enabled && googleClientId
+    ? <GoogleOAuthProvider clientId={googleClientId}>{app}</GoogleOAuthProvider>
+    : app,
 );

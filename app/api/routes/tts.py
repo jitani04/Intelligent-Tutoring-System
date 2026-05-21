@@ -1,9 +1,10 @@
 import logging
 import re
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,12 +41,35 @@ class TTSRequest(BaseModel):
     voice: str | None = None
 
 
+async def _stream_openai_tts(
+    client: AsyncOpenAI,
+    voice: str,
+    text: str,
+) -> AsyncIterator[bytes]:
+    # Stream MP3 bytes as OpenAI produces them so the client can start playing before
+    # synthesis is complete. Errors raised here close the HTTP connection mid-stream;
+    # the frontend treats the audio as failed and falls back to skipping playback.
+    try:
+        async with client.audio.speech.with_streaming_response.create(
+            model=DEFAULT_TTS_MODEL,
+            voice=voice,  # type: ignore[arg-type]
+            input=text,
+            response_format="mp3",
+        ) as tts_response:
+            async for chunk in tts_response.iter_bytes(chunk_size=4096):
+                if chunk:
+                    yield chunk
+    except Exception:
+        logger.exception("OpenAI TTS streaming failed")
+        raise
+
+
 @router.post("/tts")
 async def text_to_speech(
     body: TTSRequest,
     user_id: UserDep,
     session: DbDep,
-) -> Response:
+) -> StreamingResponse:
     settings = get_settings()
     if not settings.openai_tts_api_key:
         raise HTTPException(
@@ -67,16 +91,8 @@ async def text_to_speech(
     voice = normalize_tutor_voice(voice_source, fallback=settings.openai_tts_voice)
 
     client = AsyncOpenAI(api_key=settings.openai_tts_api_key)
-    try:
-        tts_response = await client.audio.speech.create(
-            model=DEFAULT_TTS_MODEL,
-            voice=voice,  # type: ignore[arg-type]
-            input=clean,
-            response_format="mp3",
-        )
-        audio_bytes = tts_response.content
-    except Exception:
-        logger.exception("OpenAI TTS request failed")
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Audio generation failed.")
-
-    return Response(content=audio_bytes, media_type="audio/mpeg")
+    return StreamingResponse(
+        _stream_openai_tts(client, voice, clean),
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store"},
+    )

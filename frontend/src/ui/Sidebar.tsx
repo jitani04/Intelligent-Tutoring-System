@@ -9,13 +9,17 @@ import {
   User,
   Settings,
   LogOut,
-  Plus,
+  PenSquare,
+  FolderPlus,
   Trash2,
 } from "lucide-react";
 
-import { deleteConversation, listConversations } from "../api";
+import { deleteConversation, listConversations, listProjectProfiles } from "../api";
 import { clearToken } from "../auth";
+import { useConfirm } from "../ConfirmDialog";
+import { conversationLastActivityTime, sortConversationsByRecentActivity } from "../conversations";
 import { formatSubjectName } from "../subjects";
+import { useStartSessionModal } from "./StartSessionModalContext";
 
 const SIDEBAR_WIDTH_KEY = "sapient-sidebar-width";
 const DEFAULT_SIDEBAR_WIDTH = 236;
@@ -46,12 +50,19 @@ export function Sidebar({ onCollapse }: SidebarProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const { openStartSession, openNewSubject } = useStartSessionModal();
   const dragStateRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(getStoredSidebarWidth);
   const [isResizing, setIsResizing] = useState(false);
   const { data: conversations = [] } = useQuery({
     queryKey: ["conversations"],
     queryFn: listConversations,
+  });
+  const { data: projectProfiles = [] } = useQuery({
+    queryKey: ["project-profiles"],
+    queryFn: listProjectProfiles,
+    staleTime: 30_000,
   });
 
   const deleteMutation = useMutation({
@@ -67,30 +78,44 @@ export function Sidebar({ onCollapse }: SidebarProps = {}) {
     },
   });
 
-  function handleDeleteChat(event: MouseEvent<HTMLButtonElement>, conversationId: number) {
+  async function handleDeleteChat(event: MouseEvent<HTMLButtonElement>, conversationId: number) {
     event.preventDefault();
     event.stopPropagation();
     if (deleteMutation.isPending) return;
-    if (!window.confirm("Delete this study session? This can't be undone.")) return;
+    const ok = await confirm({
+      title: "Delete study session",
+      message: "This can't be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     deleteMutation.mutate(conversationId);
   }
 
   const projects = (() => {
-    const map = new Map<string, { lastId: number }>();
+    const map = new Map<string, { lastId: number; lastActivity: number }>();
     for (const c of conversations) {
       const subject = c.subject ?? "General";
       const existing = map.get(subject);
-      if (!existing || c.id > existing.lastId) {
-        map.set(subject, { lastId: c.id });
+      const lastActivity = conversationLastActivityTime(c);
+      if (!existing || lastActivity > existing.lastActivity || (lastActivity === existing.lastActivity && c.id > existing.lastId)) {
+        map.set(subject, { lastId: c.id, lastActivity });
       }
     }
+    // Include subject profiles that have no sessions yet so newly-created
+    // subjects appear in the sidebar immediately.
+    for (const profile of projectProfiles) {
+      const subject = profile.subject?.trim();
+      if (!subject || map.has(subject)) continue;
+      map.set(subject, { lastId: 0, lastActivity: 0 });
+    }
     return Array.from(map.entries())
-      .map(([subject, { lastId }]) => ({ subject, lastId }))
-      .sort((a, b) => b.lastId - a.lastId);
+      .map(([subject, { lastId, lastActivity }]) => ({ subject, lastId, lastActivity }))
+      .sort((a, b) => b.lastActivity - a.lastActivity || b.lastId - a.lastId);
   })();
 
   const recentConversations = [...conversations]
-    .sort((a, b) => b.id - a.id)
+    .sort(sortConversationsByRecentActivity)
     .slice(0, 8);
 
   function handleSignOut() {
@@ -168,56 +193,54 @@ export function Sidebar({ onCollapse }: SidebarProps = {}) {
         )}
       </div>
 
-      <Link to="/start/topic" className="sidebar-new-btn">
-        <Plus size={16} strokeWidth={2.2} />
-        <span>New study session</span>
-      </Link>
-
       <div className="sidebar-scroll">
         <Link
           to="/dashboard"
-          className={`sidebar-item ${location.pathname === "/dashboard" ? "active" : ""}`}
+          className={`sidebar-top-action ${location.pathname === "/dashboard" ? "active" : ""}`}
         >
-          <span className="sidebar-item-icon"><LayoutGrid size={16} strokeWidth={1.8} /></span>
+          <span className="sidebar-item-icon"><LayoutGrid size={18} strokeWidth={1.8} /></span>
           <span className="sidebar-item-label">Dashboard</span>
         </Link>
 
         <Link
-          to="/search"
-          className={`sidebar-item ${isActive("/search") ? "active" : ""}`}
+          to="/calendar"
+          className={`sidebar-top-action ${isActive("/calendar") ? "active" : ""}`}
         >
-          <span className="sidebar-item-icon"><Search size={16} strokeWidth={1.8} /></span>
+          <span className="sidebar-item-icon"><CalendarDays size={18} strokeWidth={1.8} /></span>
+          <span className="sidebar-item-label">Calendar</span>
+        </Link>
+
+        <Link
+          to="/search"
+          className={`sidebar-top-action ${isActive("/search") ? "active" : ""}`}
+        >
+          <span className="sidebar-item-icon"><Search size={18} strokeWidth={1.8} /></span>
           <span className="sidebar-item-label">Search</span>
           <span className="sidebar-shortcut">⌘K</span>
         </Link>
 
-        <Link
-          to="/calendar"
-          className={`sidebar-item ${isActive("/calendar") ? "active" : ""}`}
-        >
-          <span className="sidebar-item-icon"><CalendarDays size={16} strokeWidth={1.8} /></span>
-          <span className="sidebar-item-label">Calendar</span>
-        </Link>
+        <div className="sidebar-section-heading">Subjects</div>
+        <button className="sidebar-top-action" onClick={() => openNewSubject()} type="button">
+          <span className="sidebar-item-icon"><FolderPlus size={18} strokeWidth={1.8} /></span>
+          <span className="sidebar-item-label">New subject</span>
+        </button>
+        {projects.map(({ subject }) => (
+          <Link
+            key={subject}
+            to={`/projects/${encodeURIComponent(subject)}`}
+            className={`sidebar-project ${isActive(`/projects/${encodeURIComponent(subject)}`) ? "active" : ""}`}
+          >
+            <span className="sidebar-project-name">{formatSubjectName(subject)}</span>
+          </Link>
+        ))}
 
-        {projects.length > 0 && (
-          <>
-            <div className="sidebar-section">Subjects</div>
-            {projects.map(({ subject }) => (
-              <Link
-                key={subject}
-                to={`/projects/${encodeURIComponent(subject)}`}
-                className={`sidebar-project ${isActive(`/projects/${encodeURIComponent(subject)}`) ? "active" : ""}`}
-              >
-                <span className="sidebar-project-name">{formatSubjectName(subject)}</span>
-              </Link>
-            ))}
-          </>
-        )}
-
+        <div className="sidebar-section-heading">Recent sessions</div>
+        <button className="sidebar-top-action" onClick={() => openStartSession()} type="button">
+          <span className="sidebar-item-icon"><PenSquare size={18} strokeWidth={1.8} /></span>
+          <span className="sidebar-item-label">New study session</span>
+        </button>
         {recentConversations.length > 0 && (
           <>
-            <div className="sidebar-divider" />
-            <div className="sidebar-section">Recent</div>
             {recentConversations.map((c) => {
               const project = formatSubjectName(c.subject ?? "General");
               return (
@@ -246,9 +269,6 @@ export function Sidebar({ onCollapse }: SidebarProps = {}) {
             })}
           </>
         )}
-
-        <div className="sidebar-divider" />
-
       </div>
 
       <div className="sidebar-footer">

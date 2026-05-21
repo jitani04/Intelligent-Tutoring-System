@@ -16,9 +16,8 @@ from app.schemas.assignment import (
     CalendarFeedCreate,
     CalendarFeedRead,
     CalendarFeedSyncResponse,
-    SmartReminderRead,
 )
-from app.services.calendar_service import build_smart_reminders, fetch_ical_events, sync_calendar_feed
+from app.services.calendar_service import fetch_ical_events, sync_calendar_feed
 
 router = APIRouter(tags=["assignments"])
 
@@ -185,12 +184,6 @@ async def delete_calendar_feed(feed_id: int, user_id: UserDep, session: DbDep) -
     await session.delete(feed)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.get("/assignments/reminders", response_model=list[SmartReminderRead])
-async def list_smart_reminders(user_id: UserDep, session: DbDep) -> list[SmartReminderRead]:
-    reminders = await build_smart_reminders(session=session, user_id=user_id)
-    return [SmartReminderRead(**item) for item in reminders]
 
 
 async def _fetch_and_sync_feed(*, session: AsyncSession, user_id: int, feed: CalendarFeed) -> tuple[int, int]:

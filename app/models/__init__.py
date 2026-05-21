@@ -1,6 +1,7 @@
 from app.models.conversation import Conversation
 from app.models.assignment import Assignment, CalendarFeed
 from app.models.key_idea import KeyIdea
+from app.models.lecture_note import LectureNote
 from app.models.material import Material
 from app.models.material_chunk import MaterialChunk
 from app.models.message import Message
@@ -25,5 +26,6 @@ __all__ = [
     "QuizAttempt",
     "ProjectProfile",
     "KeyIdea",
+    "LectureNote",
     "Resource",
 ]

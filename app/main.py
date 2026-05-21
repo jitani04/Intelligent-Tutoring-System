@@ -18,6 +18,7 @@ from app.api.routes.quiz import router as quiz_router
 from app.api.routes.resources import router as resources_router
 from app.api.routes.flashcards import router as flashcards_router
 from app.api.routes.feedback import router as feedback_router
+from app.api.routes.lecture_notes import router as lecture_notes_router
 from app.api.routes.search import router as search_router
 from app.api.routes.stt import router as stt_router
 from app.api.routes.tts import router as tts_router
@@ -104,6 +105,7 @@ app.include_router(projects_router)
 app.include_router(quiz_router)
 app.include_router(resources_router)
 app.include_router(artifacts_router)
+app.include_router(lecture_notes_router)
 app.include_router(assignments_router)
 app.include_router(flashcards_router)
 app.include_router(feedback_router)

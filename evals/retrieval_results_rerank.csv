@@ -1,0 +1,101 @@
+question,recall@1,recall@3,recall@5,recall@10,precision@1,precision@3,precision@5,precision@10,mrr,n_relevant,n_retrieved,first_hit_rank
+Is Hirschsprung disease a mendelian or a multifactorial disorder?,0.1111111111111111,0.3333333333333333,0.4444444444444444,0.4444444444444444,1.0,1.0,0.8,0.4,1.0,9,10,1
+List signaling molecules (ligands) that interact with the receptor EGFR?,0.0625,0.1875,0.3125,0.5625,1.0,1.0,1.0,0.9,1.0,16,10,1
+Is the protein Papilin secreted?,0.1,0.3,0.5,0.7,1.0,1.0,1.0,0.7,1.0,10,10,1
+Are long non coding RNAs spliced?,0.16666666666666666,0.5,0.5,0.5,1.0,1.0,0.6,0.3,1.0,6,10,1
+Is RANKL secreted from the cells?,0.1,0.3,0.5,0.5,1.0,1.0,1.0,0.5,1.0,10,10,1
+Does metformin interfere thyroxine absorption?,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1,10,
+Which miRNAs could be used as potential biomarkers for epithelial ovarian cancer?,0.07142857142857142,0.21428571428571427,0.35714285714285715,0.6428571428571429,1.0,1.0,1.0,0.9,1.0,14,10,1
+Which acetylcholinesterase inhibitors are used for treatment of myasthenia gravis?,0.16666666666666666,0.5,0.8333333333333334,0.8333333333333334,1.0,1.0,1.0,0.5,1.0,6,10,1
+Has Denosumab (Prolia) been approved by FDA?,0.047619047619047616,0.14285714285714285,0.23809523809523808,0.47619047619047616,1.0,1.0,1.0,1.0,1.0,21,10,1
+List the human genes encoding for the dishevelled proteins?,0.1111111111111111,0.3333333333333333,0.5555555555555556,0.6666666666666666,1.0,1.0,1.0,0.6,1.0,9,10,1
+Name synonym of Acrokeratosis paraneoplastica.,0.06666666666666667,0.2,0.3333333333333333,0.6666666666666666,1.0,1.0,1.0,1.0,1.0,15,10,1
+Which are the classes of anti-arrhythmic drugs according to Vaughan-Williams classification?,0.2,0.6,0.6,0.6,1.0,1.0,0.6,0.3,1.0,5,10,1
+Which are the different isoforms of the mammalian Notch receptor?,0.14285714285714285,0.42857142857142855,0.7142857142857143,0.7142857142857143,1.0,1.0,1.0,0.5,1.0,7,10,1
+Which are the major characteristics of cellular senescence?,0.3333333333333333,0.6666666666666666,0.6666666666666666,0.6666666666666666,1.0,0.6666666666666666,0.4,0.2,1.0,3,10,1
+Orteronel was developed for treatment of which cancer?,0.1111111111111111,0.3333333333333333,0.4444444444444444,0.4444444444444444,1.0,1.0,0.8,0.4,1.0,9,10,1
+Is the monoclonal antibody Trastuzumab (Herceptin) of potential use in the treatment of prostate cancer?,0.02857142857142857,0.08571428571428572,0.14285714285714285,0.2857142857142857,1.0,1.0,1.0,1.0,1.0,35,10,1
+Which are the Yamanaka factors?,0.0625,0.1875,0.3125,0.625,1.0,1.0,1.0,1.0,1.0,16,10,1
+What is the aim of the Human Chromosome-centric Proteome Project (C-HPP)?,0.06666666666666667,0.2,0.3333333333333333,0.6666666666666666,1.0,1.0,1.0,1.0,1.0,15,10,1
+Where is the protein Pannexin1 located?,0.1,0.3,0.5,0.9,1.0,1.0,1.0,0.9,1.0,10,10,1
+Which currently known mitochondrial diseases have been attributed to POLG mutations?,0.2,0.6,0.6,0.6,1.0,1.0,0.6,0.3,1.0,5,10,1
+What is the effect of ivabradine in heart failure after myocardial infarction?,0.05555555555555555,0.16666666666666666,0.2777777777777778,0.5555555555555556,1.0,1.0,1.0,1.0,1.0,18,10,1
+What is the mode of inheritance of Wilson's disease?,0.07142857142857142,0.21428571428571427,0.35714285714285715,0.6428571428571429,1.0,1.0,1.0,0.9,1.0,14,10,1
+Are transcription and splicing connected?,0.0625,0.1875,0.25,0.5625,1.0,1.0,0.8,0.9,1.0,16,10,1
+What is the mode of inheritance of Facioscapulohumeral muscular dystrophy (FSHD)?,0.09090909090909091,0.2727272727272727,0.45454545454545453,0.5454545454545454,1.0,1.0,1.0,0.6,1.0,11,10,1
+Is Alu hypomethylation associated with breast cancer?,0.5,0.5,0.5,0.5,1.0,0.3333333333333333,0.2,0.1,1.0,2,10,1
+Which proteins participate in the formation of the ryanodine receptor quaternary macromolecular complex?,0.08333333333333333,0.25,0.4166666666666667,0.8333333333333334,1.0,1.0,1.0,1.0,1.0,12,10,1
+What kind of chromatography is HILIC?,0.16666666666666666,0.5,0.8333333333333334,0.8333333333333334,1.0,1.0,1.0,0.5,1.0,6,10,1
+What is the effect of TRH on myocardial contractility?,0.16666666666666666,0.5,0.8333333333333334,0.8333333333333334,1.0,1.0,1.0,0.5,1.0,6,10,1
+Proteomic analyses need prior knowledge of the organism complete genome. Is the complete genome of the bacteria of the genus Arthrobacter available?,0.14285714285714285,0.42857142857142855,0.42857142857142855,0.42857142857142855,1.0,1.0,0.6,0.3,1.0,7,10,1
+What is the structural fold of bromodomain proteins?,0.1111111111111111,0.3333333333333333,0.5555555555555556,0.6666666666666666,1.0,1.0,1.0,0.6,1.0,9,10,1
+List the endoscopic diagnoses that have been reported in children with autism,0.16666666666666666,0.5,0.6666666666666666,0.8333333333333334,1.0,1.0,0.8,0.5,1.0,6,10,1
+What are the outcomes of Renal sympathetic denervation?,0.1111111111111111,0.3333333333333333,0.5555555555555556,0.6666666666666666,1.0,1.0,1.0,0.6,1.0,9,10,1
+Which MAP kinase phosphorylates the transcription factor c-jun?,0.05555555555555555,0.16666666666666666,0.2777777777777778,0.5555555555555556,1.0,1.0,1.0,1.0,1.0,18,10,1
+"What is the meaning of the acronym ""TAILS"" used in protein N-terminomics?",0.16666666666666666,0.5,0.5,0.5,1.0,1.0,0.6,0.3,1.0,6,10,1
+Do mutations of AKT1 occur in meningiomas?,0.16666666666666666,0.5,0.5,0.5,1.0,1.0,0.6,0.3,1.0,6,10,1
+What are the main indications of lacosamide?,0.125,0.375,0.625,0.75,1.0,1.0,1.0,0.6,1.0,8,10,1
+Which fusion protein is involved in the development of Ewing sarcoma?,0.05263157894736842,0.15789473684210525,0.2631578947368421,0.5263157894736842,1.0,1.0,1.0,1.0,1.0,19,10,1
+List Hemolytic Uremic Syndrome Triad.,0.047619047619047616,0.14285714285714285,0.23809523809523808,0.47619047619047616,1.0,1.0,1.0,1.0,1.0,21,10,1
+Does physical activity influence gut hormones?,0.0625,0.1875,0.3125,0.625,1.0,1.0,1.0,1.0,1.0,16,10,1
+What are the effects of depleting protein  km23-1 (DYNLRB1)  in a cell?,0.14285714285714285,0.42857142857142855,0.7142857142857143,0.7142857142857143,1.0,1.0,1.0,0.5,1.0,7,10,1
+Treatment of which disease was investigated in the MR CLEAN study?,0.25,0.75,0.75,0.75,1.0,1.0,0.6,0.3,1.0,4,10,1
+Which factors activate zygotic gene expression during the maternal-to-zygotic transition in zebrafish?,1.0,1.0,1.0,1.0,1.0,0.3333333333333333,0.2,0.1,1.0,1,10,1
+Is irritable bowel syndrome more common in women with endometriosis?,0.05555555555555555,0.16666666666666666,0.2777777777777778,0.5555555555555556,1.0,1.0,1.0,1.0,1.0,18,10,1
+What is evaluated using the EORTC QLQ – INFO25 questionnaire?,0.14285714285714285,0.42857142857142855,0.7142857142857143,0.7142857142857143,1.0,1.0,1.0,0.5,1.0,7,10,1
+Does BNP increase after intensive exercise in athletes?,0.05555555555555555,0.16666666666666666,0.2777777777777778,0.4444444444444444,1.0,1.0,1.0,0.8,1.0,18,10,1
+What is the association of estrogen replacement therapy and intracranial meningioma risk?,0.07692307692307693,0.23076923076923078,0.38461538461538464,0.7692307692307693,1.0,1.0,1.0,1.0,1.0,13,10,1
+Are there web based self management strategies for chronic pain ?,0.2,0.6,1.0,1.0,1.0,1.0,1.0,0.5,1.0,5,10,1
+Is Weaver syndrome similar to Sotos?,0.125,0.375,0.625,0.625,1.0,1.0,1.0,0.5,1.0,8,10,1
+Which enzyme is targeted by Evolocumab?,0.041666666666666664,0.125,0.20833333333333334,0.4166666666666667,1.0,1.0,1.0,1.0,1.0,24,10,1
+Are ultraconserved elements often transcribed?,0.1,0.3,0.5,0.8,1.0,1.0,1.0,0.8,1.0,10,10,1
+What is the methyl donor of DNA (cytosine-5)-methyltransferases?,0.14285714285714285,0.42857142857142855,0.7142857142857143,0.8571428571428571,1.0,1.0,1.0,0.6,1.0,7,10,1
+Is peripheral neuroepithelioma related to Ewing sarcoma?,0.08333333333333333,0.25,0.4166666666666667,0.5833333333333334,1.0,1.0,1.0,0.7,1.0,12,10,1
+Which signaling pathway does sonidegib inhibit?,0.125,0.375,0.625,0.875,1.0,1.0,1.0,0.7,1.0,8,10,1
+In which phase of the cell cycle arrest is impaired in Fanconi anemia?,0.2,0.6,0.8,0.8,1.0,1.0,0.8,0.4,1.0,5,10,1
+Which DNA sequences are more prone for the formation of R-loops?,0.09090909090909091,0.2727272727272727,0.45454545454545453,0.6363636363636364,1.0,1.0,1.0,0.7,1.0,11,10,1
+Mutation of which gene is implicated in the familial isolated pituitary adenoma?,0.030303030303030304,0.09090909090909091,0.15151515151515152,0.30303030303030304,1.0,1.0,1.0,1.0,1.0,33,10,1
+which mutations of troponin C gene have been found to cause hypertrophic cardiomyopathy?,0.08333333333333333,0.25,0.4166666666666667,0.6666666666666666,1.0,1.0,1.0,0.8,1.0,12,10,1
+What is known about the effect of acupuncture in smoking cessation ?,0.08333333333333333,0.25,0.4166666666666667,0.8333333333333334,1.0,1.0,1.0,1.0,1.0,12,10,1
+Which post-translational histone modifications are characteristic of constitutive heterochromatin?,0.08333333333333333,0.25,0.4166666666666667,0.6666666666666666,1.0,1.0,1.0,0.8,1.0,12,10,1
+GV1001 vaccine targets which enzyme?,0.08333333333333333,0.25,0.4166666666666667,0.75,1.0,1.0,1.0,0.9,1.0,12,10,1
+Which is the E3 ubiquitin ligase which ubiquitinates IkB leading to its proteasomal degradation?,0.2,0.4,0.6,0.6,1.0,0.6666666666666666,0.6,0.3,1.0,5,10,1
+Is c-met involved in the activation of the Akt pathway?,0.05555555555555555,0.16666666666666666,0.2777777777777778,0.5555555555555556,1.0,1.0,1.0,1.0,1.0,18,10,1
+Is pregnancy an additional risk during during H1N1 infection?,0.043478260869565216,0.13043478260869565,0.21739130434782608,0.43478260869565216,1.0,1.0,1.0,1.0,1.0,23,10,1
+Are long non coding RNAs as conserved in sequence as protein coding genes?,0.07692307692307693,0.23076923076923078,0.38461538461538464,0.6153846153846154,1.0,1.0,1.0,0.8,1.0,13,10,1
+Mutation of which gene is implicated in the Brain-lung-thyroid syndrome?,0.1,0.3,0.5,0.6,1.0,1.0,1.0,0.6,1.0,10,10,1
+What is clathrin?,0.09090909090909091,0.2727272727272727,0.45454545454545453,0.6363636363636364,1.0,1.0,1.0,0.7,1.0,11,10,1
+What are the main results of PRKAR1A Knockdown?,0.25,0.5,0.5,0.75,1.0,0.6666666666666666,0.4,0.3,1.0,4,10,1
+Is TENS machine effective in pain?,0.5,1.0,1.0,1.0,1.0,0.6666666666666666,0.4,0.2,1.0,2,10,1
+Is there any algorithm for enhancer identification from chromatin state?,0.5,1.0,1.0,1.0,1.0,0.6666666666666666,0.4,0.2,1.0,2,10,1
+Which enzyme is targeted by the drug Imetelstat?,0.043478260869565216,0.13043478260869565,0.21739130434782608,0.30434782608695654,1.0,1.0,1.0,0.7,1.0,23,10,1
+Which interleukins are inhibited by Dupilumab?,0.14285714285714285,0.42857142857142855,0.7142857142857143,0.7142857142857143,1.0,1.0,1.0,0.5,1.0,7,10,1
+Which human genes are more commonly related to craniosynostosis?,0.045454545454545456,0.13636363636363635,0.22727272727272727,0.45454545454545453,1.0,1.0,1.0,1.0,1.0,22,10,1
+Are transcribed ultraconserved regions involved in cancer?,0.0,0.125,0.375,0.625,0.0,0.3333333333333333,0.6,0.5,0.5,8,10,2
+In which breast cancer patients can palbociclib be used?,0.3333333333333333,0.3333333333333333,0.3333333333333333,0.3333333333333333,1.0,0.3333333333333333,0.2,0.1,1.0,3,10,1
+Do patients with Pendred syndrome present congenital deafness?,0.034482758620689655,0.10344827586206896,0.1724137931034483,0.3448275862068966,1.0,1.0,1.0,1.0,1.0,29,10,1
+List side effects of SGLT2 inhibitors?,0.1,0.3,0.5,0.7,1.0,1.0,1.0,0.7,1.0,10,10,1
+Is CD56 useful in Ewing sarcoma prognosis?,0.0,0.3333333333333333,0.3333333333333333,0.3333333333333333,0.0,0.3333333333333333,0.2,0.1,0.5,3,10,2
+What is the method FASP used for?,0.07692307692307693,0.23076923076923078,0.38461538461538464,0.7692307692307693,1.0,1.0,1.0,1.0,1.0,13,10,1
+What is the role of extracellular signal-related kinases 1 and 2 (ERK1/2) proteins in craniosynostosis?,1.0,1.0,1.0,1.0,1.0,0.3333333333333333,0.2,0.1,1.0,1,10,1
+Are there any urine biomarkers for chronic kidney disease?,0.05,0.15,0.25,0.5,1.0,1.0,1.0,1.0,1.0,20,10,1
+What is being measured with an accelerometer in back pain patients,0.06666666666666667,0.2,0.3333333333333333,0.6666666666666666,1.0,1.0,1.0,1.0,1.0,15,10,1
+List the releases of JASPAR database,0.2,0.6,0.6,0.6,1.0,1.0,0.6,0.3,1.0,5,10,1
+List symptoms of the IFAP syndrome.,0.06666666666666667,0.2,0.3333333333333333,0.6666666666666666,1.0,1.0,1.0,1.0,1.0,15,10,1
+Which gene is required for the efficient function of clopidogrel?,0.14285714285714285,0.42857142857142855,0.7142857142857143,0.7142857142857143,1.0,1.0,1.0,0.5,1.0,7,10,1
+Is valproic acid effective for glioblastoma treatment?,0.14285714285714285,0.42857142857142855,0.42857142857142855,0.42857142857142855,1.0,1.0,0.6,0.3,1.0,7,10,1
+Which transcription factor is considered as a master regulator of lysosomal genes?,0.06666666666666667,0.2,0.3333333333333333,0.6666666666666666,1.0,1.0,1.0,1.0,1.0,15,10,1
+Which antibiotics target peptidoglycan biosynthesis?,0.058823529411764705,0.17647058823529413,0.29411764705882354,0.5882352941176471,1.0,1.0,1.0,1.0,1.0,17,10,1
+Can Levoxyl (levothyroxine sodium) cause insomnia?,1.0,1.0,1.0,1.0,1.0,0.3333333333333333,0.2,0.1,1.0,1,10,1
+Is fatigue prevalent in patients receiving treatment for glioblastoma?,0.041666666666666664,0.125,0.20833333333333334,0.4166666666666667,1.0,1.0,1.0,1.0,1.0,24,10,1
+List two common features of Tay syndrome.,0.14285714285714285,0.42857142857142855,0.5714285714285714,0.5714285714285714,1.0,1.0,0.8,0.4,1.0,7,10,1
+Which cell types are known to be driving Rheumatoid Arthritis?,0.09090909090909091,0.2727272727272727,0.45454545454545453,0.8181818181818182,1.0,1.0,1.0,0.9,1.0,11,10,1
+What is the association between personality trait of neuroticism and risk for Alzheimer's disease?,0.04,0.12,0.2,0.4,1.0,1.0,1.0,1.0,1.0,25,10,1
+What is the mode of action of everolimus?,0.1,0.3,0.5,0.8,1.0,1.0,1.0,0.8,1.0,10,10,1
+Have Quantitative Trait Loci affecting splicing (splicing QTLs) been linked to disease?,0.25,0.5,0.5,0.5,1.0,0.6666666666666666,0.4,0.2,1.0,4,10,1
+Which technique is used for detection of EWS/FLI1 fusion transcripts?,0.1,0.3,0.5,0.7,1.0,1.0,1.0,0.7,1.0,10,10,1
+Does the CTCF protein co-localize with cohesin?,0.03571428571428571,0.10714285714285714,0.17857142857142858,0.35714285714285715,1.0,1.0,1.0,1.0,1.0,28,10,1
+What is the application of the Bimolecular Fluorescence Complementation (BiFC) assay in Drosophila embryos?,0.1,0.3,0.3,0.3,1.0,1.0,0.6,0.3,1.0,10,10,1
+Which pathological condition of the heart is known as hypertrophic cardiomyopathy (HCM)?,0.1,0.3,0.5,0.8,1.0,1.0,1.0,0.8,1.0,10,10,1
+What is the genetic basis of Rubinstein-Taybi syndrome?,0.09090909090909091,0.2727272727272727,0.45454545454545453,0.45454545454545453,1.0,1.0,1.0,0.5,1.0,11,10,1
+What is the function of the viral KP4 protein?,0.08333333333333333,0.25,0.4166666666666667,0.5833333333333334,1.0,1.0,1.0,0.7,1.0,12,10,1

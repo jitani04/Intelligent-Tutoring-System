@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 // Note: no global ESC listener here — DiagramCard has its own ESC handler for fullscreen,
 // and adding one here would close the lecture overlay when the user exits a fullscreen diagram.
 import { createPortal } from "react-dom";
 import { Brain, Gauge, Image as ImageIcon, Square } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
+import { createLectureNote } from "../api";
 import { useLectureSession } from "../useLectureSession";
 import { useLectureVoiceInput } from "../useLectureVoiceInput";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
-import { MarkdownText } from "./MarkdownText";
 
 interface Props {
   subject: string | null;
@@ -52,6 +53,7 @@ function buildLecturePrompt(subject: string | null, pace: LecturePace) {
 
 export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose }: Props) {
   const { session, send, retry, stop, setPlaybackRate, activate, deactivate } = useLectureSession(subject);
+  const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
   const [lecturePace, setLecturePace] = useState<LecturePace>("normal");
   const [audioRate, setAudioRate] = useState<(typeof PLAYBACK_RATES)[number]>(1);
@@ -77,11 +79,42 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const stickToBottomRef = useRef(true);
+
   useEffect(() => {
-    if (notebookRef.current) {
-      notebookRef.current.scrollTop = notebookRef.current.scrollHeight;
+    const node = notebookRef.current;
+    if (!node) return;
+
+    const STICK_THRESHOLD_PX = 80;
+
+    function onScroll() {
+      if (!node) return;
+      const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+      stickToBottomRef.current = distanceFromBottom <= STICK_THRESHOLD_PX;
     }
-  }, [session.keyIdeas.length, session.diagrams.length, session.images.length]);
+
+    const scrollToBottom = () => {
+      if (stickToBottomRef.current) {
+        node.scrollTop = node.scrollHeight;
+      }
+    };
+
+    node.addEventListener("scroll", onScroll, { passive: true });
+    const observer = new ResizeObserver(scrollToBottom);
+    Array.from(node.children).forEach((child) => observer.observe(child));
+    const mutation = new MutationObserver(() => {
+      Array.from(node.children).forEach((child) => observer.observe(child));
+      scrollToBottom();
+    });
+    mutation.observe(node, { childList: true, subtree: true });
+    scrollToBottom();
+
+    return () => {
+      node.removeEventListener("scroll", onScroll);
+      observer.disconnect();
+      mutation.disconnect();
+    };
+  }, []);
 
   function sendLectureMessage(message: string) {
     const trimmed = message.trim();
@@ -112,12 +145,37 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
     );
   }
 
-  function handleClose() {
+  async function handleClose() {
+    const { timeline, keyIdeas, conversationId } = session;
+    if (timeline.length > 0) {
+      const firstConcept = keyIdeas[0]?.concept;
+      const dateLabel = new Date().toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      const title = firstConcept
+        ? `${firstConcept} — ${dateLabel}`
+        : subject
+          ? `${subject} lecture — ${dateLabel}`
+          : `Lecture — ${dateLabel}`;
+      try {
+        await createLectureNote({
+          conversation_id: conversationId,
+          subject,
+          title,
+          timeline,
+        });
+        await queryClient.invalidateQueries({ queryKey: ["lecture-notes", subject] });
+      } catch (err) {
+        console.error("Failed to save lecture note", err);
+      }
+    }
     deactivate();
     onClose();
   }
 
-  const { agentSpeaking, agentThinking, transcript, currentDiagram, currentImage, currentKeyIdea, keyIdeas, diagrams, images, sources, error } = session;
+  const { agentSpeaking, agentThinking, transcript, currentKeyIdea, keyIdeas, timeline, sources, error } = session;
   const busy = agentSpeaking || agentThinking;
 
   useEffect(() => {
@@ -139,40 +197,10 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
     onTranscript: sendLectureMessage,
     getEchoReference: () => recentTutorSpeechRef.current,
   });
-  const pageHeading = subject ?? "Open lecture notes";
-  const hasContent = keyIdeas.length > 0 || diagrams.length > 0 || images.length > 0 || transcript.length > 0;
-  const isFirstDraft = !hasContent;
-  const statusLabel = agentThinking
-    ? isFirstDraft
-      ? subject
-        ? `Preparing your lecture on ${subject}`
-        : "Preparing your lecture"
-      : "Drafting the next explanation"
-    : agentSpeaking
-      ? listening
-        ? "Live call: interrupt anytime"
-        : "Speaking through the idea"
-      : voiceSupported
-        ? voiceEnabled
-          ? recording
-            ? "Listening to you"
-            : transcribing
-              ? "Transcribing"
-              : listening
-                ? "Call live: listening"
-                : "Call live: ready for you"
-          : "Call muted"
-        : "Notebook ready";
   const recentConcepts = keyIdeas.slice(-4);
-  const showIdleState = !hasContent;
-  const latestDiagram = currentDiagram ?? diagrams[diagrams.length - 1] ?? null;
-  const latestImage = currentImage ?? images[images.length - 1] ?? null;
+  const showIdleState = timeline.length === 0;
   const latestConcept = currentKeyIdea ?? keyIdeas[keyIdeas.length - 1] ?? null;
   const transcriptIsCode = transcript.trim().startsWith("```");
-  const notebookDate = useMemo(
-    () => new Date().toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }),
-    [],
-  );
 
   return createPortal(
     <div className="lecture-overlay">
@@ -224,18 +252,6 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
       <div className="lecture-main">
         <div className="lecture-notebook-shell">
           <div className="lecture-notebook-page" ref={notebookRef}>
-            <div className="lecture-page-meta">
-              <span>Lecture notes</span>
-              <span>{notebookDate}</span>
-            </div>
-            <div className="lecture-page-heading-row">
-              <div>
-                <div className="lecture-page-kicker">Topic</div>
-                <h2 className="lecture-page-title">{pageHeading}</h2>
-              </div>
-              <div className="lecture-page-status">{statusLabel}</div>
-            </div>
-
             <div className="lecture-action-strip">
               <button className="lecture-action-btn" onClick={handleCheckMe} type="button">
                 <Brain size={15} />
@@ -260,13 +276,6 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
               </div>
             )}
 
-            {transcript && (
-              <section className="lecture-live-block">
-                <div className="lecture-section-label">Now speaking</div>
-                <MarkdownText className="lecture-live-handwriting" children={transcript} />
-              </section>
-            )}
-
             {showIdleState ? (
               <div className="lecture-idle-state">
                 <div className={`lecture-avatar-lg${agentThinking ? " lecture-avatar-pulse" : ""}`}>
@@ -284,36 +293,41 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
               </div>
             ) : (
               <div className="lecture-notebook-stream">
-                {keyIdeas.map((idea) => (
-                  <article
-                    key={idea.id}
-                    className={`lecture-note-entry${latestConcept?.id === idea.id ? " lecture-note-entry-active" : ""}`}
-                  >
-                    <div className="lecture-note-marker" />
-                    <div className="lecture-note-body">
-                      <h3 className="lecture-note-title">{idea.concept}</h3>
-                      <p className="lecture-note-copy">{idea.summary}</p>
-                    </div>
-                  </article>
-                ))}
-
-                {latestDiagram && (
-                  <section className="lecture-sketch-section">
-                    <div className="lecture-section-label">Sketch added to the page</div>
-                    <div className="lecture-sketch-card">
-                      <DiagramCard diagram={latestDiagram} />
-                    </div>
-                  </section>
-                )}
-
-                {latestImage && (
-                  <section className="lecture-sketch-section">
-                    <div className="lecture-section-label">Image added to the page</div>
-                    <div className="lecture-sketch-card lecture-image-card-wrap">
-                      <ImageArtifactCard image={latestImage} />
-                    </div>
-                  </section>
-                )}
+                {timeline.map((entry, idx) => {
+                  if (entry.kind === "key_idea") {
+                    const idea = entry.idea;
+                    return (
+                      <article
+                        key={`idea-${idea.id}-${idx}`}
+                        className={`lecture-note-entry${latestConcept?.id === idea.id ? " lecture-note-entry-active" : ""}`}
+                      >
+                        <div className="lecture-note-marker" />
+                        <div className="lecture-note-body">
+                          <h3 className="lecture-note-title">{idea.concept}</h3>
+                          <p className="lecture-note-copy">{idea.summary}</p>
+                        </div>
+                      </article>
+                    );
+                  }
+                  if (entry.kind === "diagram") {
+                    return (
+                      <section key={`diagram-${entry.diagram.id}-${idx}`} className="lecture-sketch-section">
+                        <div className="lecture-section-label">Sketch added to the page</div>
+                        <div className="lecture-sketch-card">
+                          <DiagramCard diagram={entry.diagram} />
+                        </div>
+                      </section>
+                    );
+                  }
+                  return (
+                    <section key={`image-${entry.image.id}-${idx}`} className="lecture-sketch-section">
+                      <div className="lecture-section-label">Image added to the page</div>
+                      <div className="lecture-sketch-card lecture-image-card-wrap">
+                        <ImageArtifactCard image={entry.image} />
+                      </div>
+                    </section>
+                  );
+                })}
               </div>
             )}
 

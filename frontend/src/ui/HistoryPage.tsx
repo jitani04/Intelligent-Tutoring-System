@@ -6,6 +6,7 @@ import { Clock } from "lucide-react";
 import { listConversations } from "../api";
 import { normalizeSubject } from "../subjects";
 import type { Conversation } from "../types";
+import { useStartSessionModal } from "./StartSessionModalContext";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
@@ -23,6 +24,7 @@ function sessionLabel(conversation: Conversation): string {
 }
 
 export function HistoryPage() {
+  const { openStartSession } = useStartSessionModal();
   const { data: conversations = [], isLoading, isError } = useQuery({
     queryKey: ["conversations"],
     queryFn: listConversations,
@@ -47,7 +49,7 @@ export function HistoryPage() {
           <h1 className="page-title">History</h1>
           <p className="page-subtitle">All past study sessions, grouped by subject.</p>
         </div>
-        <Link to="/sessions/new" className="button button-primary">New study session</Link>
+        <button className="button button-primary" onClick={() => openStartSession()} type="button">New study session</button>
       </div>
 
       <div className="two-col" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
@@ -75,7 +77,7 @@ export function HistoryPage() {
           <div className="empty-state-icon"><Clock size={26} strokeWidth={1.6} /></div>
           <h3>No study sessions yet</h3>
           <p>Your past study sessions will appear here.</p>
-          <Link to="/sessions/new" className="button button-primary">Start a study session</Link>
+          <button className="button button-primary" onClick={() => openStartSession()} type="button">Start a study session</button>
         </div>
       ) : null}
 

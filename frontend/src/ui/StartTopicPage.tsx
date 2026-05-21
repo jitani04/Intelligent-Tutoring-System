@@ -51,7 +51,6 @@ export function StartTopicPage() {
   return (
     <div className="flow-page">
       <div className="flow-card">
-        <div className="flow-step">Step 1 of 3</div>
         <h1>What are you studying?</h1>
         <p className="flow-copy">
           Pick one of your existing subjects or start a new one.

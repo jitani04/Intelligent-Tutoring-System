@@ -90,7 +90,19 @@ export function MaterialsView({ subject }: { subject: string }) {
           ))}
 
           {materials.length === 0 && uploadingNames.length === 0 && !materialsQuery.isLoading ? (
-            <p className="muted">No materials yet. Upload files above.</p>
+            <div className="empty-state empty-state-compact">
+              <div className="empty-state-icon"><FileText size={24} strokeWidth={1.6} /></div>
+              <h3>No materials yet</h3>
+              <p>
+                Upload lecture slides, readings, notes, or a syllabus so tutor answers can cite this subject's actual material.
+              </p>
+              <div className="empty-state-tips" aria-label="Supported material types">
+                <span>PDF</span>
+                <span>PPTX</span>
+                <span>DOCX</span>
+                <span>TXT/MD</span>
+              </div>
+            </div>
           ) : null}
 
           {materials.map((m) => (

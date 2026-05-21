@@ -10,19 +10,71 @@ from langchain_core.messages import ToolMessage as LCToolMessage
 from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.llm_errors import is_llm_quota_error
 from app.models.key_idea import KeyIdea
 from app.models.message import Message, MessageRole
 from app.models.quiz import Quiz
 from app.models.resource import Resource
 from app.services import retriever
 from app.services.conversation_service import get_conversation_for_user
-from app.services.llm_service import LLMService
+from app.services.llm_service import LLMService, LLMStreamEvent, SUPPORTED_MODELS, create_llm_service
 from app.services.prompt_builder import ChatTurn, build_responses_input
 from app.services.resource_service import YouTubeResourceProvider
 from app.services.web_image_service import WebImageError, WebImageService
 from app.services.web_search_service import LangSearchWebSearch, WebSearchResult
 
 logger = logging.getLogger(__name__)
+
+
+LECTURE_MODE_SYSTEM_PROMPT = (
+    "Lecture mode behavior:\n"
+    "- Act like a live human tutor speaking in real time, not like a written article or static note.\n"
+    "- Use short spoken paragraphs, natural transitions, and direct address to the student.\n"
+    "- Use simple analogies, concrete examples, or mini-scenarios whenever they make an abstract idea easier.\n"
+    "- Teach in small chunks: introduce at most two new concepts before checking understanding or pausing.\n"
+    "- Whenever you define a term or introduce a durable concept, call save_key_idea so it appears on the notebook page while you teach.\n"
+    "- For lecture definitions, format save_key_idea concept as '<topic heading>: <term>', for example 'Relational Databases: Column'.\n"
+    "- The save_key_idea summary should be the clean definition you want written on the page, not a transcript fragment.\n"
+    "- Ask natural comprehension checks without labels like 'Checkpoint Question'.\n"
+    "- Keep markdown headings and bullet-heavy outlines out of normal speech.\n"
+    "- Use tables only for comparisons or structured data that should render on the notebook page.\n"
+    "- When showing code, put only the code in a fenced code block so the UI can display it instead of reading it aloud."
+)
+
+
+async def _stream_tools_with_fallback(
+    primary: LLMService,
+    *,
+    input_messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+) -> AsyncIterator[LLMStreamEvent]:
+    """Run stream_with_tools; on quota/API error auto-fall back through other supported models."""
+    fallback_ids = [m["id"] for m in SUPPORTED_MODELS if m["id"] != primary._model]
+    service = primary
+    last_error: Exception | None = None
+
+    for _attempt in range(1 + len(fallback_ids)):
+        last_error = None
+        try:
+            async for event in service.stream_with_tools(input_messages=input_messages, tools=tools):
+                yield event
+            return
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            if not is_llm_quota_error(exc) or not fallback_ids:
+                raise
+            next_model = fallback_ids.pop(0)
+            logger.warning(
+                "LLM error on %s, falling back to %s: %s", service._model, next_model, exc
+            )
+            try:
+                service = create_llm_service(next_model)
+            except Exception:
+                if not fallback_ids:
+                    raise exc from None
+
+    if last_error:
+        raise last_error
 
 AGENT_TOOLS = [
     {
@@ -76,20 +128,25 @@ AGENT_TOOLS = [
         "function": {
             "name": "save_key_idea",
             "description": (
-                "Save an important concept or insight to the student's session notes. "
+                "Save an important concept or insight to the student's session notes as a flashcard. "
                 "Call this when you've explained something the student now understands, corrected a misconception, "
-                "or identified a definition worth keeping. Keep concept short (3-6 words) and summary to 1-2 sentences."
+                "or identified a definition worth keeping. "
+                "RULES: concept must be specific (3-8 words, e.g. 'SQL LEFT JOIN', 'Null Hypothesis'). "
+                "summary must be a standalone factual definition — encyclopedic, 1-2 sentences, under 200 characters. "
+                "NEVER copy your own conversational reply into summary. "
+                "NEVER reference a diagram, image, or prior message in summary. "
+                "Write the summary as if it were a textbook definition, not a chat message."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "concept": {
                         "type": "string",
-                        "description": "Short name for the concept, e.g. 'SQL LEFT JOIN' or 'Null Hypothesis'.",
+                        "description": "Specific name for the concept, 3-8 words. E.g. 'SQL LEFT JOIN', 'Null Hypothesis'.",
                     },
                     "summary": {
                         "type": "string",
-                        "description": "1-2 sentence plain-English explanation the student should keep.",
+                        "description": "Standalone 1-2 sentence factual definition (under 200 chars). No filler words, no chat phrases, no diagram references.",
                     },
                 },
                 "required": ["concept", "summary"],
@@ -101,35 +158,55 @@ AGENT_TOOLS = [
         "function": {
             "name": "create_diagram",
             "description": (
-                "Generate a Mermaid diagram to illustrate a concept. "
-                "Use this whenever a concept is spatial, structural, or relational — "
-                "e.g. flowcharts, hierarchies, process steps, sequences, state machines, "
-                "ER diagrams, or anything better shown than described. "
+                "Generate a Mermaid diagram to illustrate a concept visually. "
+                "Use this whenever a concept is spatial, structural, temporal, quantitative, or relational — "
+                "flowcharts, hierarchies, process steps, sequences, state machines, timelines, "
+                "data charts, ER diagrams, or anything better shown than described. "
                 "Output valid Mermaid source code that mermaid.js can render directly.\n\n"
-                "SUPPORTED DIAGRAM TYPES (pick the simplest one that fits):\n"
+                "SUPPORTED DIAGRAM TYPES (pick the best fit):\n"
                 "- `flowchart TD` / `flowchart LR`: trees, hierarchies, processes, decision flows.\n"
                 "- `sequenceDiagram`: interactions over time between named actors.\n"
-                "- `stateDiagram-v2`: state machines.\n"
-                "- `classDiagram`: class/relationship structure.\n"
-                "- `erDiagram`: entity-relationship.\n"
-                "- `mindmap`: brainstormed concept clusters.\n\n"
+                "- `stateDiagram-v2`: state machines and lifecycle flows.\n"
+                "- `classDiagram`: class/object structure and inheritance.\n"
+                "- `erDiagram`: entity-relationship (database schemas, data models).\n"
+                "- `mindmap`: brainstormed concept clusters and associations.\n"
+                "- `timeline`: chronological events across time periods.\n"
+                "- `gantt`: task schedules, project timelines, study plans.\n"
+                "- `pie title X`: proportional breakdowns and distributions.\n"
+                "- `xychart-beta`: bar charts or line graphs for numerical data.\n"
+                "- `journey`: user/learner journeys through steps or experiences.\n"
+                "- `block-beta`: block diagrams for system architecture or layered components.\n\n"
                 "RULES:\n"
                 "- Output ONLY the Mermaid source. Do NOT wrap it in ``` fences or markdown.\n"
-                "- Keep it small: aim for 4–12 nodes. Bigger diagrams overwhelm students.\n"
-                "- ALWAYS wrap node labels in double quotes: `A[\"Fine Art\"]`. Never write unquoted "
-                "labels — parentheses, colons, commas, equals signs, single quotes, or any non-alphanumeric "
-                "character inside `[]` will break the parser unless the whole label is quoted.\n"
+                "- Keep it readable: aim for 4–12 nodes or data points. More overwhelms students.\n"
+                "- For flowchart: ALWAYS wrap node labels in double quotes: `A[\"Fine Art\"]`. "
+                "Never write unquoted labels — parentheses, colons, commas, equals signs, "
+                "single quotes, or any non-alphanumeric character inside `[]` will break the parser.\n"
                 "- Use short, descriptive labels — no full sentences.\n"
-                "- Prefer top-down (`TD`) for hierarchies, left-right (`LR`) for processes.\n\n"
-                "EXAMPLE (hierarchy):\n"
+                "- Prefer `TD` for hierarchies, `LR` for processes and data pipelines.\n"
+                "- For `timeline`: use `section` headers with events on indented lines.\n"
+                "- For `xychart-beta`: define x-axis labels as a list, then bar or line data.\n"
+                "- For `gantt`: define dateFormat, then sections with tasks and durations.\n\n"
+                "EXAMPLES:\n"
                 "flowchart TD\n"
                 "  Art[\"Art\"]\n"
                 "  Art --> Fine[\"Fine Art\"]\n"
                 "  Art --> Applied[\"Applied Art\"]\n"
                 "  Art --> Crafts[\"Crafts\"]\n\n"
-                "EXAMPLE (process):\n"
-                "flowchart LR\n"
-                "  A[\"Client SYN\"] --> B[\"Server SYN-ACK\"] --> C[\"Client ACK\"] --> D[\"Connection Open\"]"
+                "timeline\n"
+                "  title History of Computing\n"
+                "  section 1940s\n"
+                "    ENIAC : 1945\n"
+                "  section 1970s\n"
+                "    Personal Computer : 1977\n\n"
+                "xychart-beta\n"
+                "  title \"Quiz Scores\"\n"
+                "  x-axis [Week1, Week2, Week3, Week4]\n"
+                "  bar [60, 72, 85, 91]\n\n"
+                "pie title Concept Breakdown\n"
+                "  \"Arrays\" : 35\n"
+                "  \"Linked Lists\" : 25\n"
+                "  \"Trees\" : 40"
             ),
             "parameters": {
                 "type": "object",
@@ -185,6 +262,9 @@ AGENT_TOOLS = [
                 "of resources in prose; actually call the tool so the student gets a clickable card. Also call "
                 "it when the student is clearly struggling with a concept and a different explanation from "
                 "outside would help, even if they did not explicitly ask. "
+                "Choose the topic and reason using the student's current context: project goals, learning map, "
+                "weak topics, recent notes, due reviews, assignments, preferences, retrieved material context, "
+                "and conversation history. "
                 "Call this tool at most twice per turn, and only if the second call is meaningfully different "
                 "from the first — e.g. one video + one article, or two clearly different sub-topics. Do NOT "
                 "call it twice with near-identical queries; the deduper will skip duplicates and the student "
@@ -297,6 +377,26 @@ async def _generate_conversation_title(
         return None
 
 
+_FILLER_PREFIXES = (
+    "absolutely", "sure", "great", "of course", "certainly",
+    "let me", "here is", "here are", "as i mentioned",
+)
+
+
+def _clean_key_idea_summary(summary: str) -> str:
+    text = summary.strip()
+    lower = text.lower()
+    for prefix in _FILLER_PREFIXES:
+        if lower.startswith(prefix):
+            # Strip everything up to and including the first sentence boundary after the filler
+            cut = text.find(". ")
+            if cut != -1 and cut < 80:
+                text = text[cut + 2:].strip()
+            break
+    # Hard cap: flashcard backs should be concise
+    return text[:500]
+
+
 async def _save_key_idea(
     *,
     session: AsyncSession,
@@ -310,8 +410,8 @@ async def _save_key_idea(
         user_id=user_id,
         conversation_id=conversation_id,
         subject=subject,
-        concept=concept,
-        summary=summary,
+        concept=concept[:120],
+        summary=_clean_key_idea_summary(summary),
     )
     session.add(idea)
     await session.commit()
@@ -526,7 +626,11 @@ async def stream_chat(
     )
 
     input_messages = build_responses_input(
-        system_prompt=system_prompt,
+        system_prompt=(
+            f"{system_prompt.strip()}\n\n{LECTURE_MODE_SYSTEM_PROMPT}"
+            if conv.is_lecture
+            else system_prompt
+        ),
         history=history_turns,
         user_query=user_message,
         retrieved_context=retrieved_context,
@@ -658,10 +762,16 @@ async def stream_chat(
 
         allowed = set(allowed_tool_names or [tool["function"]["name"] for tool in AGENT_TOOLS])
         available_tools = [tool for tool in AGENT_TOOLS if tool["function"]["name"] in allowed]
-        if web_search_service is not None and web_search_service.is_configured:
+        if (
+            web_search_service is not None
+            and web_search_service.is_configured
+            and (allowed_tool_names is None or "web_search" in allowed)
+        ):
             available_tools.append(WEB_SEARCH_TOOL)
 
-        async for event in llm_service.stream_with_tools(input_messages=input_messages, tools=available_tools):
+        async for event in _stream_tools_with_fallback(
+            llm_service, input_messages=input_messages, tools=available_tools
+        ):
             if event.type == "token" and event.delta:
                 assistant_parts.append(event.delta)
                 yield SseEvent(event="token", data={"delta": event.delta})

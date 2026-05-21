@@ -39,36 +39,39 @@ def _gen_ai_system(provider: str) -> str:
     return {"google": "google.gemini", "anthropic": "anthropic", "openai": "openai"}[provider]
 
 
-def _build_chat_model(model: str, timeout_seconds: float, settings: Settings) -> BaseChatModel:
+def _build_chat_model(
+    model: str, timeout_seconds: float, settings: Settings, temperature: float | None = None
+) -> BaseChatModel:
     provider = _provider_for(model)
     if provider == "google":
-        return ChatGoogleGenerativeAI(
+        kwargs: dict = dict(
             model=model,
             google_api_key=settings.llm_api_key,
             timeout=timeout_seconds,
             convert_system_message_to_human=True,
         )
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return ChatGoogleGenerativeAI(**kwargs)
     if provider == "anthropic":
         if not settings.anthropic_api_key:
             raise ValueError(
                 f"Model {model!r} requires ANTHROPIC_API_KEY to be set in the environment."
             )
-        return ChatAnthropic(
-            model=model,
-            api_key=settings.anthropic_api_key,
-            timeout=timeout_seconds,
-        )
+        kwargs = dict(model=model, api_key=settings.anthropic_api_key, timeout=timeout_seconds)
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return ChatAnthropic(**kwargs)
     if provider == "openai":
         key = settings.openai_api_key or settings.openai_tts_api_key
         if not key:
             raise ValueError(
                 f"Model {model!r} requires OPENAI_API_KEY (or OPENAI_TTS_API_KEY) to be set."
             )
-        return ChatOpenAI(
-            model=model,
-            api_key=key,
-            timeout=timeout_seconds,
-        )
+        kwargs = dict(model=model, api_key=key, timeout=timeout_seconds)
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return ChatOpenAI(**kwargs)
     raise ValueError(f"Unsupported provider: {provider!r}")
 
 
@@ -82,11 +85,11 @@ class LLMStreamEvent:
 
 
 class LLMService:
-    def __init__(self, *, model: str, timeout_seconds: float) -> None:
+    def __init__(self, *, model: str, timeout_seconds: float, temperature: float | None = None) -> None:
         self._model = model
         self._provider = _provider_for(model)
         self._gen_ai_system = _gen_ai_system(self._provider)
-        self._llm = _build_chat_model(model, timeout_seconds, get_settings())
+        self._llm = _build_chat_model(model, timeout_seconds, get_settings(), temperature=temperature)
 
     def _record_usage(self, span: trace.Span, usage: dict[str, Any] | None) -> None:
         if not usage:
@@ -255,7 +258,7 @@ class LLMService:
         yield LLMStreamEvent(type="completed", usage=usage_dict)
 
 
-def create_llm_service(model: str | None = None) -> LLMService:
+def create_llm_service(model: str | None = None, temperature: float | None = None) -> LLMService:
     """Build an LLMService for the requested model, falling back to settings.llm_model.
 
     Reads provider-specific keys from settings (LLM_API_KEY for Gemini,
@@ -266,4 +269,4 @@ def create_llm_service(model: str | None = None) -> LLMService:
     resolved = model or settings.llm_model
     if model is not None and resolved not in SUPPORTED_MODEL_IDS:
         raise ValueError(f"Unsupported model: {resolved!r}")
-    return LLMService(model=resolved, timeout_seconds=settings.llm_timeout_seconds)
+    return LLMService(model=resolved, timeout_seconds=settings.llm_timeout_seconds, temperature=temperature)

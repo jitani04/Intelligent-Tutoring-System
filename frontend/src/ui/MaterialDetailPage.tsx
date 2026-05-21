@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { FileQuestion } from "lucide-react";
@@ -5,6 +6,24 @@ import { FileQuestion } from "lucide-react";
 import { deleteMaterial, getMaterialExtractedText, getMaterialPreviewUrl, listMaterials } from "../api";
 import { MarkdownText } from "./MarkdownText";
 import { buttonClass } from "./buttonClass";
+
+async function downloadViaBlob(url: string, filename: string, onError: (msg: string) => void) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    onError(err instanceof Error ? err.message : "Download failed.");
+  }
+}
 
 function isMarkdownMime(mime: string): boolean {
   const lower = mime.toLowerCase();
@@ -34,6 +53,8 @@ function formatDateTime(value: string | null): string {
 export function MaterialDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const { materialId, subject } = useParams<{ materialId: string; subject: string }>();
   const decodedSubject = decodeURIComponent(subject ?? "");
   const parsedMaterialId = Number(materialId);
@@ -218,17 +239,24 @@ export function MaterialDetailPage() {
                   )}
                 </div>
               )}
-              <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
+              <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
                 <a className={buttonClass("secondary")} href={previewQuery.data.url} target="_blank" rel="noreferrer">
                   Open in new tab
                 </a>
-                <a
+                <button
                   className={buttonClass("secondary")}
-                  href={previewQuery.data.url}
-                  download={material.filename}
+                  disabled={downloading}
+                  onClick={async () => {
+                    setDownloadError(null);
+                    setDownloading(true);
+                    await downloadViaBlob(previewQuery.data!.url, material.filename, setDownloadError);
+                    setDownloading(false);
+                  }}
+                  type="button"
                 >
-                  Download
-                </a>
+                  {downloading ? "Downloading…" : "Download"}
+                </button>
+                {downloadError && <span className="error-text" style={{ fontSize: "0.8rem" }}>{downloadError}</span>}
               </div>
             </div>
           ) : null}

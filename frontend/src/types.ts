@@ -113,6 +113,7 @@ export interface ChatRequest {
   message?: string;
   retry_message_id?: number;
   edit_message_id?: number;
+  allowed_tool_names?: string[];
 }
 
 export type MaterialStatus = "processing" | "ready" | "failed";
@@ -492,6 +493,7 @@ export interface KeyIdea {
 
 export type LectureTimelineEntry =
   | { kind: "key_idea"; idea: KeyIdea }
+  | { kind: "live_note"; note: { id: string; heading: string; concept: string; summary: string } }
   | { kind: "diagram"; diagram: DiagramData }
   | { kind: "image"; image: ImageData };
 
@@ -536,6 +538,13 @@ export interface FlashcardDueResponse {
   total_due: number;
 }
 
+export interface SmartFlashcardSessionResponse {
+  cards: Flashcard[];
+  total_due: number;
+  weak_areas: string[];
+  generated: number;
+}
+
 export interface SearchSessionResult {
   conversation_id: number;
   subject: string | null;
@@ -577,6 +586,23 @@ export interface PracticeQuizItem {
 export interface WeakQuizResponse {
   conversation_id: number;
   quizzes: PracticeQuizItem[];
+}
+
+export interface LearningPathNode {
+  id: string;
+  topic: string;
+  description: string;
+  subtopics: string[];
+  prerequisiteIds: string[];
+  relatedIds: string[];
+  parentId: string | null;
+  order: number;
+  linkedNoteIds: number[];
+  linkedMaterialIds: number[];
+  status: LearningMapStatus;
+  mastery: number | null;
+  attempts: number;
+  locked: boolean;
 }
 
 export interface ProjectProgress {

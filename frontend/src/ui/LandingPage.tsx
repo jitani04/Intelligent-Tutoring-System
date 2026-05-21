@@ -8,6 +8,7 @@ import { isAuthenticated, setToken } from "../auth";
 import { getGoogleAuthStatus } from "../googleAuth";
 import type { AuthResult } from "../types";
 import { ThemeToggle } from "./ThemeToggle";
+import { buttonClass } from "./buttonClass";
 
 type ModalMode = "signin" | "signup";
 
@@ -144,10 +145,10 @@ export function LandingPage() {
         </span>
         <div className="landing-nav-right">
           <ThemeToggle variant="icon" />
-          <button className="button button-primary" onClick={() => openModal("signup")} type="button">
+          <button className={buttonClass("primary")} onClick={() => openModal("signup")} type="button">
             Create account
           </button>
-          <button className="button button-secondary" onClick={() => openModal("signin")} type="button">
+          <button className={buttonClass("secondary")} onClick={() => openModal("signin")} type="button">
             Sign in
           </button>
         </div>
@@ -155,6 +156,46 @@ export function LandingPage() {
 
       <main className="landing-main">
         <section className="landing-hero">
+          {/* Decorative background */}
+          <div className="landing-hero-bg" aria-hidden="true">
+            <div className="landing-hero-blob landing-hero-blob-1" />
+            <div className="landing-hero-blob landing-hero-blob-2" />
+            <svg className="landing-hero-neural" viewBox="0 0 420 420" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <circle cx="210" cy="210" r="80" stroke="rgba(115,147,179,0.18)" strokeWidth="1.5"/>
+              <circle cx="210" cy="210" r="140" stroke="rgba(115,147,179,0.09)" strokeWidth="1"/>
+              <circle cx="210" cy="210" r="190" stroke="rgba(115,147,179,0.055)" strokeWidth="1"/>
+              {/* Nodes */}
+              <circle cx="210" cy="130" r="5" fill="rgba(115,147,179,0.55)"/>
+              <circle cx="270" cy="175" r="4" fill="rgba(115,147,179,0.45)"/>
+              <circle cx="270" cy="245" r="4" fill="rgba(115,147,179,0.45)"/>
+              <circle cx="210" cy="290" r="5" fill="rgba(115,147,179,0.55)"/>
+              <circle cx="150" cy="245" r="4" fill="rgba(115,147,179,0.45)"/>
+              <circle cx="150" cy="175" r="4" fill="rgba(115,147,179,0.45)"/>
+              <circle cx="210" cy="210" r="7" fill="rgba(115,147,179,0.7)"/>
+              {/* Outer nodes */}
+              <circle cx="210" cy="70" r="3.5" fill="rgba(115,147,179,0.35)"/>
+              <circle cx="315" cy="130" r="3" fill="rgba(115,147,179,0.28)"/>
+              <circle cx="340" cy="255" r="3" fill="rgba(115,147,179,0.28)"/>
+              <circle cx="260" cy="345" r="3" fill="rgba(115,147,179,0.28)"/>
+              <circle cx="155" cy="345" r="3" fill="rgba(115,147,179,0.28)"/>
+              <circle cx="80" cy="255" r="3" fill="rgba(115,147,179,0.28)"/>
+              <circle cx="100" cy="130" r="3" fill="rgba(115,147,179,0.28)"/>
+              {/* Connections */}
+              <line x1="210" y1="210" x2="210" y2="130" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
+              <line x1="210" y1="210" x2="270" y2="175" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
+              <line x1="210" y1="210" x2="270" y2="245" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
+              <line x1="210" y1="210" x2="210" y2="290" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
+              <line x1="210" y1="210" x2="150" y2="245" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
+              <line x1="210" y1="210" x2="150" y2="175" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
+              <line x1="210" y1="130" x2="210" y2="70" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
+              <line x1="270" y1="175" x2="315" y2="130" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
+              <line x1="270" y1="245" x2="340" y2="255" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
+              <line x1="210" y1="290" x2="260" y2="345" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
+              <line x1="150" y1="245" x2="155" y2="345" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
+              <line x1="150" y1="175" x2="80" y2="255" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
+              <line x1="150" y1="175" x2="100" y2="130" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
+            </svg>
+          </div>
           <h1 className="landing-headline motion-reveal motion-rise motion-delay-1">
             A tutor built for <em>sapience</em>.
           </h1>
@@ -162,10 +203,10 @@ export function LandingPage() {
             Reasoning, reflection, and learning that carries forward from one study session to the next.
           </p>
           <div className="landing-cta-row motion-reveal motion-rise motion-delay-3">
-            <button className="button button-primary" onClick={() => openModal("signup")} type="button">
+            <button className={buttonClass("primary")} onClick={() => openModal("signup")} type="button">
               Start your first study session
             </button>
-            <button className="button button-secondary" onClick={() => openModal("signin")} type="button">
+            <button className={buttonClass("secondary")} onClick={() => openModal("signin")} type="button">
               Sign in
             </button>
           </div>
@@ -414,7 +455,7 @@ export function LandingPage() {
 
         <section className="landing-closing motion-reveal motion-rise">
           <h2>Ready when you are.</h2>
-          <button className="button button-primary" onClick={() => openModal("signup")} type="button">
+          <button className={buttonClass("primary")} onClick={() => openModal("signup")} type="button">
             Start your first study session
           </button>
         </section>
@@ -496,8 +537,8 @@ export function LandingPage() {
               {error ? <p className="error-text">{error}</p> : null}
 
               <div className="modal-actions">
-                <button className="button button-secondary" disabled={loading} onClick={() => setMode(null)} type="button">Cancel</button>
-                <button className="button button-primary" disabled={loading} type="submit">
+                <button className={buttonClass("secondary")} disabled={loading} onClick={() => setMode(null)} type="button">Cancel</button>
+                <button className={buttonClass("primary")} disabled={loading} type="submit">
                   {loading ? busyLabel : mode === "signup" ? "Create account" : "Sign in"}
                 </button>
               </div>

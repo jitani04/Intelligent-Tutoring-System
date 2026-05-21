@@ -89,6 +89,9 @@ TEACHING_PACING_PROMPT = (
     "those contents in your message text — that produces duplicate content shown twice to the student. Your message "
     "around a tool call should set context ('here's a quick check', 'this diagram shows how the parts connect') and "
     "then continue teaching; the card is the source of truth for what it contains."
+    "\n\nSetup rule: NEVER ask the student about their experience level, prior knowledge, background, or learning goals "
+    "in the chat. Those are collected on the subject setup page before the session begins. If no level has been set, "
+    "simply start teaching at a clear, accessible level and adapt based on how the student actually responds."
 )
 
 
@@ -423,6 +426,7 @@ async def stream_chat_endpoint(
                 resource_provider=resource_provider,
                 preference_summary=user.preference_summary,
                 preference_memories=preference_memories,
+                allowed_tool_names=request.allowed_tool_names,
             )
             async for payload in _with_keepalive(source, settings.keepalive_seconds):
                 yield payload

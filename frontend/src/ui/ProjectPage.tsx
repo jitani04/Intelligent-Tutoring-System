@@ -2,13 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Circle, Download, ExternalLink, LockKeyhole, MessageCircle, MoreHorizontal, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Circle, Download, ExternalLink, FileDown, LockKeyhole, Mail, MessageCircle, MoreHorizontal, Pencil, Play, Plus, Trash2 } from "lucide-react";
 
-import { RateLimitError, createConversation, createKeyIdea, createManualQuiz, deleteConversation, deleteKeyIdea, deleteLectureNote, deleteProjectSubject, deleteResource, generateMindMap, generateSubjectFlashcards, generateSubjectQuiz, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getLectureNote, getProjectProfile, getProjectProgress, listAllKeyIdeas, listAssignments, listConversations, listLectureNotes, listMaterials, listSubjectQuizzes, listSubjectResources, previewReviewDigest, sendReviewDigest, updateConversationTitle, updateKeyIdea, updateLearningMapProgress, updateProjectMindMap } from "../api";
+import { RateLimitError, createConversation, createKeyIdea, createManualQuiz, deleteConversation, deleteKeyIdea, deleteLectureNote, deleteProjectSubject, deleteResource, generateMindMap, generateSubjectFlashcards, generateSubjectQuiz, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getLectureNote, getProjectProfile, getProjectProgress, listAllKeyIdeas, listAssignments, listConversations, listLectureNotes, listMaterials, listSubjectQuizzes, listSubjectResources, previewReviewDigest, sendReviewDigest, streamChat, updateConversationTitle, updateKeyIdea, updateLearningMapProgress, updateProjectGoals, updateProjectMindMap } from "../api";
 import { sortConversationsByRecentActivity } from "../conversations";
 import { formatSubjectName, normalizeSubject } from "../subjects";
-import type { Conversation, Flashcard, KeyIdea, KnowledgeStateEntry, LearningMapStatus, LectureNote, MindMap, MindMapNode, PendingAgentAction, PracticeQuizItem, ProjectProgress, SessionSummary } from "../types";
+import type { ChatStreamEvent, Conversation, Flashcard, KeyIdea, KnowledgeStateEntry, LearningMapStatus, LearningPathNode, LectureNote, MindMap, MindMapNode, PendingAgentAction, PracticeQuizItem, ProjectProgress, SessionSummary } from "../types";
 import { FlashcardsView } from "./FlashcardsPage";
+import { LearningMapGraph } from "./LearningMapGraph";
 import { LectureModeOverlay } from "./LectureModeOverlay";
 import { LectureNoteViewer } from "./LectureNoteViewer";
 import { MaterialsView } from "./MaterialsPage";
@@ -16,25 +17,9 @@ import { QuizCard } from "./QuizCard";
 import { ResourceCard } from "./ResourceCard";
 import { useStartSessionModal } from "./StartSessionModalContext";
 import { WeakQuizModal } from "./WeakQuizModal";
+import { buttonClass } from "./buttonClass";
 
 type ProjectTab = "overview" | "notes" | "lectures" | "materials" | "quizzes" | "flashcards" | "resources";
-
-interface LearningPathNode {
-  id: string;
-  topic: string;
-  description: string;
-  subtopics: string[];
-  prerequisiteIds: string[];
-  relatedIds: string[];
-  parentId: string | null;
-  order: number;
-  linkedNoteIds: number[];
-  linkedMaterialIds: number[];
-  status: LearningMapStatus;
-  mastery: number | null;
-  attempts: number;
-  locked: boolean;
-}
 
 interface EditableLearningNode {
   id: string;
@@ -160,8 +145,8 @@ function ManualQuizDialog({
           {error && <p className="practice-modal-error">{error}</p>}
         </div>
         <div className="practice-modal-footer">
-          <button className="button button-secondary" onClick={onCancel} type="button">Cancel</button>
-          <button className="button button-primary" onClick={submit} type="button">Save question</button>
+          <button className={buttonClass("secondary")} onClick={onCancel} type="button">Cancel</button>
+          <button className={buttonClass("primary")} onClick={submit} type="button">Save question</button>
         </div>
       </div>
     </div>
@@ -204,8 +189,8 @@ function ManualFlashcardDialog({
           {error && <p className="practice-modal-error">{error}</p>}
         </div>
         <div className="practice-modal-footer">
-          <button className="button button-secondary" onClick={onCancel} type="button">Cancel</button>
-          <button className="button button-primary" onClick={submit} type="button">Save flashcard</button>
+          <button className={buttonClass("secondary")} onClick={onCancel} type="button">Cancel</button>
+          <button className={buttonClass("primary")} onClick={submit} type="button">Save flashcard</button>
         </div>
       </div>
     </div>
@@ -396,6 +381,8 @@ function buildLearningPathNodes(
   }));
 }
 
+
+
 function editableNodesFromMindMap(nodes: MindMapNode[], progress: Record<string, LearningMapStatus>): EditableLearningNode[] {
   return [...nodes]
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -570,6 +557,42 @@ function buildSummaryText(subject: string, sessionNum: number, date: string, s: 
   return lines.join("\n");
 }
 
+function downloadNotesAsPdf(notes: KeyIdea[], subject: string) {
+  const title = `${subject} — Notes`;
+  const noteRows = notes
+    .map(
+      (n) => `
+    <div class="note">
+      <h2>${n.concept}</h2>
+      <p>${n.summary}</p>
+      <div class="date">${new Date(n.created_at).toLocaleDateString()}</div>
+    </div>`,
+    )
+    .join("\n");
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>${title}</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:680px;margin:2.5rem auto;color:#111;line-height:1.5}
+  h1{font-size:1.35rem;margin-bottom:.2rem}
+  .meta{color:#666;font-size:.8rem;margin-bottom:2rem}
+  .note{page-break-inside:avoid;margin-bottom:1.6rem;padding:1rem 1rem 1rem 1.1rem;border-left:3px solid #7393b3;border-radius:0 6px 6px 0;background:#f8fafd}
+  .note h2{font-size:.92rem;font-weight:700;margin:0 0 .35rem}
+  .note p{font-size:.85rem;color:#333;margin:0 0 .5rem;white-space:pre-wrap}
+  .date{font-size:.68rem;color:#999}
+  @media print{body{margin:1.5rem}}
+</style></head><body>
+<h1>${title}</h1>
+<p class="meta">${notes.length} note${notes.length !== 1 ? "s" : ""} · Exported ${new Date().toLocaleDateString()}</p>
+${noteRows}
+<script>window.onload=function(){window.print()}<\/script>
+</body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) return;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
 function downloadSummary(subject: string, sessionNum: number, c: Conversation) {
   const s = c.summary as SessionSummary;
   const text = buildSummaryText(subject, sessionNum, formatDate(c.created_at), s);
@@ -625,12 +648,15 @@ export function ProjectPage() {
   const [reviewDigestBusy, setReviewDigestBusy] = useState(false);
   const [learningProgress, setLearningProgress] = useState<Record<string, LearningMapStatus>>(() => getStoredLearningProgress(decoded));
   const [selectedLearningNodeId, setSelectedLearningNodeId] = useState<string | null>(null);
+  const [editingGoals, setEditingGoals] = useState(false);
+  const [goalsDraft, setGoalsDraft] = useState("");
+  const [savingGoals, setSavingGoals] = useState(false);
   const [editingMap, setEditingMap] = useState(false);
   const [mapDraft, setMapDraft] = useState<EditableLearningNode[]>([]);
   const [draftSelectedId, setDraftSelectedId] = useState<string | null>(null);
   const [mapEditError, setMapEditError] = useState<string | null>(null);
   const [savingMap, setSavingMap] = useState(false);
-  const mapScrollRef = useRef<HTMLDivElement>(null);
+
 
   function setActiveTab(next: ProjectTab) {
     const params = new URLSearchParams(searchParams);
@@ -867,7 +893,7 @@ export function ProjectPage() {
         {noteEditError ? <p className="notebook-note-error">{noteEditError}</p> : null}
         <div className="notebook-editor-actions">
           <button
-            className="button button-secondary"
+            className={buttonClass("secondary")}
             disabled={savingNote}
             onClick={cancelNoteEditing}
             type="button"
@@ -875,7 +901,7 @@ export function ProjectPage() {
             Cancel
           </button>
           <button
-            className="button button-primary"
+            className={buttonClass("primary")}
             disabled={savingNote}
             onClick={() => void saveNoteEditor()}
             type="button"
@@ -1228,15 +1254,6 @@ export function ProjectPage() {
       });
   }
 
-  function scrollLearningMap(direction: "left" | "right") {
-    const el = mapScrollRef.current;
-    if (!el) return;
-    el.scrollBy({ left: direction === "left" ? -360 : 360, behavior: "smooth" });
-  }
-
-  function fitLearningMapToStart() {
-    mapScrollRef.current?.scrollTo({ left: 0, behavior: "smooth" });
-  }
 
   function startMapEditing() {
     const progressForDraft = profile?.learning_map_progress ?? learningProgress;
@@ -1404,7 +1421,7 @@ export function ProjectPage() {
           </div>
           <div className="project-hero-actions">
             <button
-              className="button button-secondary project-hero-secondary"
+              className={buttonClass("secondary", "project-hero-secondary")}
               onClick={() => setLectureOpen(true)}
               type="button"
             >
@@ -1412,19 +1429,20 @@ export function ProjectPage() {
               Lecture mode
             </button>
             <button
-              className="button button-primary project-hero-primary"
-              onClick={() => openStartSession({ subject: decoded })}
-              type="button"
-            >
-              New study session
-            </button>
-            <button
-              className="button button-secondary project-hero-secondary"
+              className={buttonClass("secondary", "project-hero-secondary")}
               disabled={reviewDigestBusy}
               onClick={() => void handlePreviewReviewDigest()}
               type="button"
             >
-              Email review plan
+              <Mail size={14} strokeWidth={2} />
+              {reviewDigestBusy ? "Preparing…" : "Email review"}
+            </button>
+            <button
+              className={buttonClass("primary", "project-hero-primary")}
+              onClick={() => openStartSession({ subject: decoded })}
+              type="button"
+            >
+              New study session
             </button>
             <details className="project-action-menu">
               <summary aria-label="Subject actions" title="Subject actions">
@@ -1453,27 +1471,20 @@ export function ProjectPage() {
       {deleteSubjectError ? <p className="error-text">{deleteSubjectError}</p> : null}
 
       {(reviewDigestAction?.preview || reviewDigestStatus) && (
-        <section className="mx-auto mb-4 flex w-full max-w-[1100px] flex-col gap-3 rounded-xl border border-[var(--panel-border)] bg-[var(--surface)] p-4">
+        <div className="review-strip">
           {reviewDigestAction?.preview ? (
-            <>
-              <div>
-                <div className="text-[0.72rem] font-bold uppercase tracking-[0.08em] text-[var(--accent)]">Review digest preview</div>
-                <h2 className="mt-1 text-[1rem] font-semibold text-[var(--text-main)]">{reviewDigestAction.preview.email_subject}</h2>
-                <p className="mt-1 text-sm text-[var(--text-soft)]">{reviewDigestAction.preview.reason}</p>
-              </div>
-              <div className="text-sm text-[var(--text-soft)]">Focus: {reviewDigestAction.preview.focus_topics.slice(0, 5).join(", ")}</div>
-              <div className="flex flex-wrap gap-2">
-                <button className="button button-primary" disabled={reviewDigestBusy} onClick={() => void handleSendReviewDigest()} type="button">
-                  {reviewDigestBusy ? "Sending..." : "Send"}
-                </button>
-                <button className="button button-secondary" disabled={reviewDigestBusy} onClick={() => setReviewDigestAction(null)} type="button">
-                  Dismiss
-                </button>
-              </div>
-            </>
-          ) : null}
-          {reviewDigestStatus ? <p className="settings-copy">{reviewDigestStatus}</p> : null}
-        </section>
+            <div className="review-strip-preview">
+              <span className="review-strip-label">Ready:</span>
+              <span className="review-strip-subject">{reviewDigestAction.preview.email_subject}</span>
+              <button className="review-strip-send" disabled={reviewDigestBusy} onClick={() => void handleSendReviewDigest()} type="button">
+                {reviewDigestBusy ? "Sending…" : "Send"}
+              </button>
+              <button className="review-strip-dismiss" disabled={reviewDigestBusy} onClick={() => { setReviewDigestAction(null); setReviewDigestStatus(null); }} type="button">✕</button>
+            </div>
+          ) : (
+            <span className="review-strip-status">{reviewDigestStatus}</span>
+          )}
+        </div>
       )}
 
       {showMindmapWarning && (
@@ -1555,7 +1566,7 @@ export function ProjectPage() {
               <p>Generate a new quiz across {displaySubject} or write your own questions.</p>
               <div className="project-practice-actions">
                 <button
-                  className="button button-primary"
+                  className={buttonClass("primary")}
                   disabled={practiceBusy === "quiz"}
                   onClick={() => void handleGenerateSubjectQuiz()}
                   type="button"
@@ -1563,7 +1574,7 @@ export function ProjectPage() {
                   {practiceBusy === "quiz" ? "Generating..." : "Generate quiz"}
                 </button>
                 <button
-                  className="button button-secondary"
+                  className={buttonClass("secondary")}
                   onClick={() => setManualQuizOpen(true)}
                   type="button"
                 >
@@ -1629,7 +1640,7 @@ export function ProjectPage() {
               <p>Auto-build flashcards on this subject or save one yourself.</p>
               <div className="project-practice-actions">
                 <button
-                  className="button button-primary"
+                  className={buttonClass("primary")}
                   disabled={practiceBusy === "flashcards"}
                   onClick={() => void handleGenerateFlashcards()}
                   type="button"
@@ -1637,7 +1648,7 @@ export function ProjectPage() {
                   {practiceBusy === "flashcards" ? "Generating..." : "Generate flashcards"}
                 </button>
                 <button
-                  className="button button-secondary"
+                  className={buttonClass("secondary")}
                   onClick={() => setManualFlashcardOpen(true)}
                   type="button"
                 >
@@ -1660,10 +1671,23 @@ export function ProjectPage() {
               <h2>Notes</h2>
               <p>Capture the most important ideas from your study sessions here.</p>
             </div>
-            <button className="button button-primary notes-add-button" onClick={startNewNote} type="button">
-              <Plus size={15} strokeWidth={2} />
-              Add note
-            </button>
+            <div className="flex items-center gap-2">
+              {filteredNotes.length > 0 && (
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-[0.8rem] font-medium text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  onClick={() => downloadNotesAsPdf(filteredNotes, displaySubject)}
+                  title="Download notes as PDF"
+                  type="button"
+                >
+                  <FileDown size={14} strokeWidth={2} />
+                  PDF
+                </button>
+              )}
+              <button className={buttonClass("primary", "notes-add-button")} onClick={startNewNote} type="button">
+                <Plus size={15} strokeWidth={2} />
+                Add note
+              </button>
+            </div>
           </div>
 
           <div className="notes-notebook-search">
@@ -1796,6 +1820,78 @@ export function ProjectPage() {
 
       {activeTab === "overview" && (
         <>
+      <section className="project-section-shell">
+        <div className="project-section-header">
+          <div className="content-card-title project-section-title">Goals</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            {!editingGoals && (
+              <button
+                className="project-goals-edit-btn"
+                onClick={() => { setGoalsDraft(profile?.goals ?? ""); setEditingGoals(true); }}
+                type="button"
+              >
+                <Pencil size={13} strokeWidth={2} />
+                {profile?.goals ? "Edit" : "Add goals"}
+              </button>
+            )}
+            <SectionToggle
+              open={sectionVisibility.goals}
+              onClick={() => toggleSection("goals")}
+              label="goals"
+            />
+          </div>
+        </div>
+        {sectionVisibility.goals && (
+          <div className="project-goals">
+            {editingGoals ? (
+              <>
+                <textarea
+                  autoFocus
+                  className="project-goals-textarea"
+                  disabled={savingGoals}
+                  maxLength={500}
+                  placeholder="Describe what you want to achieve with this subject…"
+                  rows={3}
+                  value={goalsDraft}
+                  onChange={(e) => setGoalsDraft(e.target.value)}
+                />
+                <div className="project-goals-actions">
+                  <button
+                    className={buttonClass("primary")}
+                    disabled={savingGoals}
+                    onClick={async () => {
+                      setSavingGoals(true);
+                      try {
+                        await updateProjectGoals(decoded, goalsDraft.trim() || null);
+                        await queryClient.invalidateQueries({ queryKey: ["project-profile", decoded] });
+                        setEditingGoals(false);
+                      } finally {
+                        setSavingGoals(false);
+                      }
+                    }}
+                    type="button"
+                  >
+                    {savingGoals ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    className={buttonClass("secondary")}
+                    disabled={savingGoals}
+                    onClick={() => setEditingGoals(false)}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : profile?.goals ? (
+              <span className="project-goals-text">{profile.goals}</span>
+            ) : (
+              <span className="project-goals-empty">No goals set yet. Click "Add goals" to describe what you want to achieve.</span>
+            )}
+          </div>
+        )}
+      </section>
+
       {upcomingSubjectAssignments.length > 0 && (
         <section className="project-upcoming-strip">
           <div className="project-upcoming-head">
@@ -1836,29 +1932,20 @@ export function ProjectPage() {
             </div>
           </div>
           <div className="project-map-header-actions">
-            <button className="project-map-nav-btn" onClick={() => scrollLearningMap("left")} type="button" aria-label="Scroll learning map left">
-              <ArrowLeft size={15} strokeWidth={2} />
-            </button>
-            <button className="project-map-nav-btn" onClick={() => scrollLearningMap("right")} type="button" aria-label="Scroll learning map right">
-              <ArrowRight size={15} strokeWidth={2} />
-            </button>
-            <button className="button button-secondary project-map-collapse" onClick={fitLearningMapToStart} type="button">
-              Fit to screen
-            </button>
             {editingMap ? (
               <>
-                <button className="button button-secondary project-map-collapse" onClick={addDraftTopic} type="button">Add topic</button>
-                <button className="button button-secondary project-map-collapse" onClick={autoOrganizeDraft} type="button">Auto-organize</button>
-                <button className="button button-secondary project-map-collapse" onClick={cancelMapEditing} disabled={savingMap} type="button">Cancel</button>
-                <button className="button button-primary project-map-collapse" onClick={() => void saveMapChanges()} disabled={savingMap} type="button">
+                <button className={buttonClass("secondary", "project-map-collapse")} onClick={addDraftTopic} type="button">Add topic</button>
+                <button className={buttonClass("secondary", "project-map-collapse")} onClick={autoOrganizeDraft} type="button">Auto-organize</button>
+                <button className={buttonClass("secondary", "project-map-collapse")} onClick={cancelMapEditing} disabled={savingMap} type="button">Cancel</button>
+                <button className={buttonClass("primary", "project-map-collapse")} onClick={() => void saveMapChanges()} disabled={savingMap} type="button">
                   {savingMap ? "Saving..." : "Save changes"}
                 </button>
               </>
             ) : (
               <>
-                <button className="button button-secondary project-map-collapse" onClick={startMapEditing} type="button">Edit map</button>
+                <button className={buttonClass("secondary", "project-map-collapse")} onClick={startMapEditing} type="button">Edit map</button>
                 <button
-                  className="button button-secondary project-map-collapse"
+                  className={buttonClass("secondary", "project-map-collapse")}
                   onClick={() => toggleSection("map")}
                   type="button"
                 >
@@ -1887,56 +1974,21 @@ export function ProjectPage() {
                   <p>{recommendedLearning.reason}</p>
                 </div>
                 <div className={`project-map-body${(editingMap ? selectedDraftNode : selectedLearningNode) ? " has-detail" : ""}`}>
-                  <div className="mindmap" ref={mapScrollRef}>
-                    <div className="mindmap-flow">
-                      <button
-                        className="mindmap-root"
-                        onClick={() => setSelectedLearningNodeId(null)}
-                        type="button"
-                      >
-                        {formatSubjectName(profile.mind_map.subject)}
-                      </button>
-                      {learningPathNodes.map((node, index) => (
-                        <button
-                          key={node.id}
-                          className={`mindmap-node mindmap-node-status-${node.status}${node.locked ? " mindmap-node-locked" : ""}${(editingMap ? draftSelectedId : selectedLearningNode?.id) === node.id ? " mindmap-node-selected" : ""}${editingMap ? " mindmap-node-editing" : ""}`}
-                          onClick={() => {
-                            if (editingMap) {
-                              setDraftSelectedId(node.id);
-                              setSelectedLearningNodeId(null);
-                            } else {
-                              setSelectedLearningNodeId(node.id);
-                            }
-                          }}
-                          style={{ "--node-index": index } as CSSProperties}
-                          type="button"
-                        >
-                          <div className="mindmap-node-title-row">
-                            <span className="mindmap-node-title">{node.topic}</span>
-                            <span className="mindmap-status-chip">
-                              <StatusIcon status={node.status} locked={node.locked} />
-                              {node.locked ? "Prereq" : STATUS_LABELS[node.status]}
-                            </span>
-                          </div>
-                          {node.mastery !== null && (
-                            <div className="mindmap-mastery-meter" aria-label={`BKT mastery ${Math.round(node.mastery * 100)}%`}>
-                              <span style={{ width: `${Math.round(node.mastery * 100)}%` }} />
-                            </div>
-                          )}
-                          <div className="mindmap-subtopics" aria-hidden="true">
-                            {node.subtopics.slice(0, 3).map((sub, subIndex) => (
-                              <span
-                                key={sub}
-                                className="mindmap-subtopic"
-                                style={{ "--subtopic-index": subIndex } as CSSProperties}
-                              >
-                                {sub}
-                              </span>
-                            ))}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                  <div className="lmg-container">
+                    <LearningMapGraph
+                      subject={profile.mind_map.subject}
+                      nodes={learningPathNodes}
+                      editingMap={editingMap}
+                      selectedNodeId={editingMap ? draftSelectedId : selectedLearningNodeId}
+                      onSelectNode={(id) => {
+                        if (editingMap) {
+                          setDraftSelectedId(id);
+                          setSelectedLearningNodeId(null);
+                        } else {
+                          setSelectedLearningNodeId(id);
+                        }
+                      }}
+                    />
                   </div>
 
                   {editingMap && selectedDraftNode && (
@@ -1980,36 +2032,16 @@ export function ProjectPage() {
                         </select>
                       </label>
 
-                      <div className="learning-node-form-row">
-                        <label className="learning-node-form-field">
-                          Topic order
-                          <input
-                            min={1}
-                            type="number"
-                            value={selectedDraftNode.order + 1}
-                            onChange={(e) => {
-                              const nextOrder = Math.max(0, Math.min(mapDraft.length - 1, Number(e.target.value) - 1));
-                              setMapDraft((prev) => {
-                                const without = prev.filter((node) => node.id !== selectedDraftNode.id).sort((a, b) => a.order - b.order);
-                                without.splice(nextOrder, 0, selectedDraftNode);
-                                return without.map((node, order) => ({ ...node, order }));
-                              });
-                            }}
-                          />
-                        </label>
-                        <div className="learning-node-move-actions">
-                          <button type="button" onClick={() => moveDraftTopic(selectedDraftNode.id, -1)}>Move left</button>
-                          <button type="button" onClick={() => moveDraftTopic(selectedDraftNode.id, 1)}>Move right</button>
-                        </div>
-                      </div>
-
                       <label className="learning-node-form-field">
-                        Parent topic or group
+                        Previous topic
                         <select
-                          value={selectedDraftNode.parentId ?? ""}
-                          onChange={(e) => updateDraftNode(selectedDraftNode.id, { parentId: e.target.value || null })}
+                          value={selectedDraftNode.prerequisiteIds[0] ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateDraftPrerequisites(selectedDraftNode.id, val ? [val] : []);
+                          }}
                         >
-                          <option value="">No parent</option>
+                          <option value="">None (starting topic)</option>
                           {mapDraft.filter((node) => node.id !== selectedDraftNode.id).map((node) => (
                             <option key={node.id} value={node.id}>{node.topic}</option>
                           ))}
@@ -2017,30 +2049,30 @@ export function ProjectPage() {
                       </label>
 
                       <label className="learning-node-form-field">
-                        Prerequisites
+                        Next topic
                         <select
-                          multiple
-                          value={selectedDraftNode.prerequisiteIds}
-                          onChange={(e) => updateDraftPrerequisites(
-                            selectedDraftNode.id,
-                            Array.from(e.currentTarget.selectedOptions, (option) => option.value),
-                          )}
+                          value={mapDraft.find((n) => n.id !== selectedDraftNode.id && n.prerequisiteIds.includes(selectedDraftNode.id))?.id ?? ""}
+                          onChange={(e) => {
+                            const nextId = e.target.value;
+                            const prevNextId = mapDraft.find((n) => n.id !== selectedDraftNode.id && n.prerequisiteIds.includes(selectedDraftNode.id))?.id;
+                            if (nextId && wouldCreatePrerequisiteCycle(mapDraft.map((n) =>
+                              n.id === nextId ? { ...n, prerequisiteIds: [...n.prerequisiteIds.filter((id) => id !== selectedDraftNode.id), selectedDraftNode.id] } : n
+                            ), nextId, [selectedDraftNode.id])) {
+                              setMapEditError("This connection would create a circular prerequisite path.");
+                              return;
+                            }
+                            setMapDraft((prev) => prev.map((n) => {
+                              if (prevNextId && n.id === prevNextId) {
+                                return { ...n, prerequisiteIds: n.prerequisiteIds.filter((id) => id !== selectedDraftNode.id) };
+                              }
+                              if (nextId && n.id === nextId) {
+                                return { ...n, prerequisiteIds: [...n.prerequisiteIds.filter((id) => id !== selectedDraftNode.id), selectedDraftNode.id] };
+                              }
+                              return n;
+                            }));
+                          }}
                         >
-                          {mapDraft.filter((node) => node.id !== selectedDraftNode.id).map((node) => (
-                            <option key={node.id} value={node.id}>{node.topic}</option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="learning-node-form-field">
-                        Related topics
-                        <select
-                          multiple
-                          value={selectedDraftNode.relatedIds}
-                          onChange={(e) => updateDraftNode(selectedDraftNode.id, {
-                            relatedIds: Array.from(e.currentTarget.selectedOptions, (option) => option.value),
-                          })}
-                        >
+                          <option value="">None (end of path)</option>
                           {mapDraft.filter((node) => node.id !== selectedDraftNode.id).map((node) => (
                             <option key={node.id} value={node.id}>{node.topic}</option>
                           ))}
@@ -2059,40 +2091,10 @@ export function ProjectPage() {
                         />
                       </label>
 
-                      <label className="learning-node-form-field">
-                        Linked notes
-                        <select
-                          multiple
-                          value={selectedDraftNode.linkedNoteIds.map(String)}
-                          onChange={(e) => updateDraftNode(selectedDraftNode.id, {
-                            linkedNoteIds: Array.from(e.currentTarget.selectedOptions, (option) => Number(option.value)),
-                          })}
-                        >
-                          {subjectNotes.map((note) => (
-                            <option key={note.id} value={note.id}>{note.concept}</option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="learning-node-form-field">
-                        Linked materials
-                        <select
-                          multiple
-                          value={selectedDraftNode.linkedMaterialIds.map(String)}
-                          onChange={(e) => updateDraftNode(selectedDraftNode.id, {
-                            linkedMaterialIds: Array.from(e.currentTarget.selectedOptions, (option) => Number(option.value)),
-                          })}
-                        >
-                          {subjectMaterials.map((material) => (
-                            <option key={material.id} value={material.id}>{material.filename}</option>
-                          ))}
-                        </select>
-                      </label>
-
                       <div className="learning-node-edit-actions">
-                        <button className="button button-secondary" type="button" onClick={() => duplicateDraftTopic(selectedDraftNode.id)}>Duplicate</button>
-                        <button className="button button-secondary danger" type="button" onClick={() => deleteDraftTopic(selectedDraftNode.id)}>Delete topic</button>
-                        <button className="button button-primary" type="button" onClick={() => setDraftSelectedId(null)}>Save topic</button>
+                        <button className={buttonClass("secondary")} type="button" onClick={() => duplicateDraftTopic(selectedDraftNode.id)}>Duplicate</button>
+                        <button className={buttonClass("secondary", "danger")} type="button" onClick={() => deleteDraftTopic(selectedDraftNode.id)}>Delete topic</button>
+                        <button className={buttonClass("primary")} type="button" onClick={() => setDraftSelectedId(null)}>Save topic</button>
                       </div>
                     </aside>
                   )}
@@ -2197,7 +2199,7 @@ export function ProjectPage() {
                         </div>
 
                         <button
-                          className="button button-primary learning-mini-lesson-btn"
+                          className={buttonClass("primary", "learning-mini-lesson-btn")}
                           disabled={newSessionMutation.isPending}
                           onClick={() => newSessionMutation.mutate()}
                           type="button"
@@ -2221,25 +2223,6 @@ export function ProjectPage() {
           </div>
         )}
       </section>
-
-      {profile?.goals && (
-        <section className="project-section-shell">
-          <div className="project-section-header">
-            <div className="content-card-title project-section-title">Goals</div>
-            <SectionToggle
-              open={sectionVisibility.goals}
-              onClick={() => toggleSection("goals")}
-              label="goals"
-            />
-          </div>
-          {sectionVisibility.goals && (
-            <div className="project-goals">
-              <span className="project-goals-label">Goals</span>
-              <span className="project-goals-text">{profile.goals}</span>
-            </div>
-          )}
-        </section>
-      )}
 
       {/* Progress section */}
       {progress && (progress.quizzes_attempted > 0 || progress.concepts_covered.length > 0 || progress.knowledge_mastery.length > 0) && (
@@ -2315,7 +2298,7 @@ export function ProjectPage() {
                   </div>
                   <div className="weak-quiz-action">
                     <button
-                      className="button button-primary"
+                      className={buttonClass("primary")}
                       disabled={generatingWeakQuiz}
                       onClick={() => void handleGenerateWeakQuiz()}
                       type="button"
@@ -2369,10 +2352,10 @@ export function ProjectPage() {
                   quizzes, and progress signals back to this subject.
                 </p>
                 <div className="empty-state-actions">
-                  <button className="button button-primary" onClick={() => openStartSession({ subject: decoded })} type="button">
+                  <button className={buttonClass("primary")} onClick={() => openStartSession({ subject: decoded })} type="button">
                     Start study session
                   </button>
-                  <button className="button button-secondary" onClick={() => setLectureOpen(true)} type="button">
+                  <button className={buttonClass("secondary")} onClick={() => setLectureOpen(true)} type="button">
                     Open lecture mode
                   </button>
                 </div>
@@ -2420,7 +2403,7 @@ export function ProjectPage() {
                                 value={editingTitleDraft}
                               />
                               <button
-                                className="button button-secondary"
+                                className={buttonClass("secondary")}
                                 disabled={!editingTitleDraft.trim() || updateTitleMutation.isPending}
                                 type="submit"
                                 style={{ fontSize: "0.74rem", padding: "0.35rem 0.65rem" }}
@@ -2428,7 +2411,7 @@ export function ProjectPage() {
                                 Save
                               </button>
                               <button
-                                className="button button-secondary"
+                                className={buttonClass("secondary")}
                                 onClick={() => {
                                   setEditingTitleId(null);
                                   setEditingTitleDraft("");
@@ -2467,7 +2450,7 @@ export function ProjectPage() {
                           {hasSummary ? (
                             <>
                               <button
-                                className={`button button-secondary session-summary-toggle ${isExpanded ? "active" : ""}`}
+                                className={buttonClass("secondary", `session-summary-toggle ${isExpanded ? "active" : ""}`)}
                                 onClick={() => toggleExpanded(c.id)}
                                 type="button"
                                 style={{ fontSize: "0.78rem", padding: "0.4rem 0.8rem" }}
@@ -2479,7 +2462,7 @@ export function ProjectPage() {
                                 )}
                               </button>
                               <button
-                                className="button button-secondary session-download-btn"
+                                className={buttonClass("secondary", "session-download-btn")}
                                 onClick={() => downloadSummary(decoded, sessionNum, c)}
                                 title="Download summary as text file"
                                 aria-label="Download summary"
@@ -2491,7 +2474,7 @@ export function ProjectPage() {
                             </>
                           ) : (
                             <button
-                              className="button button-secondary"
+                              className={buttonClass("secondary")}
                               disabled={generatingId === c.id || c.messages.length < 2}
                               onClick={() => void handleGenerateSummary(c.id)}
                               title={c.messages.length < 2 ? "Study session is too short to summarize" : undefined}
@@ -2502,7 +2485,7 @@ export function ProjectPage() {
                             </button>
                           )}
                           <Link
-                            className="button button-secondary"
+                            className={buttonClass("secondary")}
                             to={`/sessions/${c.id}`}
                             style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem" }}
                           >
@@ -2576,6 +2559,9 @@ export function ProjectPage() {
 
 function ResourcesView({ subject }: { subject: string }) {
   const queryClient = useQueryClient();
+  const [findingResources, setFindingResources] = useState(false);
+  const [resourceFindStatus, setResourceFindStatus] = useState<string | null>(null);
+  const [resourceFindError, setResourceFindError] = useState<string | null>(null);
   const resourcesQuery = useQuery({
     queryKey: ["subject-resources", subject],
     queryFn: () => listSubjectResources(subject),
@@ -2592,6 +2578,52 @@ function ResourcesView({ subject }: { subject: string }) {
   const videos = resources.filter((r) => r.kind === "video");
   const articles = resources.filter((r) => r.kind === "article");
 
+  async function handleFindResources() {
+    setFindingResources(true);
+    setResourceFindError(null);
+    setResourceFindStatus("Looking at your goals, notes, weak areas, and learning map...");
+    let found = 0;
+    try {
+      const conversation = await createConversation(subject, { isLecture: false });
+      await streamChat(
+        conversation.id,
+        {
+          allowed_tool_names: ["find_resource"],
+          message: [
+            `Find external study resources for my ${subject} project. `
+            + "Use my project goals, learning map, recent notes, weak topics, due review, assignments, preferences, and prior study history from the agent context to choose what would help most right now.",
+            "Call the find_resource tool for the best recommendations instead of listing suggestions in prose.",
+            "Prefer one video and one article when possible. Keep the tool reasons short and specific to why each resource fits my current learning context.",
+          ].join(" "),
+        },
+        (event: ChatStreamEvent) => {
+          if (event.event === "agent_step" && typeof event.data.message === "string") {
+            setResourceFindStatus(event.data.message);
+          }
+          if (event.event === "resource") {
+            found += 1;
+            setResourceFindStatus(`Added ${found} resource${found === 1 ? "" : "s"}...`);
+            void queryClient.invalidateQueries({ queryKey: ["subject-resources", subject] });
+          }
+        },
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["subject-resources", subject] }),
+        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+      ]);
+      setResourceFindStatus(
+        found > 0
+          ? `Added ${found} resource${found === 1 ? "" : "s"}.`
+          : "No matching resources were found. Try again after adding more notes or materials.",
+      );
+    } catch (err) {
+      setResourceFindError(err instanceof Error ? err.message : "Could not find resources.");
+      setResourceFindStatus(null);
+    } finally {
+      setFindingResources(false);
+    }
+  }
+
   return (
     <section className="resources-view">
       <div className="resources-view-header">
@@ -2599,11 +2631,24 @@ function ResourcesView({ subject }: { subject: string }) {
           <h2>Resources</h2>
           <p>Videos and articles your tutor has recommended for {subject}. Open in a new tab or remove what isn't useful.</p>
         </div>
+        <button
+          className={buttonClass("primary")}
+          disabled={findingResources}
+          onClick={() => void handleFindResources()}
+          type="button"
+        >
+          {findingResources ? "Finding..." : "Find resources"}
+        </button>
       </div>
+      {(resourceFindStatus || resourceFindError) && (
+        <div className={`resources-status${resourceFindError ? " resources-status-error" : ""}`}>
+          {resourceFindError ?? resourceFindStatus}
+        </div>
+      )}
       {resourcesQuery.isLoading && <div className="resources-empty">Loading…</div>}
       {!resourcesQuery.isLoading && resources.length === 0 && (
         <div className="resources-empty">
-          No resources yet. As you chat with your tutor about {subject}, it will save helpful videos and articles here.
+          No resources yet. Click Find resources and your tutor will use your goals, notes, weak areas, and history to save helpful videos and articles here.
         </div>
       )}
       {videos.length > 0 && (

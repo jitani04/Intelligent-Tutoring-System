@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
-import { createConversation, getDueFlashcards, reviewFlashcard } from "../api";
+import { createConversation, getSmartFlashcardSession, reviewFlashcard } from "../api";
 import type { Flashcard } from "../types";
 import { buttonClass } from "./buttonClass";
 
@@ -24,6 +24,27 @@ function intervalLabel(days: number): string {
   return `in ${months} month${months !== 1 ? "s" : ""}`;
 }
 
+function flashcardFront(card: Flashcard): string {
+  const raw = card.concept.trim();
+  const separators = [":", " - ", " — ", " – "];
+  for (const separator of separators) {
+    if (!raw.includes(separator)) continue;
+    const [front, rest] = raw.split(separator, 2);
+    if (front.trim() && rest.trim().length >= 16) {
+      return front.trim();
+    }
+  }
+  return raw;
+}
+
+function flashcardBack(card: Flashcard): string {
+  const front = flashcardFront(card);
+  let back = card.summary.trim();
+  const escapedFront = front.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  back = back.replace(new RegExp(`^${escapedFront}\\s*(?:\\([^)]*\\))?\\s*[:\\-–—]?\\s*`, "i"), "").trim();
+  return back || card.summary.trim();
+}
+
 export function FlashcardsView({ subject }: { subject: string }) {
   const decodedSubject = subject;
   const encodedSubject = encodeURIComponent(decodedSubject);
@@ -37,10 +58,12 @@ export function FlashcardsView({ subject }: { subject: string }) {
 
   const { data, isLoading } = useQuery({
     queryKey: ["flashcards-due", decodedSubject],
-    queryFn: () => getDueFlashcards(decodedSubject),
+    queryFn: () => getSmartFlashcardSession(decodedSubject),
     enabled: Boolean(decodedSubject),
     staleTime: 0,
   });
+
+  const weakAreas: string[] = data?.weak_areas ?? [];
 
   const newSessionMutation = useMutation({
     mutationFn: () => createConversation(decodedSubject),
@@ -52,6 +75,8 @@ export function FlashcardsView({ subject }: { subject: string }) {
   const cards: Flashcard[] = data?.cards ?? [];
   const total = cards.length;
   const current = cards[index] ?? null;
+  const currentFront = current ? flashcardFront(current) : "";
+  const currentBack = current ? flashcardBack(current) : "";
 
   async function handleRate(quality: number) {
     if (!current || submitting) return;
@@ -123,24 +148,33 @@ export function FlashcardsView({ subject }: { subject: string }) {
         <div className="flash-progress-fill" style={{ width: `${progress}%` }} />
       </div>
 
+      {weakAreas.length > 0 && (
+        <div className="flash-context-strip">
+          <span className="flash-context-label">Targeting weak areas:</span>
+          {weakAreas.slice(0, 4).map((area) => (
+            <span key={area} className="flash-context-chip">{area}</span>
+          ))}
+          {weakAreas.length > 4 && <span className="flash-context-more">+{weakAreas.length - 4} more</span>}
+        </div>
+      )}
+
       <div className="flash-stage">
         <div
           className={`flash-card ${flipped ? "flipped" : ""}`}
-          onClick={() => { if (!flipped) setFlipped(true); }}
+          onClick={() => setFlipped((f) => !f)}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setFlipped(true); }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setFlipped((f) => !f); }}
         >
           <div className="flash-card-inner">
             <div className="flash-card-front">
               {current.subject && <span className="flash-subject">{current.subject}</span>}
-              <div className="flash-concept">{current.concept}</div>
+              <div className="flash-concept">{currentFront}</div>
               <span className="flash-hint">Click to reveal</span>
             </div>
             <div className="flash-card-back">
               {current.subject && <span className="flash-subject">{current.subject}</span>}
-              <div className="flash-concept">{current.concept}</div>
-              <div className="flash-summary">{current.summary}</div>
+              <div className="flash-summary">{currentBack}</div>
             </div>
           </div>
         </div>

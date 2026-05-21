@@ -99,6 +99,18 @@ export function LectureNoteViewer({ note, onClose }: Props) {
                   </section>
                 );
               }
+              if (entry.kind === "live_note") {
+                return (
+                  <article
+                    key={`live-note-${entry.note.id}-${idx}`}
+                    className="lecture-viewer-note"
+                  >
+                    <div className="lecture-viewer-sketch-label">{entry.note.heading}</div>
+                    <h3>{entry.note.concept}</h3>
+                    <p>{entry.note.summary}</p>
+                  </article>
+                );
+              }
               return (
                 <section key={`image-${entry.image.id}-${idx}`} className="lecture-viewer-sketch">
                   <div className="lecture-viewer-sketch-label">Image</div>

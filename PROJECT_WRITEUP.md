@@ -1,11 +1,11 @@
 # Sapient: A Retrieval-Augmented Intelligent Tutoring System
 
 **Technical Research Report**
-**Last updated:** May 20, 2026
+**Last updated:** May 21, 2026
 
 ## Abstract
 
-Sapient is a full-stack intelligent tutoring system designed to support active study rather than one-off question answering. The platform combines conversational tutoring, retrieval-augmented generation (RAG) over student-provided materials, inline formative assessment, spaced-repetition review, Bayesian Knowledge Tracing (BKT), assignment-aware reminders, feedback-driven personalization, and multimodal interaction through diagrams, images, resources, and voice. The system is implemented with a FastAPI backend, a React frontend, PostgreSQL with `pgvector`, S3-compatible object storage, Google Gemini as the default tutor model, optional Anthropic/OpenAI chat model selection, and OpenAI speech services for transcription and audio playback. Its core architectural goal is to turn tutoring sessions into durable learning artifacts: conversations generate quizzes, key ideas, summaries, flashcards, resources, mastery estimates, and project-level progress signals that can be revisited over time. This report presents the motivation, design, implementation, and current limitations of the system as implemented in the repository as of May 20, 2026.
+Sapient is a full-stack intelligent tutoring system designed to support active study rather than one-off question answering. The platform combines conversational tutoring, retrieval-augmented generation (RAG) over student-provided materials, inline formative assessment, spaced-repetition review, Bayesian Knowledge Tracing (BKT), assignment-aware reminders, feedback-driven personalization, a bounded agentic tutoring workflow, Smart Review Digest emails, and multimodal interaction through diagrams, images, resources, and voice. The system is implemented with a FastAPI backend, a React frontend, PostgreSQL with `pgvector`, S3-compatible object storage, Google Gemini as the default tutor model, optional Anthropic/OpenAI chat model selection, OpenAI speech services for transcription and audio playback, and a provider-abstracted email layer that can use Resend in production. Its core architectural goal is to turn tutoring sessions into durable learning artifacts: conversations generate quizzes, key ideas, summaries, flashcards, resources, mastery estimates, next-best-action recommendations, and project-level progress signals that can be revisited over time. This report presents the motivation, design, implementation, and current limitations of the system as implemented in the repository as of May 21, 2026.
 
 **Keywords:** intelligent tutoring systems, retrieval-augmented generation, spaced repetition, educational AI, FastAPI, React, pgvector
 
@@ -19,13 +19,14 @@ The project is designed around three assumptions:
 2. Study sessions are more valuable when they produce reusable artifacts such as notes, quizzes, and review prompts.
 3. Answers are stronger when grounded in the learner's own uploaded materials instead of relying only on the base model.
 
-This report is organized around three research and engineering questions:
+This report is organized around four research and engineering questions:
 
 - **RQ1:** How can an LLM tutoring system convert transient chat interactions into durable learning artifacts?
 - **RQ2:** How can the system preserve the convenience of conversational AI while encouraging active learning, retrieval practice, and source-grounded study?
 - **RQ3:** What software-development practices are effective when building a full-stack AI product primarily with AI-assisted development tools?
+- **RQ4:** How can a tutoring system become more agentic without becoming an unconstrained autonomous agent?
 
-The report makes three contributions. First, it documents a deployable architecture for a retrieval-augmented tutoring system that persists learning artifacts beyond the chat turn. Second, it describes how feedback, BKT mastery estimates, assignments, and lecture mode can be connected into one study workflow. Third, it records a practical AI-assisted development methodology for building and evaluating a full-stack educational AI system under limited time and budget constraints.
+The report makes four contributions. First, it documents a deployable architecture for a retrieval-augmented tutoring system that persists learning artifacts beyond the chat turn. Second, it describes how feedback, BKT mastery estimates, assignments, and lecture mode can be connected into one study workflow. Third, it shows how a workflow-first agent layer can observe student state, choose bounded tutoring actions, expose activity traces, and require approval for sensitive actions such as email sends. Fourth, it records a practical AI-assisted development methodology for building and evaluating a full-stack educational AI system under limited time and budget constraints.
 
 ## 2. Background and Motivation
 
@@ -58,6 +59,8 @@ The main design requirements derived from the literature motivation, survey them
 - identify weak areas with both quiz history and BKT mastery estimates
 - connect learning priorities to deadlines through assignments and calendar feeds
 - support multiple interaction modes, including voice and lecture-style learning
+- behave as a controlled study agent by planning from student state, calling only typed tools, and requiring user approval for sensitive actions
+- support opt-in review reminders and onboarding email without letting email delivery block core tutoring workflows
 
 ## 4. System Overview
 
@@ -66,7 +69,8 @@ Sapient is organized around **subjects** and **study sessions**.
 - A **subject** acts as a project container with a level, goals, materials, cover image, mind map, and progress indicators.
 - A **study session** is a conversation between the student and the tutor.
 - During a session, the tutor can produce quizzes, key ideas, summaries, citations, Mermaid diagrams, real image artifacts, web sources, and recommended resources.
-- After a session, the student can revisit notes, flashcards, resources, search results, summaries, due assignments, smart reminders, and weak-area practice.
+- During a turn, the agent layer can emit subtle activity events such as checking weak topics, reviewing due flashcards, searching materials, or preparing a review digest.
+- After a session, the student can revisit notes, flashcards, resources, search results, summaries, due assignments, smart reminders, weak-area practice, and next-best-action recommendations.
 
 This structure gives the application a longer-lived educational memory than a standard chatbot interface.
 
@@ -98,11 +102,15 @@ The backend is implemented in FastAPI with SQLAlchemy 2.0 async ORM and Alembic 
 - Google OAuth sign-in verification
 - conversation and project APIs
 - streaming tutoring responses
+- bounded agent orchestration over tutoring turns
 - material ingestion and retrieval
 - search, summaries, quizzes, flashcards, resources, assignments, and progress aggregation
+- pending agent actions, review digest previews, and provider-abstracted email sends
 - observability, security headers, and per-bucket rate limiting
 
 The backend also controls the structured tutoring actions that let the model create persistent learning artifacts. The current model registry exposes Gemini 2.5 Flash, Claude Sonnet 4.6, and GPT-4o as selectable chat models, while Gemini remains the default configured model.
+
+The agentic layer deliberately sits **around** the existing LLM service rather than replacing it. `AgentOrchestrator` gathers the current student state, `StudyPlanner` chooses a bounded recommended action, and the existing chat service still performs the model/tool execution. This separation matters because the system remains inspectable: planning, tool access, pending approvals, email sends, and next-best-action recommendations are explicit application events rather than hidden model behavior.
 
 ### 5.3 Database and Storage
 
@@ -152,6 +160,20 @@ The tutoring layer exposes five main structured actions to the model:
 - `find_resource`
 
 The web-search tool is added when configured. These actions are important because they let the tutor produce data objects, not just text. Quizzes, key ideas, and recommended resources are persisted to the database. Diagrams are streamed to the client as Mermaid source for immediate rendering. Real image artifacts and web-source results are streamed as attributed cards so the user can distinguish uploaded-material citations, public web sources, and visual references.
+
+### 6.4 Bounded agentic tutoring workflow
+
+The most recent architectural change is the addition of a bounded agentic tutoring workflow. The goal was not to make Sapient an unconstrained autonomous agent. The goal was to make it a controlled study agent that observes learning state, selects an appropriate next tutoring move, calls typed tools, persists artifacts, and recommends the next useful study action while keeping sensitive actions under user control.
+
+The workflow has three main backend services:
+
+- `AgentOrchestrator`, which builds an `AgentState` from the current user, subject, conversation, weak topics, BKT mastery state, due flashcards, upcoming assignments, saved notes, retrieved sources, tutor preferences, and review-email preferences.
+- `StudyPlanner`, which returns a structured `StudyPlan` with the user intent, current mode, recommended action, target topics, reason, candidate tools, and whether approval is required.
+- `agent_tools`, which defines a typed registry of allowed tools and their approval policies. Normal learning actions such as `generate_quiz`, `save_key_idea`, `create_diagram`, `find_image`, and `find_resource` can run during the tutor turn. Sensitive actions such as sending a review digest email, scheduling reminders, editing the learning map, deleting artifacts, or bulk-generating artifacts require approval or opt-in.
+
+The planner starts with deterministic rules. For example, "quiz me" maps to `generate_quiz`, "email me a review plan" maps to `generate_review_digest` plus a pending `send_review_digest_email` action, and "what should I study next?" can map to `practice_weak_topic` when BKT weak topics are available. The LLM remains the tutor and explanation engine; the application layer owns the workflow boundaries.
+
+This design adds observability and student trust. The chat stream now includes `agent_step` events such as "Checking weak topics and due review..." or "Preparing review digest email...", `pending_action` events for approval cards, and `next_best_action` events at the end of meaningful tutor turns. The tutor is also instructed not to claim that an email was sent unless the email tool actually succeeded. In product terms, Sapient becomes more agentic without feeling like it is taking over: it recommends, prepares, and assists, but asks before high-impact actions.
 
 ## 7. Learning and Product Features
 
@@ -282,11 +304,32 @@ Three redesigns were considered:
 
 The three-button design was adopted. Quality scores 1/3/5 are still passed to the existing SM-2 update on the backend (no schema or scheduler change), so the spaced-repetition behavior is unchanged; only the UI surface narrows. The interval preview under each button still reads from `sr_interval`, `sr_repetitions`, and `sr_ease_factor` so students can see when the card will return.
 
+### 7.14 Smart Review Digest emails and onboarding email
+
+Sapient now includes two email-backed workflows: transactional onboarding email and opt-in Smart Review Digest email.
+
+The onboarding email is sent after successful account creation through either password registration or first-time Google sign-in. It is intentionally transactional and non-blocking: the user row is committed first, then FastAPI `BackgroundTasks` sends the welcome email through the shared provider abstraction. If the email provider fails, signup still succeeds and the failure is logged. The onboarding email links the student back to the app and nudges them toward the first useful actions: creating a subject, uploading materials, or asking Sapient to quiz them.
+
+The Smart Review Digest is different because it is a study intervention, not a simple signup confirmation. The digest service builds a personalized review plan from:
+
+- upcoming assignments and calendar-imported deadlines
+- due flashcards and saved key ideas
+- weak topics from BKT and conversation summaries
+- recent missed quiz concepts
+- recent lecture/session summaries
+- subject learning-map topics when available
+
+The generated digest contains the reason for the reminder, focus topics, short key notes, weak areas, recommended Sapient actions, optional outside-study actions, and links back into the relevant subject, flashcards, quizzes, lecture mode, and notes. It avoids long document excerpts because email should be a prompt to study, not a replacement for the study material.
+
+Email delivery is controlled through `email_service.py`, which exposes an `EmailProvider` interface. The default provider is `noop`, which makes local development safe. Production can use Resend by setting `EMAIL_PROVIDER=resend`, `EMAIL_FROM_ADDRESS`, `RESEND_API_KEY`, and `APP_BASE_URL`. The business logic is not hardwired to Resend, so SendGrid, SES, Mailgun, or SMTP can be added later behind the same interface.
+
+The user-facing guardrail is approval. Manual review emails require preview plus an explicit Send click. Automatic review emails require the user to enable review emails in Settings. The system stores pending approval requests in `pending_agent_actions` and logs digest generation, sends, failures, and skips in `review_digest_logs`. GitHub Actions provides the v1 scheduler: a daily workflow calls the protected `/internal/review-digests/run` endpoint with `INTERNAL_JOB_TOKEN`, and the backend decides whether each opted-in user has a real review signal worth emailing. Daily scheduler cadence therefore does not imply daily email delivery; it only prevents deadline-trigger windows from being missed.
+
 ## 8. Data Model
 
 The major persisted entities are:
 
-- `users`: authentication, onboarding, and tutor preferences
+- `users`: authentication, onboarding, tutor preferences, and review-email preferences
 - `conversations`: subject-scoped study sessions
 - `messages`: user and assistant turns within a session
 - `materials`: uploaded files and ingestion status
@@ -294,18 +337,20 @@ The major persisted entities are:
 - `quizzes`: tutor-generated quiz questions
 - `quiz_attempts`: student responses and correctness
 - `key_ideas`: saved notes, artifact metadata, and flashcard scheduling data
-- `project_profiles`: subject-level settings, cover image metadata, mind maps, learning-map progress, and BKT knowledge state
+- `project_profiles`: subject-level settings, cover image metadata, mind maps, learning-map progress, BKT knowledge state, and next recommended action
 - `resources`: tutor-recommended videos and articles saved by subject, conversation, and optional assistant message
 - `assignments`: manual or imported deadlines with completion state
 - `calendar_feeds`: iCal/webcal feed definitions and sync metadata
 - `message_feedback`: per-message ratings, corrections, categorization, and prompt/model metadata
 - `preference_memories`: vector-searchable derived preference memories when personalization memory is enabled
+- `pending_agent_actions`: user-approval queue for sensitive agent actions such as sending review digest emails
+- `review_digest_logs`: generated, sent, failed, and skipped digest records with provider metadata and idempotency keys
 
 This schema supports both short-term tutoring interactions and long-term review behavior.
 
 ## 9. Deployment and Operational Design
 
-The deployment shape is a Dockerized FastAPI backend and a static React build, both hosted on Fly.io, paired with managed Postgres on Neon and S3-compatible object storage on Cloudflare R2. External AI services (Gemini, optional Anthropic/OpenAI chat models, OpenAI speech APIs, Google OAuth, Pexels/Wikimedia image search, LangSearch search/reranking, and YouTube resource search) are accessed over the public internet via API keys held as platform secrets. GitHub Actions now runs backend tests, builds the frontend, and deploys both Fly apps on pushes to `main`. This section records the alternatives that were considered for each component and the reasoning that produced the current design.
+The deployment shape is a Dockerized FastAPI backend and a static React build, both hosted on Fly.io, paired with managed Postgres on Neon and S3-compatible object storage on Cloudflare R2. External AI services (Gemini, optional Anthropic/OpenAI chat models, OpenAI speech APIs, Google OAuth, Pexels/Wikimedia image search, LangSearch search/reranking, YouTube resource search, and Resend email) are accessed over the public internet via API keys held as platform secrets. GitHub Actions now runs backend tests, builds the frontend, deploys both Fly apps on pushes to `main`, and runs the scheduled Smart Review Digest job against the production backend. This section records the alternatives that were considered for each component and the reasoning that produced the current design.
 
 ### 9.1 Object storage: Cloudflare R2 over AWS S3
 
@@ -362,13 +407,25 @@ The public URL is the Fly-provided subdomain, with the frontend at `https://sapi
 
 The Fly-provided subdomain was chosen because the application is currently a single-developer project where the additional polish of a custom domain is not yet necessary. The deployment is structured so that adding a custom domain later is a cosmetic change rather than a structural one: it requires running `fly certs add` on each app, adding DNS records, updating the `CORS_ALLOW_ORIGINS` setting on the backend, the `VITE_API_BASE_URL` build argument on the frontend, the R2 bucket CORS policy, and the Google OAuth authorized origins. None of those changes touch application code.
 
+There is one exception where a custom domain becomes more than cosmetic: production email. Resend and comparable email providers generally require a verified sending domain for reliable production delivery. The application can still be hosted on `fly.dev`, and the email code can still be tested through Resend's development sender or the local `noop` provider, but production onboarding and review-digest emails should eventually come from a verified address such as `review@<custom-domain>`. This makes email the first feature that creates real pressure to add a custom domain, even though the web application itself can continue to run on Fly's subdomain.
+
 ### 9.6 Regional placement
 
 The end-to-end latency profile of a tutoring request is dominated by two hops: the user-to-frontend hop, which is bounded by the user's connectivity, and the backend-to-database hop, which occurs on every request and often involves multiple round-trips per query. To minimize the second hop, the compute and database regions are aligned on the United States West Coast.
 
 The chosen regions are Fly.io `lax` (Los Angeles) for both backend and frontend, Cloudflare R2 in the WNAM (Western North America) location, and Neon in `us-west-2` (Oregon). Neon does not offer a Los Angeles region, so Oregon is the closest available choice and yields a backend-to-database round-trip in the low tens of milliseconds. This places all three persistent components within the same broad geography, keeping per-request overhead low for a developer based in Los Angeles while preserving acceptable latency for users elsewhere on the West Coast and in the western United States.
 
-### 9.7 Current external-service notes
+### 9.7 Scheduled email jobs
+
+Automatic review reminders need a scheduler, but the project does not yet need a dedicated worker queue. Three options were considered:
+
+- **In-process scheduler.** Simple to write, but unreliable on autoscaled or stopped Fly Machines because jobs can be missed when the app sleeps or duplicate when multiple machines run.
+- **Managed scheduler such as AWS EventBridge or Google Cloud Scheduler.** Operationally robust, but adds another cloud account/service boundary for a small v1 feature.
+- **GitHub Actions scheduled workflow.** Already part of the deployment stack, easy to audit, and sufficient for a once-per-day job that calls one protected HTTP endpoint.
+
+GitHub Actions was chosen for v1. The workflow in `.github/workflows/review-digests.yml` runs daily and on manual dispatch. It calls `POST /internal/review-digests/run` on the production backend with `X-Internal-Job-Token`; the backend then checks user opt-in status and review signals before sending. This is intentionally coarse-grained: the scheduler only wakes the system up, while the application owns the decision to send or skip.
+
+### 9.8 Current external-service notes
 
 Several external-service choices are time-sensitive, so the report was checked against current vendor documentation in May 2026:
 
@@ -400,7 +457,7 @@ The system was instrumented for full three-signal observability — distributed 
 
 **Traces.** An ASGI-level middleware (`ObservabilityMiddleware`) assigns every HTTP request a `X-Request-ID` (accepted from upstream or generated as a UUID), binds the ID into a `ContextVar`, and emits a structured JSON log line at request completion. Distributed tracing itself is provided by four OpenTelemetry instrumentations: `FastAPIInstrumentor` produces an `http.server` span per request annotated with the matched route template, `SQLAlchemyInstrumentor` and `AsyncPGInstrumentor` produce DB spans for every query, and `HTTPXClientInstrumentor` produces client spans for outbound calls (the Whisper, OpenAI TTS, Pexels, Wikimedia Commons, LangSearch, and YouTube APIs). Manual spans are added inside `LLMService.stream_response` and `LLMService.stream_with_tools` and annotated with the OpenTelemetry GenAI semantic conventions (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`), so per-call latency, token consumption, and tool-call rate are queryable as first-class span attributes. The middleware is intentionally implemented as a pure ASGI wrapper rather than a Starlette `BaseHTTPMiddleware` because the chat endpoint streams long-lived Server-Sent Events and `BaseHTTPMiddleware` is known to buffer streaming bodies in certain configurations.
 
-**Metrics.** Metrics flow through the same OpenTelemetry `MeterProvider`, which is configured with two readers: a `PrometheusMetricReader` that backs the `/metrics` scrape endpoint, and a `PeriodicExportingMetricReader` that pushes the same data over OTLP/HTTP to any configured collector. The FastAPI instrumentor automatically emits `http.server.request.duration` and `http.server.active_requests`. Three application-specific counters — `rate_limit_rejections_total{bucket}`, `llm_calls_total{model,status}`, and `llm_tokens_total{model,kind}` — record the policy events that matter for capacity planning: which buckets are pressured, which model is being called, whether calls are succeeding, and how prompt and completion tokens are accumulating per model.
+**Metrics.** Metrics flow through the same OpenTelemetry `MeterProvider`, which is configured with two readers: a `PrometheusMetricReader` that backs the `/metrics` scrape endpoint, and a `PeriodicExportingMetricReader` that pushes the same data over OTLP/HTTP to any configured collector. The FastAPI instrumentor automatically emits `http.server.request.duration` and `http.server.active_requests`. Application-specific counters record the policy events that matter for capacity planning and agent observability: rate-limit rejections, LLM calls, token usage, review digest generation, review digest email sends/failures/skips, and pending agent action creation/approval/rejection.
 
 **Logs.** Logs are emitted as JSON to stdout. A `TraceContextLogFilter` reads the active OpenTelemetry span at log time and stamps `trace_id` and `span_id` onto every `LogRecord`, so each log line carries the correlation identifiers needed to navigate from a log entry to the corresponding span and back. The same fields (`trace_id`, `span_id`, `request_id`, `user_id`) appear consistently across application logs, the per-request log line emitted by the middleware, and any exception traces.
 
@@ -460,6 +517,8 @@ Two of the eleven metrics move in directions that initially look counterintuitiv
 
 *Failure-mode analysis.* Reading the lowest-scoring rows in each evaluation is more informative than the aggregate means. On the Ragas side, the rows with `factual_correctness=0.00` are not actually wrong answers in the colloquial sense — they are dominated by two patterns. The first is *verbose-but-correct expansion*: a question like "Has Denosumab (Prolia) been approved by FDA?" has a one-sentence ground truth ("Yes, Denosumab was approved by the FDA in 2010") and the generated answer correctly opens with "Yes" and then enumerates the conditions it is approved for, which adds claims the ground truth never makes. Claim-level F1 penalizes these additional claims even though they are accurate and grounded in the retrieved context. The second pattern is *honest hedging under inconsistent context*: when retrieval returns chunks that disagree, the tutor sometimes responds with "the context provides conflicting information" rather than committing to an answer. That behavior is desirable for a tutoring system but reads to claim-level F1 as a missing claim. Together, these two patterns explain most of the 0.456 score on this metric — it is more a feature of how the metric is computed than a coverage failure of the corpus, and is the kind of trade-off the writeup would expect a follow-on study to investigate by replacing claim-level F1 with a semantic-overlap metric. On the TutorBench side, the lowest-scoring scenarios are concentrated in long quantitative word problems (Physics inclined-plane, Statistics diagnostic-test base-rate, Calculus differential-equation derivations); the dimension that pulls the mean down most consistently across all subjects is `connections` (4.41 over 100 rows), which scores the tutor on how often it reaches for analogies and prior topics — a real pedagogical opportunity rather than a metric artifact. Per-subject overall means range from 4.42 (Computer Science, `n=11`) to 4.79 (Chemistry, `n=21`, and Statistics, `n=20`), and 78% of scenarios score at or above 4.5 overall, so the tutor's pedagogical floor is high and the variance is concentrated in the lower 22% of scenarios rather than spread across the dataset.
 
+*Example TutorBench inspection.* One high-scoring TutorBench row in `evals/tutoring_results.csv` asks the tutor to respond to a chemistry follow-up about ranking HF, HCl, and HI from weakest to strongest acid. The expected chemistry answer is `HF < HCl < HI`: although fluorine is highly electronegative, the dominant factor down the hydrogen halide group is H-X bond strength, and the H-I bond is longest and weakest, so HI dissociates most readily in water. The saved Sapient response in `evals/tutoring_responses_checkpoint.json` matches that target. It first corrects the student's mistaken claim that HCl is the most electronegative, then explains why electronegativity is not the controlling variable in this comparison, then gives the correct ranking and the atomic-size/bond-strength reason. The judge scored this row `4.83` overall, with 5s for scaffolding, engagement, misconception handling, calibrated depth, and grounding, and a 4 for connections. The one-point deduction is useful: the answer used the periodic table and bond-strength reasoning well, but could have connected more explicitly to the student's prior knowledge. This illustrates the kind of behavior the system is trying to optimize for: it does not merely state the final ranking, but identifies the misconception, preserves the correct chemistry, and turns the correction into a reusable concept note.
+
 *Limitations.* The biomedical benchmark exercises retrieval and faithfulness but does not measure educational quality; TutorBench closes that gap for response-level teaching behaviors but introduces its own caveats. Some TutorBench rows are multimodal, while the current eval harness is text-first, so image-backed rows are skipped by default unless explicitly enabled. The judge is from a different model family than the Gemini tutor, which reduces self-judging bias but does not eliminate LLM-as-judge variance, and the entire eval suite is judged by a single OpenAI model family — running the same prompts under a second judge (e.g., Claude on a small subset) would be the obvious robustness check that a follow-up project could add cheaply. On factual_correctness specifically, the 0.456 score is partly a property of the metric (claim-level F1 penalizes verbose-but-correct expansion and honest hedging) rather than purely a corpus-coverage signal; a richer follow-up would re-score those rows with a semantic-overlap metric. Beyond automated evaluation, two informal read-aloud studies were conducted in which student volunteers used the deployed application and narrated their reasoning while interacting with it; the observations from those sessions directly informed iterations on the chat UI, the lecture-mode controls, and the way sources are presented inline. This is intentionally lightweight rather than a formal user study: as a student building a system explicitly for the way I myself study, I treated my own first-person experience as a primary design source and used the read-aloud sessions to surface frictions I had already adapted around. A formal between-subjects study with retention metrics and a control condition is the right next step for a follow-on project but was outside the scope of this one. Expanding the judge ensemble and adding a multimodal path for image-backed TutorBench rows remain natural extensions on the automated side.
 
 ## 12. Discussion
@@ -472,11 +531,13 @@ The project has several architectural strengths:
 - it uses explicit tools for public web search, images, and resources instead of hiding outside context in plain text
 - it models student knowledge with BKT rather than only aggregate quiz accuracy
 - it connects study planning to deadlines through calendar-backed assignments
+- it adds a bounded agentic workflow without letting the model silently perform sensitive actions
+- it supports opt-in review digest and onboarding email through a provider abstraction
 - it has deploy, observability, security-header, and rate-limiting paths that are credible beyond a local demo
 - it supports multiple study modes without changing the core backend
 - it uses a production-friendly object storage flow instead of proxying uploads through the API server
 
-The central finding is that the system becomes more educationally meaningful when chat is treated as one interface into a larger learning state, rather than as the product itself. Sessions feed notes, quizzes, resources, progress, mastery estimates, reminders, and review systems rather than disappearing after the answer is delivered. This directly addresses RQ1 by converting transient interactions into durable artifacts, and RQ2 by pairing conversational convenience with retrieval practice, source cards, lecture controls, and student-visible study memory.
+The central finding is that the system becomes more educationally meaningful when chat is treated as one interface into a larger learning state, rather than as the product itself. Sessions feed notes, quizzes, resources, progress, mastery estimates, reminders, next-best-action recommendations, and review systems rather than disappearing after the answer is delivered. This directly addresses RQ1 by converting transient interactions into durable artifacts, and RQ2 by pairing conversational convenience with retrieval practice, source cards, lecture controls, and student-visible study memory. RQ4 is addressed by the agentic workflow: the system can observe state, plan, and propose actions, but its action space is bounded by typed tools, approval policies, and visible frontend events.
 
 The evaluation design also clarifies an important distinction: retrieval quality, factual grounding, and pedagogical helpfulness are related but separate properties. A system can retrieve the right passage and still produce a weak tutor response if it does not scaffold, check understanding, or adapt depth. Conversely, a warm and engaging answer is not acceptable if it is not grounded in the student's material when grounding is available. Sapient therefore needs both RAG metrics and tutoring-quality metrics to be evaluated honestly.
 
@@ -492,6 +553,9 @@ The current implementation is strong as a prototype and early product foundation
 - Redis-backed rate limiting before horizontal backend scaling
 - migration from localStorage bearer tokens to HttpOnly cookie auth with CSRF protection
 - migration paths for newer OpenAI speech models (`gpt-4o-mini-tts`, `gpt-4o-transcribe`) if latency or transcription quality become priority issues
+- full enforcement of review-email frequency windows and preferred reminder times before broad production use
+- a verified custom email domain for reliable production delivery, since Fly's `fly.dev` application domain is not an email-sending identity the project controls
+- deeper automated evaluation of the agentic workflow itself, including whether next-best-action recommendations improve study behavior
 - stronger evaluation workflows for tutoring quality, retrieval relevance, BKT calibration, and resource-recommendation usefulness
 
 ## 14. AI-Assisted Development Methodology
@@ -512,7 +576,7 @@ For Sapient specifically, this process shaped both the app and the engineering a
 
 ## 15. Conclusion
 
-Sapient demonstrates a practical architecture for an educational AI system that goes beyond generic chat. By combining conversational tutoring, retrieval grounding, structured artifact generation, BKT-based mastery modeling, spaced repetition, calendar-aware reminders, feedback personalization, and voice interaction, the platform creates a more complete study environment. Its main contribution is not any single feature in isolation, but the way those features are connected: tutoring sessions generate reusable learning artifacts, those artifacts drive review and progress, quiz evidence updates the student model, deadlines influence study priority, and the system gradually builds a personalized study workspace for the learner over time.
+Sapient demonstrates a practical architecture for an educational AI system that goes beyond generic chat. By combining conversational tutoring, retrieval grounding, structured artifact generation, BKT-based mastery modeling, spaced repetition, calendar-aware reminders, feedback personalization, bounded agentic planning, opt-in review digest email, onboarding email, and voice interaction, the platform creates a more complete study environment. Its main contribution is not any single feature in isolation, but the way those features are connected: tutoring sessions generate reusable learning artifacts, those artifacts drive review and progress, quiz evidence updates the student model, deadlines influence study priority, the agent recommends a next study step, and the system gradually builds a personalized study workspace for the learner over time.
 
 ## References
 
@@ -531,3 +595,39 @@ Sapient demonstrates a practical architecture for an educational AI system that 
 [7] Cloudflare, ["R2 pricing,"](https://developers.cloudflare.com/r2/pricing/) accessed May 2026.
 
 [8] Fly.io, ["Pricing,"](https://fly.io/docs/about/pricing/) and ["Autostop/autostart Machines,"](https://fly.io/docs/launch/autostop-autostart/) accessed May 2026.
+
+---
+
+## Appendix: Engineering Decisions — May 2026 Feature Batch
+
+### PDF Export for Notes
+**Decision:** Browser print-window approach (open new window, write formatted HTML, auto-invoke `window.print()`).
+**Alternatives considered:** jsPDF (would add a ~300 KB dependency); backend PDF generation via wkhtmltopdf or WeasyPrint (requires server-side rendering pipeline and an additional route); `<iframe>` print injection (same security sandbox restrictions). The print-window approach requires zero new dependencies, works across all browsers, and lets the OS handle PDF quality. It opens in a blank tab that auto-closes after the print dialog, which is acceptable for an academic tool.
+
+### Horizontal Tree Flow Diagram for Learning Map
+**Decision:** Client-side column layout computed via DAG depth assignment (`computeNodeColumns`), rendered with CSS flex columns and SVG arrow connectors between columns.
+**Alternatives considered:** D3-based force-directed graph (heavy dependency, hard to style consistently with the design system); dagre-d3 (similar weight, complex integration); Mermaid `flowchart LR` auto-rendering (loses click-to-select interactivity on individual nodes). The hand-rolled column layout is ~40 lines and keeps the existing interactive node-detail panel behavior intact.
+
+### Material Download via Blob Fetch
+**Decision:** `fetch()` + `URL.createObjectURL()` blob approach for the Download button; "Open in new tab" link preserved as-is.
+**Alternatives considered:** Using the `download` HTML attribute directly on the `<a>` tag (fails for cross-origin S3 presigned URLs in all major browsers per CORS spec); adding a backend proxy download route (adds server load and an extra round-trip). The blob fetch approach works unconditionally for cross-origin files and downloads silently without ever opening a new tab.
+
+### Expanded Diagram Type Support
+**Decision:** Updated the `create_diagram` agent tool description to include `timeline`, `gantt`, `pie`, `xychart-beta`, `journey`, and `block-beta` Mermaid diagram types. No schema or rendering change needed — Mermaid.js already supports all of these.
+**Alternatives considered:** Adding a separate tool per diagram type (increases token overhead and model confusion); integrating Chart.js or Plotly for richer charts (would require a new rendering path and component). Keeping Mermaid as the single renderer is simpler; the main gap was that the tool prompt incorrectly implied "handdrawn" was the only style.
+
+### Agent Customization in Onboarding
+**Decision:** Split onboarding into two steps: step 1 collects name and use-case (existing behavior), step 2 collects tutor name, tone, and style (new). Both calls happen before navigating to `/dashboard`, so the tutor is personalized before the first session.
+**Alternatives considered:** Inline the tutor settings on the same form (makes the page too long for onboarding); defer it entirely to a post-signup prompt in the first chat (loses the explicit setup moment). Two-step onboarding is a standard UX pattern for progressive disclosure.
+
+### Mindmap Generation Speed Optimization
+**Decision:** (a) Added `temperature=0` parameter to `_build_chat_model` and exposed it on `create_llm_service`, then passed `temperature=0` to the `generate_mindmap` endpoint. (b) Reduced the mindmap prompt to request 4–5 topics with 2–4 subtopics (instead of 4–6 with 3–5), and required `id` and `prerequisite_ids` fields in the output schema to eliminate the extra normalization pass.
+**Alternatives considered:** Parallel generation of individual topic subtrees (requires multiple LLM calls and a merge step); caching a skeleton map per subject prefix (too coarse, misses level/goals personalization); switching to a dedicated fast model (only 3 models supported, all similar speed for structured outputs). `temperature=0` on Gemini reduces sampling overhead and produces more deterministic JSON, which is measurably faster for structured generation tasks.
+
+### Landing Page Background
+**Decision:** CSS animated radial gradient blobs (`filter: blur` + `animation`) and a slow-rotating SVG neural-graph decoration in the hero section. No images or external assets.
+**Alternatives considered:** A static background image (doesn't animate, larger payload); CSS mesh gradient (browser support still limited in 2026 via `@property`); Three.js particle background (~600 KB dependency for a mostly static page). The SVG + CSS approach is zero-dependency, <1 KB added to the bundle, and consistent with the existing design system colors.
+
+### Model Fallback on LLM Error
+**Decision:** Added `_stream_tools_with_fallback` async generator in `chat_service.py`. On any `is_llm_quota_error` exception from `stream_with_tools`, it retries in priority order through the other supported models (excluding the one that failed). Only the tool-based main chat path gets fallback; the web-search streaming path is excluded because tokens are emitted mid-stream and partial output cannot be safely restarted.
+**Alternatives considered:** Retry with exponential backoff on the same model (doesn't help for sustained quota exhaustion); add a "preferred fallback model" user setting (UX complexity for a rare failure case); failover at the HTTP middleware level (can't pass model context there). The current approach is transparent to the user: the response arrives from whichever model succeeds, without any UI change.

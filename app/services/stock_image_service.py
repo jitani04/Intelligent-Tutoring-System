@@ -10,7 +10,7 @@ class StockImageService:
         self._pexels_api_key = pexels_api_key
         self._base_url = "https://api.pexels.com/v1"
 
-    async def search_photos(self, query: str, per_page: int = 9) -> list[dict[str, str]]:
+    async def search_photos(self, query: str, per_page: int = 8) -> list[dict[str, str]]:
         if not self._pexels_api_key:
             raise StockImageError("PEXELS_API_KEY is not configured.")
 

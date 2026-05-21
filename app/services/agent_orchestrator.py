@@ -98,9 +98,13 @@ class AgentOrchestrator:
         resource_provider: YouTubeResourceProvider | None = None,
         preference_summary: str | None = None,
         preference_memories: list[str] | None = None,
+        allowed_tool_names: list[str] | None = None,
     ) -> AsyncIterator[SseEvent]:
         yield SseEvent(event="agent_step", data={"message": "Checking your learning state..."})
         state = await self.build_state(session=session, user=user, conversation=conversation)
+        if allowed_tool_names is not None:
+            requested_tools = set(allowed_tool_names)
+            state.allowed_tools = [tool for tool in state.allowed_tools if tool in requested_tools]
         yield SseEvent(event="agent_step", data={"message": "Checking weak topics and due review..."})
         plan = self.planner.plan(
             user_message=user_message,

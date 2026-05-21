@@ -5,6 +5,7 @@ class ChatRequest(BaseModel):
     message: str | None = Field(default=None, max_length=4000)
     retry_message_id: int | None = None
     edit_message_id: int | None = None
+    allowed_tool_names: list[str] | None = None
 
     @model_validator(mode="after")
     def validate_chat_request(self) -> "ChatRequest":

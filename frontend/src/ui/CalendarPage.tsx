@@ -27,6 +27,7 @@ import {
 } from "../api";
 import { formatSubjectName } from "../subjects";
 import type { Assignment, AssignmentInput, CalendarFeed } from "../types";
+import { buttonClass } from "./buttonClass";
 
 const WEEK_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABEL = (year: number, month: number) =>
@@ -326,11 +327,11 @@ export function CalendarPage() {
           <p>Track assignments and Canvas deadlines in one place.</p>
         </div>
         <div className="calendar-hero-actions">
-          <button className="button button-secondary" onClick={() => setShowCanvasForm((open) => !open)} type="button">
+          <button className={buttonClass("secondary")} onClick={() => setShowCanvasForm((open) => !open)} type="button">
             <LinkIcon size={15} strokeWidth={2} />
             Connect Canvas
           </button>
-          <button className="button button-primary" onClick={() => setShowAssignmentForm((open) => !open)} type="button">
+          <button className={buttonClass("primary")} onClick={() => setShowAssignmentForm((open) => !open)} type="button">
             <Plus size={15} strokeWidth={2} />
             Add assignment
           </button>
@@ -386,8 +387,8 @@ export function CalendarPage() {
               </label>
               {formError ? <p className="error-text">{formError}</p> : null}
               <div className="calendar-form-actions">
-                <button className="button button-secondary" onClick={() => setShowAssignmentForm(false)} type="button">Cancel</button>
-                <button className="button button-primary" disabled={createAssignmentMutation.isPending} type="submit">
+                <button className={buttonClass("secondary")} onClick={() => setShowAssignmentForm(false)} type="button">Cancel</button>
+                <button className={buttonClass("primary")} disabled={createAssignmentMutation.isPending} type="submit">
                   {createAssignmentMutation.isPending ? "Saving..." : "Save assignment"}
                 </button>
               </div>
@@ -429,8 +430,8 @@ export function CalendarPage() {
               </label>
               {feedError ? <p className="error-text">{feedError}</p> : null}
               <div className="calendar-form-actions">
-                <button className="button button-secondary" onClick={() => setShowCanvasForm(false)} type="button">Cancel</button>
-                <button className="button button-primary" disabled={createFeedMutation.isPending} type="submit">
+                <button className={buttonClass("secondary")} onClick={() => setShowCanvasForm(false)} type="button">Cancel</button>
+                <button className={buttonClass("primary")} disabled={createFeedMutation.isPending} type="submit">
                   {createFeedMutation.isPending ? "Importing..." : "Import Canvas"}
                 </button>
               </div>
@@ -450,7 +451,7 @@ export function CalendarPage() {
               <ChevronRight size={16} strokeWidth={2} />
             </button>
           </div>
-          <button className="button button-ghost month-today-btn" onClick={jumpToToday} type="button">
+          <button className={buttonClass("ghost", "month-today-btn")} onClick={jumpToToday} type="button">
             Today
           </button>
         </header>
@@ -532,7 +533,7 @@ export function CalendarPage() {
               </div>
               {selectedDate && (
                 <button
-                  className="button button-ghost"
+                  className={buttonClass("ghost")}
                   onClick={() => {
                     setSelectedDate(null);
                     setSelectedAssignmentId(null);
@@ -557,10 +558,10 @@ export function CalendarPage() {
                 </p>
                 {!selectedDate ? (
                   <div className="empty-state-actions">
-                    <button className="button button-primary" onClick={() => setShowAssignmentForm(true)} type="button">
+                    <button className={buttonClass("primary")} onClick={() => setShowAssignmentForm(true)} type="button">
                       Add assignment
                     </button>
-                    <button className="button button-secondary" onClick={() => setShowCanvasForm(true)} type="button">
+                    <button className={buttonClass("secondary")} onClick={() => setShowCanvasForm(true)} type="button">
                       Connect Canvas
                     </button>
                   </div>
@@ -652,7 +653,7 @@ export function CalendarPage() {
               <div className="calendar-side-empty">
                 <strong>No Canvas feeds connected</strong>
                 <span>Paste an iCal/webcal link once, then sync course deadlines from here.</span>
-                <button className="button button-secondary" onClick={() => setShowCanvasForm(true)} type="button">
+                <button className={buttonClass("secondary")} onClick={() => setShowCanvasForm(true)} type="button">
                   Connect feed
                 </button>
               </div>
@@ -744,7 +745,7 @@ export function CalendarPage() {
 
             <div className="calendar-detail-actions">
               <button
-                className="button button-secondary"
+                className={buttonClass("secondary")}
                 onClick={() => completeMutation.mutate({ id: selectedAssignment.id, completed: !selectedAssignment.completed })}
                 type="button"
               >
@@ -752,7 +753,7 @@ export function CalendarPage() {
                 {selectedAssignment.completed ? "Mark incomplete" : "Mark complete"}
               </button>
               {selectedAssignment.source_url ? (
-                <a className="button button-secondary" href={selectedAssignment.source_url} target="_blank" rel="noreferrer">
+                <a className={buttonClass("secondary")} href={selectedAssignment.source_url} target="_blank" rel="noreferrer">
                   <ExternalLink size={15} strokeWidth={2} />
                   Open source
                 </a>

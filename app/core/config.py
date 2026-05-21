@@ -22,7 +22,8 @@ class Settings(BaseSettings):
         default=60.0,
         validation_alias=AliasChoices("LLM_TIMEOUT_SECONDS", "OPENAI_TIMEOUT_SECONDS"),
     )
-    embedding_model: str = Field(default="models/text-embedding-004", alias="EMBEDDING_MODEL")
+    embedding_api_key: str = Field(default="", alias="EMBEDDING_API_KEY")
+    embedding_model: str = Field(default="models/gemini-embedding-001", alias="EMBEDDING_MODEL")
     embedding_dimensions: int = Field(default=768, alias="EMBEDDING_DIMENSIONS")
 
     system_prompt: str = Field(default="You are a helpful assistant.", alias="SYSTEM_PROMPT")

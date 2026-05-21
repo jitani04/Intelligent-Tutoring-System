@@ -56,7 +56,8 @@ DATABASE_URL=postgresql+asyncpg://...
 LLM_API_KEY=your_google_ai_api_key
 LLM_MODEL=gemini-2.5-flash
 LLM_TIMEOUT_SECONDS=60
-EMBEDDING_MODEL=models/text-embedding-004
+EMBEDDING_API_KEY=
+EMBEDDING_MODEL=models/gemini-embedding-001
 EMBEDDING_DIMENSIONS=768
 
 SYSTEM_PROMPT=You are a helpful assistant.

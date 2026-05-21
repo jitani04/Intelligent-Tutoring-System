@@ -75,7 +75,7 @@ export function useLectureVoiceInput({
     && typeof MediaRecorder !== "undefined"
     && !!getAudioContextCtor()
   ));
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(() => supported);
   const [listening, setListening] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);

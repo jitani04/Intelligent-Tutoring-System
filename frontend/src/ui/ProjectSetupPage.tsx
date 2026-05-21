@@ -318,28 +318,16 @@ export function ProjectSetupPage() {
                   {coverSearchResults.map((option) => {
                     const isSelected = coverImageUrl === option.image_url;
                     return (
-                      <div key={option.id} className={`setup-cover-result ${isSelected ? "selected" : ""}`}>
+                      <button
+                        key={option.id}
+                        className={`setup-cover-result ${isSelected ? "selected" : ""}`}
+                        onClick={() => handleSelectCoverImage(option)}
+                        type="button"
+                        aria-label={isSelected ? "Selected" : "Select image"}
+                      >
                         <img src={option.thumbnail_url} alt="" className="setup-cover-result-image" />
-                        <div className="setup-cover-result-body">
-                          <span className="setup-cover-result-source">{option.source}</span>
-                          <span className="setup-cover-result-credit">Photo by {option.photographer}</span>
-                          <span className="setup-cover-result-links">
-                            <a href={option.photographer_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-                              Photographer
-                            </a>
-                            <a href={option.source_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-                              Photo page
-                            </a>
-                          </span>
-                          <button
-                            type="button"
-                            className={buttonClass("secondary", "setup-cover-result-select")}
-                            onClick={() => handleSelectCoverImage(option)}
-                          >
-                            {isSelected ? "Selected" : "Use image"}
-                          </button>
-                        </div>
-                      </div>
+                        {isSelected && <span className="setup-cover-result-badge">✓</span>}
+                      </button>
                     );
                   })}
                 </div>

@@ -65,7 +65,7 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
         queryClient.invalidateQueries({ queryKey: ["project-profile", cleanSubject] }),
       ]);
       onClose();
-      navigate(initialSubject ? `/sessions/${conversation.id}` : `/projects/${encodeURIComponent(cleanSubject)}/setup?session=${conversation.id}`);
+      navigate(`/sessions/${conversation.id}`);
     },
     onError: (nextError) => {
       setError(nextError instanceof Error ? nextError.message : "Failed to start study session.");
@@ -88,6 +88,8 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
     setSelectedFiles(Array.from(event.target.files ?? []));
   }
 
+  const isFirstSubject = existingSubjects.length === 0 && !initialSubject;
+
   async function handleMaterialsContinue() {
     const cleanSubject = subject.trim();
     if (!cleanSubject) {
@@ -100,11 +102,16 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
       if (selectedFiles.length > 0) {
         await Promise.all(selectedFiles.map((file) => uploadMaterial(file, cleanSubject)));
       }
-      setStep("method");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to upload materials.");
+      return;
     } finally {
       setUploading(false);
+    }
+    if (isFirstSubject) {
+      setStep("method");
+    } else {
+      startMutation.mutate();
     }
   }
 
@@ -189,7 +196,7 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
                 {initialSubject ? "Cancel" : "Back"}
               </button>
               <button className={buttonClass("primary")} disabled={busy} onClick={() => void handleMaterialsContinue()} type="button">
-                {uploading ? "Uploading..." : "Continue"}
+                {uploading ? "Uploading…" : startMutation.isPending ? "Creating…" : isFirstSubject ? "Continue" : "Start session"}
               </button>
             </div>
           </>

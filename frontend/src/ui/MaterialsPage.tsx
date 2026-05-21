@@ -66,7 +66,7 @@ export function MaterialsView({ subject }: { subject: string }) {
         <label className="upload-zone">
           <div className="upload-zone-icon"><Upload size={22} strokeWidth={1.6} /></div>
           <div className="upload-zone-label">Drop files or click to browse</div>
-          <div className="upload-zone-sub">PDF, PPTX, DOCX, TXT, MD · max 10 MB each</div>
+          <div className="upload-zone-sub">PDF, PPTX, DOCX, TXT, MD · max 100 MB each</div>
           <input type="file" multiple accept={MATERIAL_ACCEPT} style={{ display: "none" }} onChange={handleFiles} />
         </label>
         {uploadError ? <p className="error-text" style={{ marginTop: "0.5rem" }}>{uploadError}</p> : null}

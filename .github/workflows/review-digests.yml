@@ -15,7 +15,7 @@ jobs:
     name: Run Smart Review Digest Job
     runs-on: ubuntu-latest
     env:
-      REVIEW_DIGEST_API_URL: ${{ vars.REVIEW_DIGEST_API_URL || secrets.REVIEW_DIGEST_API_URL || vars.VITE_API_BASE_URL || secrets.VITE_API_BASE_URL }}
+      REVIEW_DIGEST_API_URL: ${{ vars.REVIEW_DIGEST_API_URL || secrets.REVIEW_DIGEST_API_URL || vars.VITE_API_BASE_URL || secrets.VITE_API_BASE_URL || 'https://api.sapient-ats.com' }}
       INTERNAL_JOB_TOKEN: ${{ secrets.INTERNAL_JOB_TOKEN }}
 
     steps:

@@ -13,7 +13,7 @@ The application is organized by **subject**. Each subject can have its own goals
 | Object storage | S3-compatible storage for uploaded materials |
 | Tutor LLM | Google Gemini via `langchain-google-genai` |
 | Embeddings | Google Generative Language embeddings API |
-| Speech | OpenAI Whisper (`whisper-1`) + OpenAI TTS (`tts-1-hd`) |
+| Speech | OpenAI Whisper (`whisper-1`) + OpenAI TTS (`tts-1`) |
 | Migrations | Alembic |
 | Frontend | React 19, TypeScript, Vite |
 | Routing | React Router 7 |
@@ -81,7 +81,6 @@ frontend/
     router.tsx
     useMicrophone.ts
     useSpeech.ts
-    useContinuousSpeechRecognition.ts
     useLectureSession.ts
     useSessionTimer.ts
 alembic/
@@ -146,7 +145,8 @@ DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot_db
 LLM_API_KEY=your_google_ai_api_key
 LLM_MODEL=gemini-2.5-flash
 LLM_TIMEOUT_SECONDS=60
-EMBEDDING_MODEL=models/text-embedding-004
+EMBEDDING_API_KEY=
+EMBEDDING_MODEL=models/gemini-embedding-001
 EMBEDDING_DIMENSIONS=768
 
 SYSTEM_PROMPT=You are a helpful assistant.

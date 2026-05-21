@@ -45,6 +45,72 @@ ALLOWED_COVER_MIME_TYPES = {
 }
 MAX_COVER_IMAGE_BYTES = 5 * 1024 * 1024
 LEARNING_MAP_STATUSES = {"not_started", "in_progress", "needs_review", "mastered"}
+_FLASHCARD_FRONT_MAX_CHARS = 90
+_FLASHCARD_DEFINITION_MARKERS = (
+    " this is ",
+    " this refers ",
+    " this means ",
+    " is a ",
+    " is an ",
+    " is the ",
+    " are ",
+    " refers to ",
+    " used to ",
+    " used for ",
+    " represents ",
+)
+
+
+def _extract_json_array(raw: str) -> list:
+    raw = raw.strip()
+    start = raw.find("[")
+    end = raw.rfind("]")
+    if start == -1 or end == -1:
+        raise ValueError("No JSON array found in response")
+    data = json.loads(raw[start : end + 1])
+    if not isinstance(data, list):
+        raise ValueError("Expected a JSON array")
+    return data
+
+
+def _extract_json_object(raw: str) -> dict:
+    raw = raw.strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1:
+        raise ValueError("No JSON object found in response")
+    data = json.loads(raw[start : end + 1])
+    if not isinstance(data, dict):
+        raise ValueError("Expected a JSON object")
+    return data
+
+
+def _clean_flashcard_front(value: Any) -> str:
+    front = str(value or "").strip()
+    front = " ".join(front.split())
+    for separator in (":", " - ", " — ", " – "):
+        if separator in front:
+            before, after = front.split(separator, 1)
+            if before.strip() and len(after.strip()) >= 16:
+                front = before.strip()
+                break
+    return front[:_FLASHCARD_FRONT_MAX_CHARS].strip()
+
+
+def _is_valid_flashcard_front(front: str) -> bool:
+    if not front:
+        return False
+    lowered = f" {front.lower()} "
+    if any(marker in lowered for marker in _FLASHCARD_DEFINITION_MARKERS):
+        return False
+    if len(front) > _FLASHCARD_FRONT_MAX_CHARS:
+        return False
+    word_count = len(front.split())
+    if front.endswith("?"):
+        return word_count <= 18
+    if "____" in front or "..." in front:
+        return word_count <= 18
+    return word_count <= 8
 
 
 def _validate_mind_map_payload(mind_map: dict[str, Any]) -> None:
@@ -555,6 +621,24 @@ async def setup_project(
     return await _hydrate_profile_cover_url(profile)
 
 
+class UpdateGoalsRequest(BaseModel):
+    goals: str | None = None
+
+
+@router.patch("/{subject}/goals", response_model=ProjectProfileRead)
+async def update_project_goals(
+    subject: str,
+    body: UpdateGoalsRequest,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ProjectProfileRead:
+    profile = await _get_or_create_profile(session, user_id, subject)
+    profile.goals = body.goals.strip() if body.goals and body.goals.strip() else None
+    await session.commit()
+    await session.refresh(profile)
+    return await _hydrate_profile_cover_url(profile)
+
+
 @router.post(
     "/{subject}/weak-quiz",
     response_model=WeakQuizResponse,
@@ -618,24 +702,13 @@ async def generate_weak_quiz(
         "Include 3-4 multiple_choice and 1-2 short_answer. Target the weak areas specifically."
     )
 
-    lc_messages = llm.to_langchain_messages([
+    raw = await llm.generate_text(input_messages=[
         {"role": "system", "content": "You are a quiz generator. Output only valid JSON arrays, nothing else."},
         {"role": "user", "content": prompt},
     ])
 
-    response = await llm._llm.ainvoke(lc_messages)
-    raw = response.content if isinstance(response.content, str) else ""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    raw = raw.strip()
-
     try:
-        quiz_data_list = json.loads(raw)
-        if not isinstance(quiz_data_list, list):
-            raise ValueError("Expected a JSON array")
+        quiz_data_list = _extract_json_array(raw)
     except (json.JSONDecodeError, ValueError):
         logger.warning("Weak quiz JSON parse failed, raw: %s", raw[:200])
         raise HTTPException(status_code=502, detail="Failed to generate quiz questions. Please try again.")
@@ -721,24 +794,13 @@ async def generate_subject_quiz(
     )
 
     llm = create_llm_service()
-    lc_messages = llm.to_langchain_messages([
+    raw = await llm.generate_text(input_messages=[
         {"role": "system", "content": "You are a quiz generator. Output only valid JSON arrays, nothing else."},
         {"role": "user", "content": prompt},
     ])
 
-    response = await llm._llm.ainvoke(lc_messages)
-    raw = response.content if isinstance(response.content, str) else ""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    raw = raw.strip()
-
     try:
-        quiz_data_list = json.loads(raw)
-        if not isinstance(quiz_data_list, list):
-            raise ValueError("Expected a JSON array")
+        quiz_data_list = _extract_json_array(raw)
     except (json.JSONDecodeError, ValueError):
         logger.warning("Subject quiz JSON parse failed: %s", raw[:200])
         raise HTTPException(status_code=502, detail="Failed to generate quiz questions. Please try again.")
@@ -818,27 +880,24 @@ async def generate_subject_flashcards(
         f'Generate {body.count} flashcards for a student studying "{subject}"{level_str}.{focus_str}'
         f"{existing_block}\n\n"
         "Return ONLY a valid JSON array, no markdown fences, no explanation.\n"
-        'Each item: {"concept":"short term or question (under 80 chars)","summary":"1-2 sentence answer/definition the student should keep"}\n'
+        'Each item: {"concept":"front of card","summary":"back of card"}\n'
+        "The concept/front MUST be only one of: a short term, a concept name, a fill-in-the-blank prompt, or a question.\n"
+        "The concept/front MUST NOT include the answer, a definition, a colon followed by explanation, or a summary sentence.\n"
+        "Good fronts: \"SQL\", \"Primary Key\", \"What does SELECT do?\", \"A table row is also called a ____.\"\n"
+        "Bad fronts: \"SQL: a language used to manage databases\", \"Primary Key: uniquely identifies a row\".\n"
+        "Keep term/concept fronts under 8 words and question/fill-in-the-blank fronts under 18 words.\n"
+        "The summary/back should contain the 1-2 sentence answer or definition the student should remember.\n"
         "Concepts should be diverse — cover different aspects of the subject."
     )
 
     llm = create_llm_service()
-    lc_messages = llm.to_langchain_messages([
+    raw = await llm.generate_text(input_messages=[
         {"role": "system", "content": "You are a flashcard generator. Output only valid JSON arrays, nothing else."},
         {"role": "user", "content": prompt},
     ])
-    response = await llm._llm.ainvoke(lc_messages)
-    raw = response.content if isinstance(response.content, str) else ""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    raw = raw.strip()
+
     try:
-        card_data = json.loads(raw)
-        if not isinstance(card_data, list):
-            raise ValueError("Expected JSON array")
+        card_data = _extract_json_array(raw)
     except (json.JSONDecodeError, ValueError):
         logger.warning("Flashcard JSON parse failed: %s", raw[:200])
         raise HTTPException(status_code=502, detail="Failed to generate flashcards. Please try again.")
@@ -850,9 +909,11 @@ async def generate_subject_flashcards(
     created = 0
     for item in card_data[: body.count]:
         try:
-            concept = str(item["concept"]).strip()[:255]
+            concept = _clean_flashcard_front(item["concept"])
             summary = str(item["summary"]).strip()[:10000]
             if not concept or not summary:
+                continue
+            if not _is_valid_flashcard_front(concept):
                 continue
             if concept.lower() in existing_concepts:
                 continue
@@ -876,6 +937,188 @@ async def generate_subject_flashcards(
     return GeneratedFlashcardsResponse(created=created)
 
 
+class SmartFlashcardRead(BaseModel):
+    id: int
+    concept: str
+    summary: str
+    subject: str | None
+    sr_interval: int
+    sr_repetitions: int
+    sr_ease_factor: float
+    sr_due_date: str
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm(cls, obj: KeyIdea) -> "SmartFlashcardRead":
+        return cls(
+            id=obj.id,
+            concept=obj.concept,
+            summary=obj.summary,
+            subject=obj.subject,
+            sr_interval=obj.sr_interval,
+            sr_repetitions=obj.sr_repetitions,
+            sr_ease_factor=obj.sr_ease_factor,
+            sr_due_date=obj.sr_due_date.isoformat(),
+        )
+
+
+class SmartFlashcardSessionResponse(BaseModel):
+    cards: list[SmartFlashcardRead]
+    total_due: int
+    weak_areas: list[str]
+    generated: int
+
+
+@router.get("/{subject}/flashcards/smart", response_model=SmartFlashcardSessionResponse)
+async def get_smart_flashcard_session(
+    subject: str,
+    user_id: Annotated[int, Depends(get_user_id)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> SmartFlashcardSessionResponse:
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+
+    # 1. Due SR cards for this subject
+    due_result = await session.execute(
+        select(KeyIdea)
+        .where(
+            KeyIdea.user_id == user_id,
+            func.lower(KeyIdea.subject) == subject.strip().lower(),
+            KeyIdea.sr_due_date <= now,
+        )
+        .order_by(KeyIdea.sr_due_date.asc())
+        .limit(15)
+    )
+    due_cards = list(due_result.scalars())
+
+    # 2. Gather analysis signals
+    conv_result = await session.execute(
+        select(Conversation).where(
+            Conversation.user_id == user_id,
+            Conversation.subject == subject,
+        )
+    )
+    conversations = list(conv_result.scalars())
+    conv_ids = [c.id for c in conversations]
+
+    weak_areas: set[str] = set()
+    for c in conversations:
+        if c.summary:
+            weak_areas.update(c.summary.get("struggled_with", []))
+
+    # BKT low-mastery topics
+    profile = await _get_or_create_profile(session, user_id, subject)
+    if profile.knowledge_state:
+        for state in profile.knowledge_state.values():
+            mastery = float(state.get("mastery", 0.5))
+            topic = state.get("topic") or ""
+            if topic and mastery < 0.6:
+                weak_areas.add(topic)
+
+    # Failed quiz questions
+    failed_concepts: list[str] = []
+    if conv_ids:
+        failed_result = await session.execute(
+            select(Quiz.concept)
+            .join(QuizAttempt, QuizAttempt.quiz_id == Quiz.id)
+            .where(
+                Quiz.conversation_id.in_(conv_ids),
+                QuizAttempt.user_id == user_id,
+                QuizAttempt.is_correct == False,  # noqa: E712
+            )
+            .where(Quiz.concept.isnot(None))
+            .distinct()
+            .limit(10)
+        )
+        failed_concepts = [r for r in failed_result.scalars() if r]
+        weak_areas.update(failed_concepts)
+
+    # 3. Generate targeted cards for weak areas not already covered
+    existing_result = await session.execute(
+        select(KeyIdea.concept).where(
+            KeyIdea.user_id == user_id,
+            func.lower(KeyIdea.subject) == subject.strip().lower(),
+        )
+    )
+    existing_concepts = {r.strip().lower() for r in existing_result.scalars() if r}
+
+    generated_cards: list[KeyIdea] = []
+    target_count = max(0, 8 - len(due_cards))
+
+    if target_count > 0:
+        weak_list = sorted(weak_areas)
+        if weak_list:
+            focus_block = "Focus specifically on these weak areas:\n" + "\n".join(f"- {w}" for w in weak_list[:12])
+        else:
+            focus_block = f"Cover foundational concepts across {subject}."
+
+        existing_block = (
+            "\n\nDo NOT repeat any concept the student already has a card for:\n"
+            + "\n".join(f"- {c}" for c in list(existing_concepts)[:30])
+            if existing_concepts
+            else ""
+        )
+
+        prompt = (
+            f'Generate {target_count} flashcards for a student studying "{subject}". '
+            f"{focus_block}{existing_block}\n\n"
+            "Return ONLY a valid JSON array, no markdown fences, no explanation.\n"
+            'Each item: {"concept":"front of card","summary":"back of card"}\n'
+            "The concept/front MUST be only a specific term, concept name, fill-in-the-blank prompt, or question.\n"
+            "The concept/front MUST NOT include the answer, a definition, a colon followed by explanation, or a summary sentence.\n"
+            "Good fronts: \"SQL\", \"Primary Key\", \"What does SELECT do?\", \"A table row is also called a ____.\"\n"
+            "Bad fronts: \"SQL: a language used to manage databases\", \"Primary Key: uniquely identifies a row\".\n"
+            "Keep term/concept fronts under 8 words and question/fill-in-the-blank fronts under 18 words.\n"
+            "The summary/back must be a 1-2 sentence standalone factual answer or definition.\n"
+            "Summaries must be encyclopedic — no filler words, no chat phrases, no diagram references."
+        )
+
+        try:
+            llm = create_llm_service(temperature=0)
+            raw = await llm.generate_text(input_messages=[
+                {"role": "system", "content": "You are a flashcard generator. Output only valid JSON arrays, nothing else."},
+                {"role": "user", "content": prompt},
+            ])
+            card_data = _extract_json_array(raw)
+            practice_conv = Conversation(user_id=user_id, subject=subject)
+            session.add(practice_conv)
+            await session.flush()
+            for item in card_data[:target_count]:
+                concept = _clean_flashcard_front(item.get("concept", ""))
+                summary = str(item.get("summary", "")).strip()[:500]
+                if not concept or not summary:
+                    continue
+                if not _is_valid_flashcard_front(concept):
+                    continue
+                if concept.lower() in existing_concepts:
+                    continue
+                idea = KeyIdea(
+                    user_id=user_id,
+                    conversation_id=practice_conv.id,
+                    subject=subject,
+                    concept=concept,
+                    summary=summary,
+                )
+                session.add(idea)
+                generated_cards.append(idea)
+                existing_concepts.add(concept.lower())
+            await session.commit()
+            for card in generated_cards:
+                await session.refresh(card)
+        except Exception:
+            logger.warning("Smart flashcard generation failed", exc_info=True)
+
+    all_cards = due_cards + generated_cards
+    return SmartFlashcardSessionResponse(
+        cards=[SmartFlashcardRead.from_orm(c) for c in all_cards],
+        total_due=len(due_cards),
+        weak_areas=sorted(weak_areas),
+        generated=len(generated_cards),
+    )
+
+
 @router.post(
     "/{subject}/mindmap",
     response_model=ProjectProfileRead,
@@ -888,38 +1131,36 @@ async def generate_mindmap(
 ) -> ProjectProfileRead:
     profile = await _get_or_create_profile(session, user_id, subject)
 
-    llm = create_llm_service()
+    # temperature=0 gives deterministic, structured output and is measurably faster
+    # for JSON-only responses on Gemini and GPT.
+    llm = create_llm_service(temperature=0)
 
     level_str = f" at {profile.level} level" if profile.level else ""
     goals_str = f" Goals: {profile.goals}." if profile.goals else ""
 
     prompt = (
-        f'Generate a mind map for a student studying "{subject}"{level_str}.{goals_str} '
-        f"Return ONLY a valid JSON object with this exact structure, no markdown, no explanation:\n"
+        f'Generate a concise learning map for "{subject}"{level_str}.{goals_str} '
+        f"Output ONLY a valid JSON object — no markdown, no explanation, nothing else.\n"
+        f"Schema (follow exactly):\n"
         f'{{"subject":"{subject}","nodes":['
-        f'{{"topic":"Main Topic","subtopics":["Subtopic 1","Subtopic 2","Subtopic 3"]}}]}}\n'
-        f"Include 4-6 main topics with 3-5 subtopics each, appropriate for the student's level and goals."
+        f'{{"id":"t1","topic":"Topic Name","subtopics":["Sub A","Sub B"],"prerequisite_ids":[],"order":0}}'
+        f"]}}\n"
+        f"Rules:\n"
+        f"- 4-5 topics, 2-4 subtopics each (keep output small and fast).\n"
+        f"- id must be a short slug like 't1','t2',...\n"
+        f"- prerequisite_ids lists ids of topics that must come before this one (first topic has []).\n"
+        f"- order is 0-indexed integer.\n"
+        f"- No extra fields."
     )
 
-    lc_messages = llm.to_langchain_messages([
+    raw = await llm.generate_text(input_messages=[
         {"role": "system", "content": "You are a curriculum expert. Output only valid JSON, nothing else."},
         {"role": "user", "content": prompt},
     ])
 
-    response = await llm._llm.ainvoke(lc_messages)
-    raw = response.content if isinstance(response.content, str) else ""
-
-    # Strip markdown code fences if present
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    raw = raw.strip()
-
     try:
-        mind_map: dict[str, Any] = json.loads(raw)
-    except json.JSONDecodeError:
+        mind_map: dict[str, Any] = _extract_json_object(raw)
+    except (json.JSONDecodeError, ValueError):
         logger.warning("Mind map JSON parse failed, raw: %s", raw[:200])
         raise HTTPException(status_code=502, detail="Failed to generate mind map. Try again.")
 

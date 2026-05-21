@@ -1,9 +1,48 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { StickyNote } from "lucide-react";
+import { Download, StickyNote } from "lucide-react";
 
 import { deleteKeyIdea, listAllKeyIdeas, promoteKeyIdea } from "../api";
+import type { KeyIdea } from "../types";
 import { NoteCard } from "./NoteCard";
+
+function downloadNotesAsPdf(notes: KeyIdea[], subject: string | null) {
+  const title = subject ? `${subject} — Notes` : "All Notes";
+  const noteRows = notes
+    .map(
+      (n) => `
+    <div class="note">
+      ${n.subject ? `<div class="subject">${n.subject}</div>` : ""}
+      <h2>${n.concept}</h2>
+      <p>${n.summary}</p>
+      <div class="date">${new Date(n.created_at).toLocaleDateString()}</div>
+    </div>`,
+    )
+    .join("\n");
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>${title}</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:680px;margin:2.5rem auto;color:#111;line-height:1.5}
+  h1{font-size:1.35rem;margin-bottom:.2rem}
+  .meta{color:#666;font-size:.8rem;margin-bottom:2rem}
+  .note{page-break-inside:avoid;margin-bottom:1.6rem;padding:1rem 1rem 1rem 1.1rem;border-left:3px solid #7393b3;border-radius:0 6px 6px 0;background:#f8fafd}
+  .note h2{font-size:.92rem;font-weight:700;margin:0 0 .35rem}
+  .note p{font-size:.85rem;color:#333;margin:0 0 .5rem;white-space:pre-wrap}
+  .subject{font-size:.68rem;color:#7393b3;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:.25rem}
+  .date{font-size:.68rem;color:#999}
+  @media print{body{margin:1.5rem}}
+</style></head><body>
+<h1>${title}</h1>
+<p class="meta">${notes.length} note${notes.length !== 1 ? "s" : ""} · Exported ${new Date().toLocaleDateString()}</p>
+${noteRows}
+<script>window.onload=function(){window.print()}<\/script>
+</body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) return;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
 
 export function NotesPage() {
   const queryClient = useQueryClient();
@@ -64,6 +103,17 @@ export function NotesPage() {
             {activeSubject ? ` · ${activeSubject}` : ""}
           </p>
         </div>
+        {filtered.length > 0 && (
+          <button
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-[0.8rem] font-medium text-[var(--text-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            onClick={() => downloadNotesAsPdf(filtered, activeSubject)}
+            title="Download notes as PDF"
+            type="button"
+          >
+            <Download size={14} strokeWidth={2} />
+            Download PDF
+          </button>
+        )}
       </div>
 
       <div className="notes-controls">

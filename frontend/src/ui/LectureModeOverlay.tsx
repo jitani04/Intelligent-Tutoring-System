@@ -10,6 +10,7 @@ import { useLectureSession } from "../useLectureSession";
 import { useLectureVoiceInput } from "../useLectureVoiceInput";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
+import { MarkdownText } from "./MarkdownText";
 
 interface Props {
   subject: string | null;
@@ -48,7 +49,49 @@ function paceInstruction(pace: LecturePace) {
 
 function buildLecturePrompt(subject: string | null, pace: LecturePace) {
   const topic = subject ? ` for ${subject}` : "";
-  return `Start lecture mode${topic} by speaking first. Ask me, in one short natural sentence, what I want to cover today. Do not begin teaching, save key ideas, generate diagrams, or cite sources yet. Wait for my answer before continuing. Once I answer, teach the requested topic with this pacing: ${paceInstruction(pace)} Introduce or define at most 2 new concepts at a time, then pause or transition before continuing. Cite relevant uploaded materials when available. Use plain spoken text without markdown headings, bold markers, or labels like "Checkpoint Question:"; when checking understanding, ask the question naturally. When showing code, put only the code in a fenced code block so it can be displayed rather than read aloud.`;
+  return `Start lecture mode${topic} by speaking first. Ask me, in one short natural sentence, what I want to cover today. Do not begin teaching, save key ideas, generate diagrams, or cite sources yet. Wait for my answer before continuing. Once I answer, act like a live human tutor speaking to me in real time: use warm conversational language, explain with simple analogies or concrete examples, and check whether I am following before moving too far ahead. When you define a term, save it as a key idea immediately so the notebook writes it on the page; use concept names like "Relational Databases: Column" and a clean standalone definition. Teach with this pacing: ${paceInstruction(pace)} Introduce or define at most 2 new concepts at a time, then pause or transition before continuing. Cite relevant uploaded materials when available. Use plain spoken text without markdown headings, bold markers, or labels like "Checkpoint Question:"; when checking understanding, ask the question naturally. Use tables only for comparisons or structured data; they render on the page, while your spoken transcript should stay caption-like. When showing code, put only the code in a fenced code block so it can be displayed rather than read aloud.`;
+}
+
+function splitStructuredTranscript(raw: string): { caption: string; pageContent: string } {
+  const lines = raw.trim().split(/\r?\n/);
+  const captionLines: string[] = [];
+  const pageLines: string[] = [];
+  let inFence = false;
+  let inTable = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const isFence = trimmed.startsWith("```");
+    const isTableLine = trimmed.startsWith("|") && trimmed.endsWith("|");
+    const nextTrimmed = lines[i + 1]?.trim() ?? "";
+    const nextIsTableSeparator = /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(nextTrimmed);
+
+    if (isFence) {
+      inFence = !inFence;
+      pageLines.push(line);
+      continue;
+    }
+
+    if (inFence || isTableLine || inTable) {
+      pageLines.push(line);
+      inTable = isTableLine || (trimmed === "" ? false : inTable);
+      continue;
+    }
+
+    if (trimmed.includes("|") && nextIsTableSeparator) {
+      pageLines.push(line);
+      inTable = true;
+      continue;
+    }
+
+    captionLines.push(line);
+  }
+
+  return {
+    caption: captionLines.join("\n").trim(),
+    pageContent: pageLines.join("\n").trim(),
+  };
 }
 
 export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose }: Props) {
@@ -119,7 +162,7 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
   function sendLectureMessage(message: string) {
     const trimmed = message.trim();
     if (!trimmed) return;
-    void send(`${trimmed}\n\nLecture controls: ${paceInstruction(lecturePace)} Introduce or define at most 2 new concepts at a time, then pause or transition before continuing. Cite relevant uploaded materials when available. When showing code, put only the code in a fenced code block so it can be displayed rather than read aloud.`);
+    void send(`${trimmed}\n\nLecture controls: speak like a live tutor, not a written article. Use a clear analogy or concrete example when it helps, keep the wording conversational, and check my understanding naturally. When you define a term, save it as a key idea immediately using a topic heading plus term, like "Relational Databases: Column", and write a clean standalone definition. ${paceInstruction(lecturePace)} Introduce or define at most 2 new concepts at a time, then pause or transition before continuing. Cite relevant uploaded materials when available. Use tables only for comparisons or structured data. When showing code, put only the code in a fenced code block so it can be displayed rather than read aloud.`);
   }
 
   function handleSend() {
@@ -175,8 +218,9 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
     onClose();
   }
 
-  const { agentSpeaking, agentThinking, transcript, currentKeyIdea, keyIdeas, timeline, sources, error } = session;
+  const { agentSpeaking, agentThinking, transcript, currentKeyIdea, keyIdeas, timeline, error } = session;
   const busy = agentSpeaking || agentThinking;
+  const { caption: liveCaption, pageContent: livePageContent } = splitStructuredTranscript(transcript);
 
   useEffect(() => {
     if (!transcript.trim()) return;
@@ -198,9 +242,23 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
     getEchoReference: () => recentTutorSpeechRef.current,
   });
   const recentConcepts = keyIdeas.slice(-4);
-  const showIdleState = timeline.length === 0;
   const latestConcept = currentKeyIdea ?? keyIdeas[keyIdeas.length - 1] ?? null;
-  const transcriptIsCode = transcript.trim().startsWith("```");
+  const bottomStatus = agentThinking
+    ? "Instructor is adding the next line to the notebook..."
+    : agentSpeaking
+      ? "Instructor is speaking..."
+      : voiceSupported
+        ? voiceEnabled
+          ? recording
+            ? "Listening..."
+            : transcribing
+              ? "Transcribing..."
+              : listening
+                ? "Hands-free mode is live. Speak anytime to interrupt or redirect the lecture."
+                : "Hands-free mode is live and ready."
+          : "The call is muted. Unmute to talk naturally."
+        : "Ask for an example, a proof sketch, or a recap.";
+  const bottomCaption = liveCaption || (livePageContent ? "Displaying structured content on the page." : bottomStatus);
 
   return createPortal(
     <div className="lecture-overlay">
@@ -276,22 +334,13 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
               </div>
             )}
 
-            {showIdleState ? (
-              <div className="lecture-idle-state">
-                <div className={`lecture-avatar-lg${agentThinking ? " lecture-avatar-pulse" : ""}`}>
-                  {tutorInitials}
-                </div>
-                <div className="lecture-idle-label">
-                  {agentThinking
-                    ? subject
-                      ? `Preparing your lecture on ${subject}`
-                      : "Preparing your lecture"
-                    : subject
-                      ? `Starting notes for ${subject}`
-                      : "Starting a fresh notebook page"}
-                </div>
-              </div>
-            ) : (
+            {livePageContent && (
+              <section className="lecture-live-block">
+                <MarkdownText className="lecture-live-handwriting">{livePageContent}</MarkdownText>
+              </section>
+            )}
+
+            {timeline.length > 0 && (
               <div className="lecture-notebook-stream">
                 {timeline.map((entry, idx) => {
                   if (entry.kind === "key_idea") {
@@ -305,6 +354,21 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
                         <div className="lecture-note-body">
                           <h3 className="lecture-note-title">{idea.concept}</h3>
                           <p className="lecture-note-copy">{idea.summary}</p>
+                        </div>
+                      </article>
+                    );
+                  }
+                  if (entry.kind === "live_note") {
+                    return (
+                      <article
+                        key={`live-note-${entry.note.id}-${idx}`}
+                        className="lecture-note-entry lecture-note-entry-live"
+                      >
+                        <div className="lecture-note-marker" />
+                        <div className="lecture-note-body">
+                          <div className="lecture-note-heading">{entry.note.heading}</div>
+                          <h3 className="lecture-note-title">{entry.note.concept}</h3>
+                          <p className="lecture-note-copy">{entry.note.summary}</p>
                         </div>
                       </article>
                     );
@@ -330,14 +394,6 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
                 })}
               </div>
             )}
-
-            <div className="lecture-page-footer">
-              <span>Ask follow-ups and the notes keep building.</span>
-              <span>
-                {keyIdeas.length} note{keyIdeas.length === 1 ? "" : "s"}
-                {sources.length > 0 ? ` · ${sources.length} source${sources.length === 1 ? "" : "s"}` : ""}
-              </span>
-            </div>
           </div>
         </div>
       </div>
@@ -368,21 +424,7 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
             ))}
           </div>
           <div className="lecture-current-text">
-            {(transcriptIsCode ? "Read the code displayed above." : transcript) || (
-              agentThinking
-                ? "Instructor is adding the next line to the notebook…"
-                : voiceSupported
-                  ? voiceEnabled
-                    ? recording
-                      ? "Listening…"
-                      : transcribing
-                        ? "Transcribing…"
-                        : listening
-                          ? "Hands-free mode is live. Speak anytime to interrupt or redirect the lecture."
-                          : "Hands-free mode is live and ready."
-                    : "The call is muted. Unmute to talk naturally."
-                  : "Ask for an example, a proof sketch, or a recap."
-            )}
+            {bottomCaption}
           </div>
         </div>
         <div className="lecture-input-controls">
@@ -399,7 +441,7 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
           )}
           <button
             aria-label={voiceEnabled ? "Mute call" : "Unmute call"}
-            className={`lecture-mic-btn${voiceEnabled ? " lecture-mic-active" : ""}`}
+            className={`lecture-mic-btn${voiceEnabled ? " lecture-mic-on" : ""}${recording ? " lecture-mic-active" : ""}`}
             disabled={!voiceSupported}
             onClick={toggleVoiceEnabled}
             type="button"

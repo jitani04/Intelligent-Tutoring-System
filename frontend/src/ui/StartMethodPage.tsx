@@ -31,7 +31,7 @@ export function StartMethodPage() {
       await queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
       await queryClient.invalidateQueries({ queryKey: ["project-profile", pendingContext.subject] });
       clearPendingStudyContext();
-      navigate(`/projects/${encodeURIComponent(pendingContext.subject)}/setup?session=${c.id}`, { replace: true });
+      navigate(`/sessions/${c.id}`, { replace: true });
     },
     onError: () => setError("Failed to create subject. Please try again."),
   });
@@ -76,7 +76,7 @@ export function StartMethodPage() {
             onClick={() => createMutation.mutate()}
             type="button"
           >
-            {createMutation.isPending ? "Creating subject…" : "Start subject"}
+            {createMutation.isPending ? "Creating session…" : "Start session"}
           </button>
         </div>
       </div>

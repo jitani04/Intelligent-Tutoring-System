@@ -11,7 +11,7 @@ SUPPORTED_TTS_VOICES = (
 )
 
 DEFAULT_TTS_VOICE = "nova"
-DEFAULT_TTS_MODEL = "tts-1-hd"
+DEFAULT_TTS_MODEL = "tts-1"
 
 
 def validate_tutor_voice(value: str) -> str:

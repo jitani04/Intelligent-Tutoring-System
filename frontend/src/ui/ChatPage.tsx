@@ -6,7 +6,7 @@ import { ArrowUp, Bookmark, BookmarkCheck, FileText, FolderOpen, Pause, PencilLi
 
 import { RateLimitError, createConversation, createKeyIdea, deleteConversation, deleteFeedbackForMessage, deleteKeyIdea, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listConversationResources, listMaterials, listModels, rejectPendingAgentAction, sendReviewDigest, streamChat, submitFeedback, updateConversationModel, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
-import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, NextBestAction, PendingAgentAction, QuizData, Resource, ResourceData, RetrievedSource, WebSource } from "../types";
+import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, PendingAgentAction, QuizData, Resource, ResourceData, RetrievedSource, WebSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { buttonClass } from "./buttonClass";
 import { DiagramCard } from "./DiagramCard";
@@ -213,10 +213,12 @@ function FeedbackModal({ message, draft, onChange, onSaveDetails, onClose }: Fee
 }
 
 const SESSION_CONTROLS = [
-  { label: "Hint", prompt: "I'm stuck. Give me one targeted hint without revealing the answer." },
   { label: "Explain differently", prompt: "Explain this differently using a simple analogy." },
   { label: "Quiz me", prompt: "Quiz me on this topic instead of giving the answer directly." },
   { label: "Move on", prompt: "I understand this. Give me the next question or a harder follow-up." },
+  { label: "Find resources", prompt: "Find me external resources on this topic." },
+  { label: "Visualize", prompt: "Create a visual diagram to explain this concept." },
+  { label: "Give an analogy", prompt: "Give me a simple analogy to help me understand this." },
 ];
 
 const QUICK_PROMPTS = [
@@ -347,7 +349,6 @@ export function ChatPage() {
   const [webSources, setWebSources] = useState<WebSource[]>([]);
   const [agentSteps, setAgentSteps] = useState<string[]>([]);
   const [pendingAgentActions, setPendingAgentActions] = useState<PendingAgentAction[]>([]);
-  const [nextBestAction, setNextBestAction] = useState<NextBestAction | null>(null);
   const [agentActionStatus, setAgentActionStatus] = useState<string | null>(null);
   const [showSources, setShowSources] = useState(false);
   const sourceCount = sources.length + webSources.length;
@@ -508,14 +509,13 @@ export function ChatPage() {
     const el = threadRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages, streamedText, agentSteps, pendingAgentActions, nextBestAction]);
+  }, [messages, streamedText, agentSteps, pendingAgentActions]);
 
   useEffect(() => {
     setSources([]);
     setWebSources([]);
     setAgentSteps([]);
     setPendingAgentActions([]);
-    setNextBestAction(null);
     setAgentActionStatus(null);
     setShowSources(false);
     setSseQuizzes([]);
@@ -680,7 +680,6 @@ export function ChatPage() {
     setWebSources([]);
     setAgentSteps([]);
     setPendingAgentActions([]);
-    setNextBestAction(null);
     setAgentActionStatus(null);
     setShowSources(false);
     pendingDiagramsRef.current = [];
@@ -912,7 +911,6 @@ export function ChatPage() {
       return;
     }
     if (event.event === "next_best_action") {
-      setNextBestAction(event.data);
       return;
     }
     if (event.event === "sources") { setSources(event.data.sources); return; }
@@ -961,7 +959,6 @@ export function ChatPage() {
         sr_due_date: new Date().toISOString(),
         created_at: new Date().toISOString(),
       }]);
-      setShowNotes(true);
       return;
     }
     if (event.event === "end") {
@@ -1572,17 +1569,11 @@ export function ChatPage() {
                   <span className="agent-thinking-dot" />
                   <span className="agent-thinking-dot" />
                   <span className="agent-thinking-dot" />
-                </div>
-              )}
-
-              {agentSteps.length > 0 && (
-                <div className="ml-[3.1rem] flex max-w-[620px] flex-col gap-1 rounded-lg border border-[var(--panel-border)] bg-[var(--surface)] px-3 py-2 text-[0.78rem] text-[var(--text-soft)]">
-                  {agentSteps.map((step, index) => (
-                    <div key={`${step}-${index}`} className="flex items-center gap-2">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-                      <span>{step}</span>
-                    </div>
-                  ))}
+                  {agentSteps.length > 0 && (
+                    <span className="agent-thinking-label" key={agentSteps[agentSteps.length - 1]}>
+                      {agentSteps[agentSteps.length - 1]}
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -1609,25 +1600,6 @@ export function ChatPage() {
                 </div>
               ))}
 
-              {nextBestAction && (
-                <div className="msg">
-                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
-                  <div className="msg-body">
-                    <div className="rounded-xl border border-[var(--panel-border)] bg-[var(--surface)] p-4">
-                      <div className="text-[0.72rem] font-bold uppercase tracking-[0.08em] text-[var(--accent)]">Next best step</div>
-                      <h3 className="mt-1 text-[1rem] font-semibold text-[var(--text-main)]">{nextBestAction.title}</h3>
-                      <p className="mt-1 text-[0.84rem] text-[var(--text-soft)]">{nextBestAction.reason}</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {nextBestAction.actions.map((action) => (
-                          <button key={action.kind} className={buttonClass("secondary")} onClick={() => setDraftAndFocus(action.label)} type="button">
-                            {action.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {agentActionStatus ? (
                 <div className="ml-[3.1rem] text-[0.82rem] text-[var(--text-soft)]">{agentActionStatus}</div>

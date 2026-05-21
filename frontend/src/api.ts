@@ -1,6 +1,6 @@
 import { getToken } from "./auth";
 import { sortConversationsByRecentActivity } from "./conversations";
-import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, LectureNote, LectureNoteSummary, LectureTimelineEntry, Material, MindMap, PendingAgentAction, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, Resource, ReviewEmailPreferences, SearchResponse, SessionSummary, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
+import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, LectureNote, LectureNoteSummary, LectureTimelineEntry, Material, MindMap, PendingAgentAction, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, Resource, ReviewEmailPreferences, SearchResponse, SessionSummary, SmartFlashcardSessionResponse, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
 
 function resolveDefaultApiBaseUrl(): string {
   if (typeof window === "undefined") {
@@ -538,6 +538,15 @@ export async function setupProject(
   return parseJson(response);
 }
 
+export async function updateProjectGoals(subject: string, goals: string | null): Promise<ProjectProfile> {
+  const response = await fetch(`${API_BASE_URL}/projects/${encodeURIComponent(subject)}/goals`, {
+    method: "PATCH",
+    headers: buildHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ goals }),
+  });
+  return parseJson(response);
+}
+
 export async function searchAll(q: string): Promise<SearchResponse> {
   const response = await fetch(`${API_BASE_URL}/search?q=${encodeURIComponent(q)}`, {
     headers: buildHeaders(),
@@ -800,6 +809,14 @@ export async function getDueFlashcards(subject?: string): Promise<FlashcardDueRe
   return parseJson(response);
 }
 
+export async function getSmartFlashcardSession(subject: string): Promise<SmartFlashcardSessionResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/projects/${encodeURIComponent(subject)}/flashcards/smart`,
+    { headers: buildHeaders() },
+  );
+  return parseJson(response);
+}
+
 export async function reviewFlashcard(cardId: number, quality: number): Promise<Flashcard> {
   const response = await fetch(`${API_BASE_URL}/flashcards/${cardId}/review`, {
     method: "POST",
@@ -809,11 +826,12 @@ export async function reviewFlashcard(cardId: number, quality: number): Promise<
   return parseJson(response);
 }
 
-export async function fetchSpeech(text: string, voice?: string): Promise<string> {
+export async function fetchSpeech(text: string, voice?: string, signal?: AbortSignal): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/tts`, {
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(voice ? { text, voice } : { text }),
+    signal,
   });
   if (!response.ok) {
     throw new Error(`TTS failed: ${response.status}`);

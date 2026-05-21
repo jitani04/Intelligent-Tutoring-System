@@ -5,8 +5,16 @@ import type { ChatStreamEvent, DiagramData, ImageData, KeyIdea, RetrievedSource 
 
 export type TimelineEntry =
   | { kind: "key_idea"; idea: KeyIdea }
+  | { kind: "live_note"; note: LiveLectureNote }
   | { kind: "diagram"; diagram: DiagramData }
   | { kind: "image"; image: ImageData };
+
+export interface LiveLectureNote {
+  id: string;
+  heading: string;
+  concept: string;
+  summary: string;
+}
 
 interface SpeechChunk {
   displayText: string;
@@ -61,11 +69,19 @@ function applyTimelineItems(s: LectureSession, items: TimelineEntry[]): LectureS
   for (const item of items) {
     if (item.kind === "key_idea") newKeyIdeas.push(item.idea);
     else if (item.kind === "diagram") newDiagrams.push(item.diagram);
-    else newImages.push(item.image);
+    else if (item.kind === "image") newImages.push(item.image);
   }
+  const newKeyConcepts = new Set(newKeyIdeas.map((idea) => normalizeConcept(idea.concept)));
+  const timeline = newKeyConcepts.size > 0
+    ? s.timeline.filter((entry) => {
+        if (entry.kind !== "live_note") return true;
+        const liveConcept = normalizeConcept(entry.note.concept);
+        return !Array.from(newKeyConcepts).some((concept) => concept.includes(liveConcept) || liveConcept.includes(concept));
+      })
+    : s.timeline;
   return {
     ...s,
-    timeline: [...s.timeline, ...items],
+    timeline: [...timeline, ...items],
     keyIdeas: newKeyIdeas.length > 0 ? [...s.keyIdeas, ...newKeyIdeas] : s.keyIdeas,
     diagrams: newDiagrams.length > 0 ? [...s.diagrams, ...newDiagrams] : s.diagrams,
     images: newImages.length > 0 ? [...s.images, ...newImages] : s.images,
@@ -138,6 +154,44 @@ function cleanSpokenText(value: string): string {
     .trim();
 }
 
+function normalizeConcept(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function extractLiveDefinitionNote(text: string, subject: string | null): LiveLectureNote | null {
+  const clean = cleanSpokenText(text);
+  const sentence = clean
+    .split(/(?<=[.!?])\s+/)
+    .find((part) => /\b(is|are|represents|refer to|refers to|means)\b/i.test(part));
+  if (!sentence) return null;
+
+  const match = sentence.match(/^(?:so,\s*)?(?:in\s+[\w\s-]+,\s*)?(?:a|an|the)\s+([a-z][a-z0-9 -]{1,48}?)\s+(is|are|represents|refer to|refers to|means)\s+(.+?)[.!?]?$/i);
+  if (!match) return null;
+  const rawConcept = match[1].trim();
+  if (!rawConcept || /\b(it|this|that|these|those|you|we)\b/i.test(rawConcept)) return null;
+
+  const concept = toTitleCase(rawConcept);
+  const verb = match[2].toLowerCase();
+  const rest = match[3].trim();
+  if (rest.length < 12) return null;
+
+  const summaryVerb = verb === "are" ? "are" : verb;
+  return {
+    id: `live-${normalizeConcept(concept)}-${Math.abs(sentence.length + rest.length)}`,
+    heading: subject?.trim() ? toTitleCase(subject.trim()) : "Lecture Notes",
+    concept,
+    summary: `${concept} ${summaryVerb} ${rest.replace(/[.!?]+$/, "")}.`,
+  };
+}
+
 export function useLectureSession(subject: string | null) {
   const [session, setSession] = useState<LectureSession>(EMPTY);
 
@@ -149,6 +203,7 @@ export function useLectureSession(subject: string | null) {
   const pauseTimerRef = useRef<number | null>(null);
   const activeRef = useRef(false);
   const controllersRef = useRef<Set<AbortController>>(new Set());
+  const speechControllersRef = useRef<Set<AbortController>>(new Set());
   const lastPromptRef = useRef<string | null>(null);
   const playbackRateRef = useRef(1);
   // Incremented on every send() call; stale handleEvent closures detect mismatch and exit early.
@@ -165,6 +220,8 @@ export function useLectureSession(subject: string | null) {
   }
 
   function stopAudio() {
+    speechControllersRef.current.forEach((controller) => controller.abort());
+    speechControllersRef.current.clear();
     if (pauseTimerRef.current != null) {
       window.clearTimeout(pauseTimerRef.current);
       pauseTimerRef.current = null;
@@ -182,6 +239,14 @@ export function useLectureSession(subject: string | null) {
     revokeQueuedUrls();
     isPlayingRef.current = false;
     chunkQueueRef.current = [];
+  }
+
+  function fetchLectureSpeech(text: string): Promise<string> {
+    const controller = new AbortController();
+    speechControllersRef.current.add(controller);
+    return fetchSpeech(text, undefined, controller.signal).finally(() => {
+      speechControllersRef.current.delete(controller);
+    });
   }
 
   function abortInFlight() {
@@ -228,6 +293,7 @@ export function useLectureSession(subject: string | null) {
           // No audio (TTS failure / non-speak chunk): still surface the text so the user isn't
           // left wondering what was said.
           setSession((s) => ({ ...s, transcript: chunk.displayText }));
+          appendLiveNoteForChunk(chunk.displayText);
           advanceAfterPause();
           return;
         }
@@ -242,6 +308,7 @@ export function useLectureSession(subject: string | null) {
         currentAudioUrlRef.current = url;
         audio.onplay = () => {
           setSession((s) => ({ ...s, transcript: chunk.displayText }));
+          appendLiveNoteForChunk(chunk.displayText);
         };
         audio.onended = () => {
           URL.revokeObjectURL(url);
@@ -267,6 +334,21 @@ export function useLectureSession(subject: string | null) {
   function appendItems(items: TimelineEntry[]) {
     if (items.length === 0) return;
     setSession((s) => applyTimelineItems(s, items));
+  }
+
+  function appendLiveNoteForChunk(text: string) {
+    const note = extractLiveDefinitionNote(text, subject);
+    if (!note) return;
+    setSession((s) => {
+      const noteKey = normalizeConcept(note.concept);
+      const alreadyPresent = s.timeline.some((entry) => {
+        if (entry.kind === "live_note") return normalizeConcept(entry.note.concept) === noteKey;
+        if (entry.kind === "key_idea") return normalizeConcept(entry.idea.concept).includes(noteKey);
+        return false;
+      });
+      if (alreadyPresent) return s;
+      return applyTimelineItems(s, [{ kind: "live_note", note }]);
+    });
   }
 
   async function send(message: string, options: SendOptions = {}) {
@@ -326,7 +408,7 @@ export function useLectureSession(subject: string | null) {
         appendItems(items);
         return;
       }
-      const audioUrlPromise = fetchSpeech(spokenText).catch(() => "");
+      const audioUrlPromise = fetchLectureSpeech(spokenText).catch(() => "");
       chunkQueueRef.current.push({
         displayText,
         spokenText,
@@ -373,7 +455,7 @@ export function useLectureSession(subject: string | null) {
       } else if (event.event === "sources") {
         setSession((s) => ({ ...s, sources: event.data.sources }));
       } else if (event.event === "key_idea") {
-        pending.items.push({
+        appendItems([{
           kind: "key_idea",
           idea: {
             id: event.data.id,
@@ -384,7 +466,7 @@ export function useLectureSession(subject: string | null) {
             sr_due_date: new Date().toISOString(),
             created_at: new Date().toISOString(),
           },
-        });
+        }]);
       } else if (event.event === "diagram") {
         if (speak) {
           pending.items.push({ kind: "diagram", diagram: event.data });

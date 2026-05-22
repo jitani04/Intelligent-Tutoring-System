@@ -377,6 +377,7 @@ export function ChatPage() {
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const streamSmoothing = useStreamSmoothing();
   const streamedText = streamSmoothing.text;
+  const [streamedAssistantMessageId, setStreamedAssistantMessageId] = useState<number | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sources, setSources] = useState<RetrievedSource[]>([]);
@@ -623,6 +624,7 @@ export function ChatPage() {
     setMessageImages({});
     setMessageResources({});
     setMessageQuizzes({});
+    setStreamedAssistantMessageId(null);
     setSavedSnippetKeys(new Set());
     setSavedSnippetIdeaIds({});
     setShowNotes(false);
@@ -765,6 +767,7 @@ export function ChatPage() {
     setStreamError(null);
     setAttachmentError(null);
     streamSmoothing.reset();
+    setStreamedAssistantMessageId(null);
     setSources([]);
     setWebSources([]);
     setAgentSteps([]);
@@ -842,8 +845,9 @@ export function ChatPage() {
         await queryClient.invalidateQueries({ queryKey: ["conversation", target.id] });
       }
     } finally {
-      setIsStreaming(false);
       streamSmoothing.reset();
+      setStreamedAssistantMessageId(null);
+      setIsStreaming(false);
     }
   }
 
@@ -1066,6 +1070,7 @@ export function ChatPage() {
     }
     if (event.event === "end") {
       const assistantMessageId = event.data.assistant_message_id;
+      setStreamedAssistantMessageId(assistantMessageId);
       const diagramsToAttach = pendingDiagramsRef.current;
       const structuredDiagramsToAttach = pendingStructuredDiagramsRef.current;
       const imagesToAttach = pendingImagesRef.current;
@@ -1498,6 +1503,9 @@ export function ChatPage() {
           {messages.length > 0 || streamedText ? (
             <div className="messages">
               {messages.map((msg, idx) => {
+                if (streamedAssistantMessageId === msg.id && streamedText) {
+                  return null;
+                }
                 const isLastAssistant =
                   msg.role === "assistant" &&
                   !streamedText &&

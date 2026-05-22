@@ -15,7 +15,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AlertTriangle, CheckCircle2, Circle, LockKeyhole, Scan } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, LockKeyhole, Scan, Trash2 } from "lucide-react";
 import type { LearningMapStatus, LearningPathNode } from "../types";
 
 const STATUS_LABELS: Record<LearningMapStatus, string> = {
@@ -38,6 +38,7 @@ interface LearningNodeData extends Record<string, unknown> {
   selected: boolean;
   editing: boolean;
   onSelect: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
 interface RootNodeData extends Record<string, unknown> {
@@ -47,7 +48,7 @@ interface RootNodeData extends Record<string, unknown> {
 const LearningNodeCard = memo(function LearningNodeCard({
   data,
 }: NodeProps<Node<LearningNodeData>>) {
-  const { node, selected, editing, onSelect } = data;
+  const { node, selected, editing, onSelect, onDelete } = data;
   return (
     <div
       className={[
@@ -61,6 +62,20 @@ const LearningNodeCard = memo(function LearningNodeCard({
         .join(" ")}
       onClick={() => onSelect(node.id)}
     >
+      {editing && onDelete ? (
+        <button
+          aria-label={`Delete ${node.topic}`}
+          className="lmg-node-delete"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete(node.id);
+          }}
+          title="Delete topic"
+          type="button"
+        >
+          <Trash2 size={13} strokeWidth={2.2} />
+        </button>
+      ) : null}
       <Handle type="target" position={Position.Left} isConnectable={false} className="lmg-handle" />
       <div className="lmg-node-header">
         <span className="lmg-node-title">{node.topic}</span>
@@ -151,6 +166,7 @@ function buildFlowElements(
   selectedNodeId: string | null,
   editingMap: boolean,
   onSelectNode: (id: string | null) => void,
+  onDeleteNode: ((id: string) => void) | undefined,
   subject: string,
 ): { rfNodes: Node[]; rfEdges: Edge[] } {
   const positions = computeLayout(nodes);
@@ -172,6 +188,7 @@ function buildFlowElements(
         selected: selectedNodeId === node.id,
         editing: editingMap,
         onSelect: onSelectNode,
+        onDelete: onDeleteNode,
       } as LearningNodeData,
       type: "learningNode",
     })),
@@ -231,6 +248,7 @@ export interface LearningMapGraphProps {
   editingMap: boolean;
   selectedNodeId: string | null;
   onSelectNode: (id: string | null) => void;
+  onDeleteNode?: (id: string) => void;
 }
 
 export function LearningMapGraph({
@@ -239,10 +257,11 @@ export function LearningMapGraph({
   editingMap,
   selectedNodeId,
   onSelectNode,
+  onDeleteNode,
 }: LearningMapGraphProps) {
   const buildElements = useCallback(
-    () => buildFlowElements(nodes, selectedNodeId, editingMap, onSelectNode, subject),
-    [nodes, selectedNodeId, editingMap, onSelectNode, subject],
+    () => buildFlowElements(nodes, selectedNodeId, editingMap, onSelectNode, onDeleteNode, subject),
+    [nodes, selectedNodeId, editingMap, onSelectNode, onDeleteNode, subject],
   );
 
   const { rfNodes: initialNodes, rfEdges: initialEdges } = buildElements();

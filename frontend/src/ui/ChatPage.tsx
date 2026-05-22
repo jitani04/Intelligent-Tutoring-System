@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowUp, Bookmark, BookmarkCheck, FileText, FolderOpen, Pause, PencilLine, Play, Plus, RotateCcw } from "lucide-react";
+import { ArrowUp, Bookmark, BookmarkCheck, Check, ChevronDown, FileText, FolderOpen, Pause, PencilLine, Play, Plus, RotateCcw } from "lucide-react";
 
 import { RateLimitError, createConversation, createKeyIdea, deleteConversation, deleteFeedbackForMessage, deleteKeyIdea, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listConversationResources, listMaterials, listModels, rejectPendingAgentAction, sendReviewDigest, streamChat, submitFeedback, updateConversationModel, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
@@ -88,6 +88,87 @@ function providerKey(model: { id: string; provider: string }): string {
   if (model.provider === "google" || model.id.startsWith("gemini-")) return "gemini";
   if (model.provider === "openai" || model.id.startsWith("gpt-")) return "gpt";
   return "other";
+}
+
+interface ChatModelOption {
+  id: string;
+  label: string;
+  provider: string;
+}
+
+interface ModelPickerProps {
+  models: ChatModelOption[];
+  currentId: string;
+  disabled: boolean;
+  onChange: (modelId: string) => void;
+}
+
+function ModelPicker({ models, currentId, disabled, onChange }: ModelPickerProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const currentModel = models.find((model) => model.id === currentId) ?? models[0];
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  if (!currentModel) return null;
+
+  return (
+    <div className="model-picker" data-provider={providerKey(currentModel)} ref={rootRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label="Chat model"
+        className="model-picker-trigger"
+        disabled={disabled}
+        onClick={() => setOpen((value) => !value)}
+        title="Model used for this conversation"
+        type="button"
+      >
+        <span>{providerLabel(currentModel)}</span>
+        <ChevronDown aria-hidden="true" size={14} strokeWidth={2.2} />
+      </button>
+      {open ? (
+        <div className="model-picker-menu" role="listbox" aria-label="Chat model">
+          {models.map((model) => {
+            const selected = model.id === currentId;
+            return (
+              <button
+                aria-selected={selected}
+                className={`model-picker-option${selected ? " selected" : ""}`}
+                data-provider={providerKey(model)}
+                key={model.id}
+                onClick={() => {
+                  setOpen(false);
+                  if (!selected) onChange(model.id);
+                }}
+                role="option"
+                title={model.label}
+                type="button"
+              >
+                <Check className="model-picker-check" aria-hidden="true" size={15} strokeWidth={2.6} />
+                <span className="model-picker-option-main">{providerLabel(model)}</span>
+                <span className="model-picker-option-detail">{model.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function messageArtifactDiagrams(message: Message): DiagramData[] {
@@ -1334,26 +1415,13 @@ export function ChatPage() {
               const currentId = conversation?.model && modelsQuery.data.some((m) => m.id === conversation.model)
                 ? conversation.model
                 : modelsQuery.data[0]?.id ?? "";
-              const currentModel = modelsQuery.data.find((m) => m.id === currentId) ?? modelsQuery.data[0];
               return (
-                <select
-                  className="model-picker"
-                  data-provider={currentModel ? providerKey(currentModel) : "other"}
-                  aria-label="Chat model"
-                  title="Model used for this conversation"
-                  value={currentId}
+                <ModelPicker
+                  models={modelsQuery.data}
+                  currentId={currentId}
                   disabled={!conversationId || modelMutation.isPending}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value) modelMutation.mutate(value);
-                  }}
-                >
-                  {modelsQuery.data.map((m) => (
-                    <option key={m.id} value={m.id} title={m.label}>
-                      {providerLabel(m)}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => modelMutation.mutate(value)}
+                />
               );
             })()}
             {pomodoroEnabled && (

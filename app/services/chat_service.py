@@ -173,6 +173,8 @@ AGENT_TOOLS = [
                 "- Use `left_action` and `right_action` for operation buttons like DEQUEUE/ENQUEUE.\n"
                 "- Use `front_label` and `rear_label` for boundary pointers like FRONT/REAR.\n"
                 "- Use `footer_title`, `footer_text`, and `footer_order` for the one-sentence takeaway.\n"
+                "- For `tree` and `concept_map`, provide exactly one root node with no `parent_id`; every other "
+                "node must set `parent_id` to an existing node id so the visual is connected.\n"
                 "- Do NOT repeat the same content in your reply text; the diagram card is the visual explanation."
             ),
             "parameters": {
@@ -264,6 +266,8 @@ AGENT_TOOLS = [
                 "- For flowchart: ALWAYS wrap node labels in double quotes: `A[\"Fine Art\"]`. "
                 "Never write unquoted labels — parentheses, colons, commas, equals signs, "
                 "single quotes, or any non-alphanumeric character inside `[]` will break the parser.\n"
+                "- For flowchart/block diagrams, every visible node except the root/start must be connected "
+                "with an arrow or relationship. Do not output standalone node declarations that float apart.\n"
                 "- Use short, descriptive labels — no full sentences.\n"
                 "- Prefer `TD` for hierarchies, `LR` for processes and data pipelines.\n"
                 "- For `timeline`: use `section` headers with events on indented lines.\n"
@@ -824,6 +828,23 @@ def _clean_structured_nodes(value: Any, *, limit: int = 15) -> list[dict[str, st
     return result
 
 
+def _normalize_structured_tree_nodes(nodes: list[dict[str, str]]) -> list[dict[str, str]]:
+    if len(nodes) <= 1:
+        return nodes
+
+    existing_ids = {node["id"] for node in nodes}
+    root = next((node for node in nodes if not node.get("parent_id")), nodes[0])
+    normalized: list[dict[str, str]] = []
+    for node in nodes:
+        item = dict(node)
+        if item["id"] != root["id"] and item.get("parent_id") not in existing_ids:
+            item["parent_id"] = root["id"]
+        if item["id"] == root["id"]:
+            item.pop("parent_id", None)
+        normalized.append(item)
+    return normalized
+
+
 def _structured_diagram_payload(args: dict[str, Any]) -> dict[str, Any]:
     template = str(args.get("template") or "concept_map").strip().lower().replace("-", "_")
     if template not in _STRUCTURED_DIAGRAM_TEMPLATES:
@@ -846,6 +867,8 @@ def _structured_diagram_payload(args: dict[str, Any]) -> dict[str, Any]:
         data["steps"] = steps
     nodes = _clean_structured_nodes(args.get("nodes"))
     if nodes:
+        if template in {"tree", "concept_map"}:
+            nodes = _normalize_structured_tree_nodes(nodes)
         data["nodes"] = nodes
     return data
 
@@ -987,6 +1010,7 @@ async def stream_chat(
     )
 
     assistant_parts: list[str] = []
+    first_pass_parts: list[str] = []
     usage: dict[str, Any] | None = None
     ai_message_chunk = None
     tool_calls_data: list[dict[str, Any]] = []
@@ -1101,18 +1125,25 @@ async def stream_chat(
             llm_service, input_messages=input_messages, tools=available_tools
         ):
             if event.type == "token" and event.delta:
-                assistant_parts.append(event.delta)
-                yield SseEvent(event="token", data={"delta": event.delta})
+                first_pass_parts.append(event.delta)
             elif event.type == "tool_call_ready":
                 tool_calls_data = event.tool_calls or []
                 ai_message_chunk = event.ai_message
             elif event.type == "completed":
                 usage = event.usage
 
+        if not tool_calls_data:
+            first_pass_text = "".join(first_pass_parts)
+            if first_pass_text:
+                assistant_parts.append(first_pass_text)
+                yield SseEvent(event="token", data={"delta": first_pass_text})
+
         if tool_calls_data and ai_message_chunk is not None:
             lc_tool_messages = []
             pending_post_text_events: list[SseEvent] = []
             pending_quiz_events: list[dict[str, Any]] = []
+            created_rendered_card = False
+            created_quiz_card = False
             quiz_questions_this_turn: set[str] = set()
             structured_diagram_keys_this_turn: set[str] = set()
             diagram_sources_this_turn: set[str] = set()
@@ -1172,6 +1203,8 @@ async def stream_chat(
                         "quiz_type": quiz.quiz_type,
                         "options": quiz.options,
                     })
+                    created_rendered_card = True
+                    created_quiz_card = True
 
                 elif tc["name"] == "create_structured_diagram":
                     yield SseEvent(event="agent_step", data={"message": "Creating a visual diagram...", "tool": "create_structured_diagram"})
@@ -1201,6 +1234,7 @@ async def stream_chat(
                     pending_post_text_events.append(
                         SseEvent(event="structured_diagram", data=diagram_data)
                     )
+                    created_rendered_card = True
                     lc_tool_messages.append(
                         LCToolMessage(
                             content=(
@@ -1261,6 +1295,7 @@ async def stream_chat(
                         pending_post_text_events.append(
                             SseEvent(event="diagram", data=diagram_data)
                         )
+                        created_rendered_card = True
 
                 elif tc["name"] == "find_image":
                     yield SseEvent(event="agent_step", data={"message": "Finding a helpful image...", "tool": "find_image"})
@@ -1319,6 +1354,7 @@ async def stream_chat(
                         pending_post_text_events.append(
                             SseEvent(event="image", data=image_data)
                         )
+                        created_rendered_card = True
                         tool_content = (
                             f"Image for '{query}' found and displayed to the student in a card with a "
                             "caption. STRICT RULE: do NOT describe what the image looks like or repeat "
@@ -1415,6 +1451,7 @@ async def stream_chat(
                                     "reason": reason or None,
                                 })
                             )
+                            created_rendered_card = True
                             tool_content = (
                                 f"{kind.capitalize()} resource for '{topic}' shown to the student and "
                                 "saved to their Resources tab. The card already displays the title, the "
@@ -1528,15 +1565,24 @@ async def stream_chat(
 
             # Second pass: stream follow-up text. Tool-rendered cards are
             # flushed afterward so they do not interrupt the prose stream.
+            if not created_rendered_card:
+                first_pass_text = "".join(first_pass_parts)
+                if first_pass_text:
+                    assistant_parts.append(first_pass_text)
+                    yield SseEvent(event="token", data={"delta": first_pass_text})
             original_lc = llm_service.to_langchain_messages(input_messages)
             second_pass = original_lc + [ai_message_chunk] + lc_tool_messages
 
             async for event in llm_service.stream_lc(lc_messages=second_pass):
                 if event.type == "token" and event.delta:
-                    assistant_parts.append(event.delta)
-                    yield SseEvent(event="token", data={"delta": event.delta})
+                    if not created_quiz_card:
+                        assistant_parts.append(event.delta)
+                        yield SseEvent(event="token", data={"delta": event.delta})
                 elif event.type == "completed":
                     usage = event.usage
+
+            if created_quiz_card:
+                assistant_parts = ["Here's a quick check."]
 
         if not "".join(assistant_parts).strip() and web_search_fallback_query:
             fallback = _render_web_search_answer(web_search_fallback_query, web_search_fallback_results)

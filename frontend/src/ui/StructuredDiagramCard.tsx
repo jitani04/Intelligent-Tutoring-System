@@ -136,10 +136,24 @@ function StepsDiagram({ diagram }: { diagram: StructuredDiagramData }) {
   );
 }
 
+function normalizeTreeNodes(nodes: StructuredDiagramNode[]): StructuredDiagramNode[] {
+  if (nodes.length <= 1) return nodes;
+
+  const ids = new Set(nodes.map((node) => node.id));
+  const root = nodes.find((node) => !node.parent_id) ?? nodes[0];
+  return nodes.map((node) => {
+    if (node.id === root.id) return { ...node, parent_id: undefined };
+    if (!node.parent_id || !ids.has(node.parent_id)) return { ...node, parent_id: root.id };
+    return node;
+  });
+}
+
 function TreeDiagram({ diagram }: { diagram: StructuredDiagramData }) {
-  const nodes: StructuredDiagramNode[] = diagram.nodes?.length
-    ? diagram.nodes
-    : (diagram.items ?? []).map((label, index) => ({ id: `node-${index}`, label, parent_id: index === 0 ? undefined : "node-0" }));
+  const nodes: StructuredDiagramNode[] = normalizeTreeNodes(
+    diagram.nodes?.length
+      ? diagram.nodes
+      : (diagram.items ?? []).map((label, index) => ({ id: `node-${index}`, label, parent_id: index === 0 ? undefined : "node-0" })),
+  );
   const root = nodes.find((node) => !node.parent_id) ?? nodes[0];
   const children = nodes.filter((node) => node.parent_id === root?.id);
   const grandchildren = nodes.filter((node) => children.some((child) => child.id === node.parent_id));

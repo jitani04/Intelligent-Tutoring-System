@@ -2032,6 +2032,7 @@ export function ProjectPage() {
                           setSelectedLearningNodeId(id);
                         }
                       }}
+                      onDeleteNode={editingMap ? (id) => void deleteDraftTopic(id) : undefined}
                     />
                   </div>
 

@@ -41,9 +41,12 @@ export function NewSubjectModal({ onClose }: Props) {
       return cleanSubject;
     },
     onSuccess: async (cleanSubject) => {
-      await queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["project-profile", cleanSubject] }),
+      ]);
       onClose();
-      navigate(`/projects/${encodeURIComponent(cleanSubject)}/setup`);
+      navigate("/dashboard");
     },
     onError: (nextError) => {
       setError(nextError instanceof Error ? nextError.message : "Failed to create subject.");

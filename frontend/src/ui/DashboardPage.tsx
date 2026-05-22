@@ -26,7 +26,7 @@ function formatDue(value: string): string {
 }
 
 export function DashboardPage() {
-  const { openStartSession } = useStartSessionModal();
+  const { openNewSubject } = useStartSessionModal();
   const { data: user } = useQuery({
     queryKey: ["me"],
     queryFn: getCurrentUser,
@@ -120,7 +120,7 @@ export function DashboardPage() {
           <div className="dashboard-collection-heading">
             <span className="dashboard-collection-title">Your subjects</span>
           </div>
-          <button className={buttonClass("primary", "dashboard-collection-action")} onClick={() => openStartSession()} type="button">
+          <button className={buttonClass("primary", "dashboard-collection-action")} onClick={() => openNewSubject()} type="button">
             <Plus size={15} strokeWidth={2.2} />
             New subject
           </button>
@@ -139,7 +139,7 @@ export function DashboardPage() {
               <span>Human Computer Interaction</span>
               <span>Interview prep</span>
             </div>
-            <button className={buttonClass("primary")} onClick={() => openStartSession()} type="button">Create a subject</button>
+            <button className={buttonClass("primary")} onClick={() => openNewSubject()} type="button">Create a subject</button>
           </div>
         ) : (
           <div className="dashboard-showcase-grid">

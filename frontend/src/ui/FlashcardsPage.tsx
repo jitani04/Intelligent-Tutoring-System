@@ -89,7 +89,7 @@ export function FlashcardsView({ subject }: { subject: string }) {
     setFlipped(false);
   }, [total]);
 
-  const current = (order.length > 0 && cards[order[index]] ) ?? null;
+  const current = order.length > 0 ? (cards[order[index]] ?? null) : null;
   const currentFront = current ? flashcardFront(current) : "";
   const currentBack = current ? flashcardBack(current) : "";
 
@@ -192,6 +192,8 @@ export function FlashcardsView({ subject }: { subject: string }) {
       </div>
     );
   }
+
+  if (!current) return null;
 
   const progress = (index / total) * 100;
 

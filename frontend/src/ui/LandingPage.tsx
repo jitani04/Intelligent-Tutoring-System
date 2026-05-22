@@ -9,6 +9,7 @@ import { getGoogleAuthStatus } from "../googleAuth";
 import type { AuthResult } from "../types";
 import { ThemeToggle } from "./ThemeToggle";
 import { buttonClass } from "./buttonClass";
+import ErrorMessage from "./ErrorMessage";
 
 type ModalMode = "signin" | "signup";
 
@@ -435,7 +436,7 @@ export function LandingPage() {
                 />
               </div>
 
-              {error ? <p className="error-text">{error}</p> : null}
+              <ErrorMessage message={error} />
 
               <div className="modal-actions">
                 <button className={buttonClass("secondary")} disabled={loading} onClick={() => setMode(null)} type="button">Cancel</button>

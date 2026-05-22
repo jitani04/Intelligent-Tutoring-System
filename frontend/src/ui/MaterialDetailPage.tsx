@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { FileQuestion } from "lucide-react";
+import { ChevronLeft, FileQuestion } from "lucide-react";
 
 import { deleteMaterial, getMaterialExtractedText, getMaterialPreviewUrl, listMaterials } from "../api";
 import { MarkdownText } from "./MarkdownText";
 import { buttonClass } from "./buttonClass";
+import Loading from "./Loading";
+import ErrorMessage from "./ErrorMessage";
 
 async function downloadViaBlob(url: string, filename: string, onError: (msg: string) => void) {
   try {
@@ -90,7 +92,7 @@ export function MaterialDetailPage() {
 
   const previewMime = previewQuery.data?.mime_type ?? material?.mime_type ?? "";
   const isTextPreview = isMarkdownMime(previewMime) || isPlainTextMime(previewMime);
-  const previewFilename = previewQuery.data?.filename ?? material.filename ?? "";
+  const previewFilename = previewQuery.data?.filename ?? material?.filename ?? "";
   const inferredPdf = previewMime.toLowerCase() === "" && previewFilename.toLowerCase().endsWith(".pdf");
   const effectiveIframePreviewable = isIframePreviewable(previewMime) || inferredPdf;
   const needsExtractedText = isReady && !isTextPreview && !effectiveIframePreviewable;
@@ -174,7 +176,7 @@ export function MaterialDetailPage() {
   if (materialsQuery.isLoading) {
     return (
       <div className="page-shell">
-        <p className="muted">Loading material…</p>
+        <Loading title="Loading material…" />
       </div>
     );
   }
@@ -196,7 +198,9 @@ export function MaterialDetailPage() {
     <div className="page-shell">
       <div className="page-header">
         <div className="page-header-text">
-          <Link className="text-link page-back-link" to={projectMaterialsPath}>Back to materials</Link>
+          <Link className={buttonClass("secondary")} style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", marginBottom: "0.5rem" }} to={projectMaterialsPath}>
+            <ChevronLeft size={15} strokeWidth={2} />Back
+          </Link>
           <h1 className="page-title">{material.filename}</h1>
           <p className="page-subtitle">
             {material.subject ?? "General"} material uploaded on {formatDateTime(material.created_at)}.
@@ -213,17 +217,17 @@ export function MaterialDetailPage() {
       </div>
 
       {material.status === "processing" ? (
-        <p className="muted">Sapient is still reading and indexing this file.</p>
+        <Loading title="Processing file…" subtitle="Sapient is reading and indexing this file." />
       ) : null}
       {material.status === "failed" ? (
-        <p className="error-text">{material.error_message ?? "Processing failed."}</p>
+        <ErrorMessage message={material.error_message ?? "Processing failed."} />
       ) : null}
 
       {isReady ? (
         <div className="content-card">
-          {previewQuery.isLoading ? <p className="muted">Loading preview...</p> : null}
+          {previewQuery.isLoading ? <Loading title="Loading preview…" /> : null}
           {previewQuery.isError ? (
-            <p className="error-text">Could not load preview. {(previewQuery.error as Error)?.message ?? ""}</p>
+            <ErrorMessage message={`Could not load preview. ${(previewQuery.error as Error)?.message ?? ""}`} />
           ) : null}
           {previewQuery.data ? (
             <div className="material-preview-frame">
@@ -240,11 +244,9 @@ export function MaterialDetailPage() {
                   }}
                 >
                   {textContentQuery.isLoading ? (
-                    <p className="muted">Loading file...</p>
+                    <Loading title="Loading file…" />
                   ) : textContentQuery.isError ? (
-                    <p className="error-text">
-                      Could not load file. {(textContentQuery.error as Error)?.message ?? ""}
-                    </p>
+                    <ErrorMessage message={`Could not load file. ${(textContentQuery.error as Error)?.message ?? ""}`} />
                   ) : isMarkdownMime(previewMime) ? (
                     <MarkdownText className="markdown-body">{textContentQuery.data ?? ""}</MarkdownText>
                   ) : (
@@ -255,13 +257,13 @@ export function MaterialDetailPage() {
                 </div>
               ) : effectiveIframePreviewable ? (
                 previewLoading ? (
-                  <p className="muted">Loading preview…</p>
+                  <Loading title="Loading preview…" />
                 ) : previewFetchError ? (
-                  <p className="error-text">Could not load preview. {previewFetchError}</p>
+                  <ErrorMessage message={`Could not load preview. ${previewFetchError}`} />
                 ) : (
                   <iframe
                     key={blobPreviewUrl ?? previewQuery.data.url}
-                    src={blobPreviewUrl ?? previewQuery.data.url}
+                    src={blobPreviewUrl ? `${blobPreviewUrl}#${encodeURIComponent(previewFilename)}` : previewQuery.data.url}
                     title={`Preview of ${material.filename}`}
                     style={{ width: "100%", height: "70vh", border: "1px solid var(--border, #e2e2e2)", borderRadius: "8px", background: "#fff" }}
                   />
@@ -269,11 +271,9 @@ export function MaterialDetailPage() {
               ) : (
                 <div className="material-extracted-preview">
                   {extractedTextQuery.isLoading ? (
-                    <p className="muted">Loading extracted text…</p>
+                    <Loading title="Loading extracted text…" />
                   ) : extractedTextQuery.isError ? (
-                    <p className="error-text">
-                      Could not load extracted text. {(extractedTextQuery.error as Error)?.message ?? ""}
-                    </p>
+                    <ErrorMessage message={`Could not load extracted text. ${(extractedTextQuery.error as Error)?.message ?? ""}`} />
                   ) : extractedTextQuery.data && extractedTextQuery.data.chunks.length === 0 ? (
                     <p className="muted">No text was extracted from this file.</p>
                   ) : (
@@ -293,7 +293,7 @@ export function MaterialDetailPage() {
               <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
                 <a
                   className={buttonClass("secondary")}
-                  href={blobPreviewUrl ?? previewQuery.data.url}
+                  href={blobPreviewUrl ? `${blobPreviewUrl}#${encodeURIComponent(previewFilename)}` : previewQuery.data.url}
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => {
@@ -318,7 +318,7 @@ export function MaterialDetailPage() {
                 >
                   {downloading ? "Downloading…" : "Download"}
                 </button>
-                {downloadError && <span className="error-text" style={{ fontSize: "0.8rem" }}>{downloadError}</span>}
+                {downloadError && <ErrorMessage message={downloadError} />}
               </div>
             </div>
           ) : null}

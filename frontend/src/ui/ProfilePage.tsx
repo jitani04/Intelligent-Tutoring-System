@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { completeOnboarding, getCurrentUser } from "../api";
 import { buttonClass } from "./buttonClass";
+import ErrorMessage from "./ErrorMessage";
 
 const USE_CASES = [
   "Studying for a class",
@@ -120,7 +121,7 @@ export function ProfilePage() {
           ) : null}
 
           {status ? <p className="success-text">{status}</p> : null}
-          {error ? <p className="error-text">{error}</p> : null}
+          <ErrorMessage message={error} />
 
           <div className="flow-actions">
             <button className={buttonClass("primary")} disabled={saving || isLoading || !finalUseCase.trim()} type="submit">

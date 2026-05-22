@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { completeOnboarding, getCurrentUser, updateTutorPreferences } from "../api";
 import { buttonClass } from "./buttonClass";
+import ErrorMessage from "./ErrorMessage";
 
 const USE_CASES = [
   "Studying for a class",
@@ -146,7 +147,7 @@ export function OnboardingPage() {
               </div>
             </div>
 
-            {error ? <p className="error-text">{error}</p> : null}
+            <ErrorMessage message={error} />
 
             <div className="flow-actions">
               <button
@@ -217,7 +218,7 @@ export function OnboardingPage() {
             </label>
           ) : null}
 
-          {error ? <p className="error-text">{error}</p> : null}
+          <ErrorMessage message={error} />
 
           <div className="flow-actions">
             <button className={buttonClass("primary")} disabled={loading || !finalUseCase.trim()} type="submit">

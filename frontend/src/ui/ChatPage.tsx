@@ -9,6 +9,7 @@ import { getPendingStudyContext } from "../studyState";
 import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, PendingAgentAction, QuizData, Resource, ResourceData, RetrievedSource, StructuredDiagramData, WebSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { buttonClass } from "./buttonClass";
+import Loading from "./Loading";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
 import { ResourceCard } from "./ResourceCard";
@@ -1471,7 +1472,7 @@ export function ChatPage() {
 
           {conversationQuery.isLoading && conversationId !== null ? (
             <div className="thread-empty">
-              <p className="muted">Loading study session…</p>
+              <Loading title="Loading study session…" />
             </div>
           ) : null}
 
@@ -1974,8 +1975,8 @@ export function ChatPage() {
           </div>
           <div className="sources-body">
             {subjectMaterialsQuery.isLoading ? (
-              <p className="muted" style={{ padding: "0.5rem 0" }}>Loading…</p>
-            ) : subjectMaterials.length === 0 ? (
+                <Loading title="Loading…" />
+              ) : subjectMaterials.length === 0 ? (
               <div className="sources-empty">
                 <FileText size={22} strokeWidth={1.6} />
                 <strong>No materials attached yet</strong>

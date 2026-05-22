@@ -6,8 +6,9 @@ import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Circ
 
 import { RateLimitError, createConversation, createKeyIdea, createManualQuiz, deleteConversation, deleteKeyIdea, deleteLectureNote, deleteProjectSubject, deleteResource, generateMindMap, generateSubjectFlashcards, generateSubjectQuiz, generateSummary, generateWeakQuiz, getCurrentUser, getDueFlashcards, getLectureNote, getProjectProfile, getProjectProgress, listAllKeyIdeas, listAssignments, listConversations, listLectureNotes, listMaterials, listSubjectQuizzes, listSubjectResources, previewReviewDigest, sendReviewDigest, streamChat, updateConversationTitle, updateKeyIdea, updateLearningMapProgress, updateProjectGoals, updateProjectMindMap } from "../api";
 import { sortConversationsByRecentActivity } from "../conversations";
-import { formatSubjectName, normalizeSubject } from "../subjects";
+import { formatSubjectName, normalizeSubject, subjectCoverImage } from "../subjects";
 import type { ChatStreamEvent, Conversation, Flashcard, KeyIdea, KnowledgeStateEntry, LearningMapStatus, LearningPathNode, LectureNote, MindMap, MindMapNode, PendingAgentAction, PracticeQuizItem, ProjectProgress, SessionSummary } from "../types";
+import ErrorMessage from "./ErrorMessage";
 import { FlashcardsView } from "./FlashcardsPage";
 import { LearningMapGraph } from "./LearningMapGraph";
 import { LectureModeOverlay } from "./LectureModeOverlay";
@@ -18,6 +19,7 @@ import { ResourceCard } from "./ResourceCard";
 import { useStartSessionModal } from "./StartSessionModalContext";
 import { WeakQuizModal } from "./WeakQuizModal";
 import { buttonClass } from "./buttonClass";
+import { useConfirm } from "../ConfirmDialog";
 
 type ProjectTab = "overview" | "notes" | "lectures" | "materials" | "quizzes" | "flashcards" | "resources";
 
@@ -657,6 +659,8 @@ export function ProjectPage() {
   const [mapEditError, setMapEditError] = useState<string | null>(null);
   const [savingMap, setSavingMap] = useState(false);
 
+  const confirm = useConfirm();
+
 
   function setActiveTab(next: ProjectTab) {
     const params = new URLSearchParams(searchParams);
@@ -754,7 +758,14 @@ export function ProjectPage() {
   }
 
   async function handleDeleteLectureNote(id: number) {
-    if (!window.confirm("Delete this lecture page?")) return;
+    const ok = await confirm({
+      title: "Delete lecture page",
+      message: "Delete this lecture page?",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
     setDeletingLectureNoteId(id);
     try {
       await deleteLectureNote(id);
@@ -813,7 +824,14 @@ export function ProjectPage() {
   }, [subjectNotes, noteSearch]);
 
   async function handleDeleteNote(id: number) {
-    if (!window.confirm("Delete this note?")) return;
+    const ok = await confirm({
+      title: "Delete note",
+      message: "Delete this note?",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
     setDeletingNoteId(id);
     try {
       await deleteKeyIdea(id);
@@ -951,6 +969,20 @@ export function ProjectPage() {
   const deleteSubjectMutation = useMutation({
     mutationFn: () => deleteProjectSubject(decoded),
     onSuccess: async () => {
+      // Cancel any in-flight fetches for this subject before cleaning up — otherwise
+      // React Query immediately refetches them (component still mounted), which causes
+      // _get_or_create_profile to recreate the just-deleted profile.
+      await queryClient.cancelQueries({ queryKey: ["project-profile", decoded] });
+      await queryClient.cancelQueries({ queryKey: ["project-progress", decoded] });
+
+      // Optimistically remove the deleted subject from the cached project list
+      try {
+        queryClient.setQueryData<any[]>(["project-profiles"], (current) =>
+          (current ?? []).filter((p) => normalizeSubject(p.subject) !== normalizeSubject(decoded)),
+        );
+      } catch {
+        // ignore cache update errors
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
         queryClient.invalidateQueries({ queryKey: ["project-profiles"] }),
@@ -959,8 +991,9 @@ export function ProjectPage() {
         queryClient.invalidateQueries({ queryKey: ["key-ideas-all"] }),
         queryClient.invalidateQueries({ queryKey: ["flashcards-due", decoded] }),
       ]);
-      queryClient.removeQueries({ queryKey: ["project-profile", decoded] });
-      queryClient.removeQueries({ queryKey: ["project-progress", decoded] });
+      // Do NOT call removeQueries for project-profile/project-progress here — removing
+      // an actively-observed query triggers an immediate refetch, recreating the profile.
+      // These queries become inactive on navigation and are garbage-collected normally.
       window.localStorage.removeItem(projectSectionStorageKey(decoded));
       navigate("/dashboard", { replace: true });
     },
@@ -969,9 +1002,16 @@ export function ProjectPage() {
     },
   });
 
-  function handleDeleteSession(conversationId: number) {
+  async function handleDeleteSession(conversationId: number) {
     if (deleteSessionMutation.isPending) return;
-    if (!window.confirm("Delete this study session? This can't be undone.")) return;
+    const ok = await confirm({
+      title: "Delete study session",
+      message: "Delete this study session? This can't be undone.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
     deleteSessionMutation.mutate(conversationId);
   }
 
@@ -997,12 +1037,16 @@ export function ProjectPage() {
     updateTitleMutation.mutate({ conversationId, title });
   }
 
-  function handleDeleteSubject() {
+  async function handleDeleteSubject() {
     if (deleteSubjectMutation.isPending) return;
-    const confirmed = window.confirm(
-      `Delete "${displaySubject}"? This will permanently delete its study sessions, notes, flashcards, and uploaded materials.`,
-    );
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: `Delete ${displaySubject}`,
+      message: `Delete "${displaySubject}"? This will permanently delete its study sessions, notes, flashcards, and uploaded materials.`,
+      confirmLabel: "Delete subject",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
     setDeleteSubjectError(null);
     deleteSubjectMutation.mutate();
   }
@@ -1335,17 +1379,21 @@ export function ProjectPage() {
     });
   }
 
-  function deleteDraftTopic(nodeId: string) {
+  async function deleteDraftTopic(nodeId: string) {
     const node = mapDraft.find((item) => item.id === nodeId);
     if (!node) return;
     const connectedCount = mapDraft.filter((item) => (
       item.parentId === nodeId || item.prerequisiteIds.includes(nodeId) || item.relatedIds.includes(nodeId)
     )).length;
     const linkedCount = node.linkedNoteIds.length + node.linkedMaterialIds.length;
-    const confirmed = window.confirm(
-      `Delete "${node.topic}"? Deleting this topic may affect ${connectedCount} connected topic${connectedCount === 1 ? "" : "s"} and ${linkedCount} linked item${linkedCount === 1 ? "" : "s"}.`,
-    );
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: "Delete topic",
+      message: `Delete "${node.topic}"? Deleting this topic may affect ${connectedCount} connected topic${connectedCount === 1 ? "" : "s"} and ${linkedCount} linked item${linkedCount === 1 ? "" : "s"}.`,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
     setMapDraft((prev) => prev
       .filter((item) => item.id !== nodeId)
       .map((item, order) => ({
@@ -1405,15 +1453,11 @@ export function ProjectPage() {
   return (
     <div className="page-shell">
       <div className="project-hero-card">
-        {profile?.cover_image_url ? (
-          <img
-            src={profile.cover_image_url}
-            alt={`${displaySubject} cover`}
-            className="project-hero-image"
-          />
-        ) : (
-          <div className="project-hero-image project-hero-image-empty" />
-        )}
+        <img
+          src={profile?.cover_image_url ?? subjectCoverImage(displaySubject)}
+          alt={`${displaySubject} cover`}
+          className="project-hero-image"
+        />
         <div className="project-hero-overlay" />
         <div className="project-hero-content">
           <div className="project-hero-text">
@@ -1468,7 +1512,7 @@ export function ProjectPage() {
         </div>
       </div>
 
-      {deleteSubjectError ? <p className="error-text">{deleteSubjectError}</p> : null}
+      {deleteSubjectError ? <ErrorMessage message={deleteSubjectError} /> : null}
 
       {(reviewDigestAction?.preview || reviewDigestStatus) && (
         <div className="review-strip">

@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { createConversation, generateMindMap, listProjectProfiles, setupProject } from "../api";
 import { formatSubjectName } from "../subjects";
 import { buttonClass } from "./buttonClass";
+import ErrorMessage from "./ErrorMessage";
 
 type Step = "topic" | "method";
 
@@ -171,7 +172,7 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
               <span>{subject}</span>
             </div>
 
-            {error ? <p className="error-text">{error}</p> : null}
+            <ErrorMessage message={error} />
 
             <div className="flow-actions">
               <button className={buttonClass("secondary")} disabled={busy} onClick={() => setStep("topic")} type="button">Back</button>

@@ -12,6 +12,7 @@ import {
 } from "../api";
 import type { ProjectCoverImageOption } from "../types";
 import { buttonClass } from "./buttonClass";
+import ErrorMessage from "./ErrorMessage";
 
 const LEVELS = [
   { value: "beginner", label: "Complete beginner", description: "Little to no prior experience" },
@@ -288,7 +289,7 @@ export function ProjectSetupPage() {
                 </button>
               )}
             </div>
-            {coverUploadError && <p className="error-text">{coverUploadError}</p>}
+            {coverUploadError && <ErrorMessage message={coverUploadError} />}
             <p className="setup-cover-help">
               Upload a JPEG, PNG, WebP, or GIF (max 5 MB), or pick from Pexels below.
             </p>
@@ -312,7 +313,7 @@ export function ProjectSetupPage() {
               <p className="setup-cover-help">
                 Pexels requires attribution when possible. Selected images keep source metadata with the subject.
               </p>
-              {coverSearchError && <p className="error-text">{coverSearchError}</p>}
+              {coverSearchError && <ErrorMessage message={coverSearchError} />}
               {coverSearchResults.length > 0 && (
                 <div className="setup-cover-results">
                   {coverSearchResults.map((option) => {
@@ -336,7 +337,7 @@ export function ProjectSetupPage() {
           </div>
         </div>
 
-        {error && <p className="error-text">{error}</p>}
+        {error && <ErrorMessage message={error} />}
 
         <div className="flow-actions">
           <button className={buttonClass("secondary")} onClick={handleSkip} type="button">

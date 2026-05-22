@@ -7,7 +7,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.api.deps import get_user_id
 from app.core.config import get_settings
@@ -226,12 +228,25 @@ async def _get_or_create_profile(
         )
     )
     profile = result.scalar_one_or_none()
-    if profile is None:
-        profile = ProjectProfile(user_id=user_id, subject=subject)
-        session.add(profile)
-        await session.commit()
-        await session.refresh(profile)
-    return profile
+    if profile is not None:
+        return profile
+
+    # Use INSERT ... ON CONFLICT DO NOTHING so concurrent requests racing to create
+    # the same profile don't collide with a UniqueViolationError.
+    await session.execute(
+        pg_insert(ProjectProfile)
+        .values(user_id=user_id, subject=subject)
+        .on_conflict_do_nothing(constraint="uq_project_profile_user_subject")
+    )
+    await session.commit()
+
+    result = await session.execute(
+        select(ProjectProfile).where(
+            ProjectProfile.user_id == user_id,
+            ProjectProfile.subject == subject,
+        )
+    )
+    return result.scalar_one()
 
 
 @router.get("", response_model=list[ProjectProfileRead])
@@ -409,7 +424,10 @@ async def update_learning_map_progress(
     progress = dict(profile.learning_map_progress or {})
     progress[node_id] = body.status
     profile.learning_map_progress = progress
-    await session.commit()
+    try:
+        await session.commit()
+    except StaleDataError:
+        raise HTTPException(status_code=404, detail="Subject not found.")
     await session.refresh(profile)
     return await _hydrate_profile_cover_url(profile)
 
@@ -433,7 +451,10 @@ async def update_project_mindmap(
     profile = await _get_or_create_profile(session, user_id, subject)
     profile.mind_map = body.mind_map
     profile.learning_map_progress = body.learning_map_progress or {}
-    await session.commit()
+    try:
+        await session.commit()
+    except StaleDataError:
+        raise HTTPException(status_code=404, detail="Subject not found.")
     await session.refresh(profile)
     return await _hydrate_profile_cover_url(profile)
 
@@ -609,7 +630,10 @@ async def setup_project(
             else None
         )
 
-    await session.commit()
+    try:
+        await session.commit()
+    except StaleDataError:
+        raise HTTPException(status_code=404, detail="Subject not found.")
     await session.refresh(profile)
 
     if previous_key and previous_key != profile.cover_image_storage_key:
@@ -634,7 +658,10 @@ async def update_project_goals(
 ) -> ProjectProfileRead:
     profile = await _get_or_create_profile(session, user_id, subject)
     profile.goals = body.goals.strip() if body.goals and body.goals.strip() else None
-    await session.commit()
+    try:
+        await session.commit()
+    except StaleDataError:
+        raise HTTPException(status_code=404, detail="Subject not found.")
     await session.refresh(profile)
     return await _hydrate_profile_cover_url(profile)
 
@@ -1165,6 +1192,9 @@ async def generate_mindmap(
         raise HTTPException(status_code=502, detail="Failed to generate mind map. Try again.")
 
     profile.mind_map = mind_map
-    await session.commit()
+    try:
+        await session.commit()
+    except StaleDataError:
+        raise HTTPException(status_code=404, detail="Subject not found.")
     await session.refresh(profile)
     return await _hydrate_profile_cover_url(profile)

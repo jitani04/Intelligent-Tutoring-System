@@ -25,9 +25,12 @@ import {
   syncCalendarFeed,
   updateAssignment,
 } from "../api";
+import { useConfirm } from "../ConfirmDialog";
 import { formatSubjectName } from "../subjects";
 import type { Assignment, AssignmentInput, CalendarFeed } from "../types";
 import { buttonClass } from "./buttonClass";
+import Loading from "./Loading";
+import ErrorMessage from "./ErrorMessage";
 
 const WEEK_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABEL = (year: number, month: number) =>
@@ -118,6 +121,7 @@ export function CalendarPage() {
   });
   const [feedDraft, setFeedDraft] = useState({ name: "Canvas calendar", url: "", subject: "" });
   const [formError, setFormError] = useState<string | null>(null);
+  const confirm = useConfirm();
   const [feedError, setFeedError] = useState<string | null>(null);
 
   const assignmentsQuery = useQuery({
@@ -304,16 +308,30 @@ export function CalendarPage() {
     });
   }
 
-  function handleDeleteAssignment(assignment: Assignment) {
-    if (!window.confirm(`Delete "${assignment.title}"?`)) return;
+  async function handleDeleteAssignment(assignment: Assignment) {
+    const ok = await confirm({
+      title: "Delete assignment",
+      message: `Delete "${assignment.title}"?`,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
     if (selectedAssignmentId === assignment.id) {
       setSelectedAssignmentId(null);
     }
     deleteAssignmentMutation.mutate(assignment.id);
   }
 
-  function handleDeleteFeed(feed: CalendarFeed) {
-    if (!window.confirm(`Remove "${feed.name}"? Imported assignments will stay on your calendar.`)) return;
+  async function handleDeleteFeed(feed: CalendarFeed) {
+    const ok = await confirm({
+      title: "Remove calendar feed",
+      message: `Remove "${feed.name}"? Imported assignments will stay on your calendar.`,
+      confirmLabel: "Remove",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!ok) return;
     deleteFeedMutation.mutate(feed.id);
   }
 
@@ -385,7 +403,7 @@ export function CalendarPage() {
                   placeholder="What should Sapient help you prepare?"
                 />
               </label>
-              {formError ? <p className="error-text">{formError}</p> : null}
+              {formError ? <ErrorMessage message={formError} /> : null}
               <div className="calendar-form-actions">
                 <button className={buttonClass("secondary")} onClick={() => setShowAssignmentForm(false)} type="button">Cancel</button>
                 <button className={buttonClass("primary")} disabled={createAssignmentMutation.isPending} type="submit">
@@ -428,7 +446,7 @@ export function CalendarPage() {
                   ))}
                 </select>
               </label>
-              {feedError ? <p className="error-text">{feedError}</p> : null}
+              {feedError ? <ErrorMessage message={feedError} /> : null}
               <div className="calendar-form-actions">
                 <button className={buttonClass("secondary")} onClick={() => setShowCanvasForm(false)} type="button">Cancel</button>
                 <button className={buttonClass("primary")} disabled={createFeedMutation.isPending} type="submit">
@@ -545,7 +563,7 @@ export function CalendarPage() {
               )}
             </div>
 
-            {assignmentsQuery.isLoading ? <p className="muted">Loading assignments...</p> : null}
+            {assignmentsQuery.isLoading ? <Loading title="Loading assignments…" /> : null}
 
             {!assignmentsQuery.isLoading && upcomingList.length === 0 ? (
               <div className="calendar-empty">

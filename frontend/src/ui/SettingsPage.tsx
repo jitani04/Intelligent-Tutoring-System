@@ -7,6 +7,7 @@ import { useReadingPrefs } from "../ReadingPrefsContext";
 import type { FontSize, FontFamily, LineSpacing, LetterSpacing, ContentWidth } from "../readingPrefs";
 import type { PendingAgentAction, ReviewEmailPreferences, TutorVoice } from "../types";
 import { buttonClass } from "./buttonClass";
+import ErrorMessage from "./ErrorMessage";
 
 const POMODORO_KEY = "sapient-pomodoro";
 const POMODORO_DURATION_KEY = "sapient-pomodoro-duration";
@@ -377,7 +378,7 @@ export function SettingsPage() {
               </div>
 
               {customizationStatus ? <p className="success-text" style={{ marginTop: "1rem" }}>{customizationStatus}</p> : null}
-              {customizationError ? <p className="error-text" style={{ marginTop: "1rem" }}>{customizationError}</p> : null}
+              {customizationError ? <ErrorMessage message={customizationError} /> : null}
 
               <div className="settings-save-row">
                 <button className={buttonClass("primary")} disabled={savingCustomization} type="submit">

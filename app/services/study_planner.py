@@ -13,6 +13,7 @@ RecommendedAction = Literal[
     "practice_weak_topic",
     "review_due_flashcards",
     "generate_study_plan",
+    "create_structured_diagram",
     "create_diagram",
     "find_resource",
     "recommend_next_topic",
@@ -73,9 +74,9 @@ class StudyPlanner:
             return StudyPlan(
                 user_intent="visual_explanation",
                 current_mode=current_mode,
-                recommended_action="create_diagram",
+                recommended_action="create_structured_diagram",
                 reason="A visual representation is likely useful.",
-                tools_to_consider=["create_diagram"],
+                tools_to_consider=["create_structured_diagram", "create_diagram"],
             )
 
         if any(term in text for term in ["resource", "video", "article", "link", "tutorial"]):

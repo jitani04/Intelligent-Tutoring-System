@@ -216,7 +216,7 @@ function FitViewPanel() {
       <button
         aria-label="Fit graph to view"
         className="mindmap-fit-btn"
-        onClick={() => void fitView({ padding: 0.2, duration: 400 })}
+        onClick={() => void fitView({ padding: 0.08, minZoom: 0.5, duration: 400 })}
         type="button"
       >
         <Scan size={15} strokeWidth={2} />
@@ -263,7 +263,7 @@ export function LearningMapGraph({
       onEdgesChange={onEdgesChange}
       nodeTypes={nodeTypes}
       fitView
-      fitViewOptions={{ padding: 0.25 }}
+      fitViewOptions={{ padding: 0.08, minZoom: 0.5 }}
       minZoom={0.15}
       maxZoom={2}
       onPaneClick={() => onSelectNode(null)}

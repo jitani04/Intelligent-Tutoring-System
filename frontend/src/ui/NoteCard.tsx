@@ -1,5 +1,6 @@
 import type { KeyIdea } from "../types";
 import { DiagramCard } from "./DiagramCard";
+import { StructuredDiagramCard } from "./StructuredDiagramCard";
 
 export function isNoteDue(idea: KeyIdea): boolean {
   return new Date(idea.sr_due_date) <= new Date();
@@ -68,6 +69,11 @@ export function NoteCard({ note, deleting, promoting, showSubject = true, onDele
               title: note.artifact_data.title ?? undefined,
             }}
           />
+        </div>
+      )}
+      {note.artifact_type === "diagram" && note.artifact_data?.kind === "structured_diagram" && (
+        <div className="note-artifact-diagram mt-2 block overflow-hidden rounded-lg">
+          <StructuredDiagramCard diagram={{ ...note.artifact_data.diagram, id: `note-${note.id}` }} />
         </div>
       )}
       {note.artifact_type === "image" && note.artifact_data?.kind === "image" && (

@@ -124,7 +124,7 @@ class TokenResponse(BaseModel):
     status_code=status.HTTP_201_CREATED,
     dependencies=[_auth_rate_limit],
 )
-async def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DbDep) -> TokenResponse:
+async def register(body: RegisterRequest, db: DbDep) -> TokenResponse:
     existing = await db.scalar(select(User).where(User.email == body.email))
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered.")
@@ -133,7 +133,6 @@ async def register(body: RegisterRequest, background_tasks: BackgroundTasks, db:
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    background_tasks.add_task(send_onboarding_email, user_id=user.id, email=user.email, name=user.name)
 
     return TokenResponse(access_token=create_access_token(user.id), user=UserResponse.from_user(user))
 
@@ -148,7 +147,7 @@ async def login(body: LoginRequest, db: DbDep) -> TokenResponse:
 
 
 @router.post("/google", response_model=TokenResponse, dependencies=[_auth_rate_limit])
-async def login_with_google(body: GoogleAuthRequest, background_tasks: BackgroundTasks, db: DbDep) -> TokenResponse:
+async def login_with_google(body: GoogleAuthRequest, db: DbDep) -> TokenResponse:
     settings = get_settings()
     if not settings.google_client_id:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google sign-in is not configured.")
@@ -186,8 +185,6 @@ async def login_with_google(body: GoogleAuthRequest, background_tasks: Backgroun
 
     await db.commit()
     await db.refresh(user)
-    if is_new_user:
-        background_tasks.add_task(send_onboarding_email, user_id=user.id, email=user.email, name=user.name)
 
     return TokenResponse(access_token=create_access_token(user.id), user=UserResponse.from_user(user))
 
@@ -277,6 +274,7 @@ async def update_review_email_preferences(
 @router.post("/onboarding", response_model=UserResponse)
 async def complete_onboarding(
     body: OnboardingRequest,
+    background_tasks: BackgroundTasks,
     user_id: Annotated[int, Depends(get_user_id)],
     db: DbDep,
 ) -> UserResponse:
@@ -291,10 +289,14 @@ async def complete_onboarding(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
+    is_new_user = not user.onboarding_complete
     user.name = name[:255]
     user.use_case = use_case[:100]
     user.onboarding_complete = True
     await db.commit()
     await db.refresh(user)
+
+    if is_new_user:
+        background_tasks.add_task(send_onboarding_email, user_id=user.id, email=user.email, name=user.name)
 
     return UserResponse.from_user(user)

@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -17,4 +18,5 @@ class MessageRead(BaseModel):
     conversation_id: int
     role: MessageRoleSchema
     content: str
+    artifacts: list[dict[str, Any]] | None = None
     created_at: datetime

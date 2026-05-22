@@ -88,6 +88,8 @@ def test_study_planner_selects_practice_for_quiz_requests() -> None:
 
 def test_agent_tool_registry_marks_sensitive_tools_for_approval() -> None:
     assert "generate_quiz" in allowed_chat_tool_names()
+    assert "create_structured_diagram" in allowed_chat_tool_names()
+    assert "create_structured_diagram" in TOOL_REGISTRY
     assert TOOL_REGISTRY["send_review_digest_email"].approval_policy == "opt_in_required"
     assert TOOL_REGISTRY["update_learning_map"].approval_policy == "user_approval_required"
     assert TOOL_REGISTRY["schedule_review"].approval_policy == "user_approval_required"
@@ -166,7 +168,8 @@ async def test_review_digest_generation_uses_deadlines_notes_weak_topics_and_qui
     assert "Use Lecture Mode for a quick recap." in digest.recommended_actions
     assert any(link["url"] == "https://sapient.test/projects/Web%20Design?tab=quizzes" for link in digest.links)
     assert "Recommended study plan" in digest.text_body
-    assert "<h1>Sapient Review Plan</h1>" in digest.html_body
+    assert "Sapient Review Plan</h1>" in digest.html_body
+    assert "color:#e2eaf4" in digest.html_body
 
 
 @pytest.mark.asyncio
@@ -245,11 +248,12 @@ def test_onboarding_email_template_links_to_app() -> None:
     )
 
     assert message.to == "student@example.com"
-    assert message.subject == "Welcome to Sapient"
+    assert message.subject == "Welcome to Sapient, Jenna!"
     assert message.idempotency_key == "onboarding-user-42"
     assert "Hi Jenna" in message.text_body
     assert "https://sapient.test" in message.text_body
-    assert '<a href="https://sapient.test">Open Sapient</a>' in message.html_body
+    assert 'href="https://sapient.test"' in message.html_body
+    assert "color:#e2eaf4" in message.html_body
 
 
 @pytest.mark.asyncio
@@ -278,7 +282,7 @@ async def test_send_onboarding_email_uses_provider() -> None:
     )
 
     assert captured["to"] == "student@example.com"
-    assert captured["subject"] == "Welcome to Sapient"
+    assert captured["subject"] == "Welcome to Sapient, there!"
     assert captured["idempotency_key"] == "onboarding-user-9"
 
 

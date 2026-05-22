@@ -17,6 +17,8 @@ from app.models.project_profile import ProjectProfile
 from app.models.quiz import Quiz, QuizAttempt
 from app.models.user import User
 
+BRAND_TEXT_COLOR = "#e2eaf4"
+
 
 @dataclass(slots=True)
 class ReviewDigest:
@@ -196,7 +198,8 @@ def render_review_digest_html(digest: ReviewDigest) -> str:
         return "<ul>" + "".join(f"<li>{html.escape(item)}</li>" for item in items) + "</ul>"
 
     body = [
-        "<h1>Sapient Review Plan</h1>",
+        f"<div style=\"background:#0f172a;border-radius:14px 14px 0 0;padding:28px 32px;text-align:center\"><h1 style=\"margin:0;color:{BRAND_TEXT_COLOR};font-size:24px;line-height:1.2\">Sapient Review Plan</h1></div>",
+        "<div style=\"background:#ffffff;padding:28px 32px;border:1px solid #e2e8f0;border-top:0;border-radius:0 0 14px 14px\">",
         f"<p>{html.escape(digest.reason)}</p>",
         "<h2>Focus on</h2>",
         ul(digest.focus_topics),
@@ -209,6 +212,7 @@ def render_review_digest_html(digest: ReviewDigest) -> str:
     body.extend(["<h2>Recommended study plan</h2>", "<ol>" + "".join(f"<li>{html.escape(item)}</li>" for item in actions) + "</ol>"])
     body.extend(["<h2>Links</h2>", "<ul>" + "".join(f"<li><a href=\"{html.escape(link['url'])}\">{html.escape(link['label'])}</a></li>" for link in digest.links) + "</ul>"])
     body.append("<p style=\"color:#64748b;font-size:13px\">You can adjust review reminders in Sapient settings.</p>")
+    body.append("</div>")
     return "\n".join(body)
 
 

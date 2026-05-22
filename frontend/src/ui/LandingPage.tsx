@@ -140,7 +140,7 @@ export function LandingPage() {
     <div className="landing-shell">
       <nav className="landing-nav">
         <span className="landing-brand">
-          <img className="landing-brand-logo" src="/favicon.svg" alt="" aria-hidden="true" />
+          <span className="landing-brand-logo" aria-hidden="true" />
           <span className="landing-wordmark">Sapient</span>
         </span>
         <div className="landing-nav-right">
@@ -160,47 +160,13 @@ export function LandingPage() {
           <div className="landing-hero-bg" aria-hidden="true">
             <div className="landing-hero-blob landing-hero-blob-1" />
             <div className="landing-hero-blob landing-hero-blob-2" />
-            <svg className="landing-hero-neural" viewBox="0 0 420 420" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <circle cx="210" cy="210" r="80" stroke="rgba(115,147,179,0.18)" strokeWidth="1.5"/>
-              <circle cx="210" cy="210" r="140" stroke="rgba(115,147,179,0.09)" strokeWidth="1"/>
-              <circle cx="210" cy="210" r="190" stroke="rgba(115,147,179,0.055)" strokeWidth="1"/>
-              {/* Nodes */}
-              <circle cx="210" cy="130" r="5" fill="rgba(115,147,179,0.55)"/>
-              <circle cx="270" cy="175" r="4" fill="rgba(115,147,179,0.45)"/>
-              <circle cx="270" cy="245" r="4" fill="rgba(115,147,179,0.45)"/>
-              <circle cx="210" cy="290" r="5" fill="rgba(115,147,179,0.55)"/>
-              <circle cx="150" cy="245" r="4" fill="rgba(115,147,179,0.45)"/>
-              <circle cx="150" cy="175" r="4" fill="rgba(115,147,179,0.45)"/>
-              <circle cx="210" cy="210" r="7" fill="rgba(115,147,179,0.7)"/>
-              {/* Outer nodes */}
-              <circle cx="210" cy="70" r="3.5" fill="rgba(115,147,179,0.35)"/>
-              <circle cx="315" cy="130" r="3" fill="rgba(115,147,179,0.28)"/>
-              <circle cx="340" cy="255" r="3" fill="rgba(115,147,179,0.28)"/>
-              <circle cx="260" cy="345" r="3" fill="rgba(115,147,179,0.28)"/>
-              <circle cx="155" cy="345" r="3" fill="rgba(115,147,179,0.28)"/>
-              <circle cx="80" cy="255" r="3" fill="rgba(115,147,179,0.28)"/>
-              <circle cx="100" cy="130" r="3" fill="rgba(115,147,179,0.28)"/>
-              {/* Connections */}
-              <line x1="210" y1="210" x2="210" y2="130" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
-              <line x1="210" y1="210" x2="270" y2="175" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
-              <line x1="210" y1="210" x2="270" y2="245" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
-              <line x1="210" y1="210" x2="210" y2="290" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
-              <line x1="210" y1="210" x2="150" y2="245" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
-              <line x1="210" y1="210" x2="150" y2="175" stroke="rgba(115,147,179,0.38)" strokeWidth="1.2"/>
-              <line x1="210" y1="130" x2="210" y2="70" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
-              <line x1="270" y1="175" x2="315" y2="130" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
-              <line x1="270" y1="245" x2="340" y2="255" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
-              <line x1="210" y1="290" x2="260" y2="345" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
-              <line x1="150" y1="245" x2="155" y2="345" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
-              <line x1="150" y1="175" x2="80" y2="255" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
-              <line x1="150" y1="175" x2="100" y2="130" stroke="rgba(115,147,179,0.2)" strokeWidth="1"/>
-            </svg>
           </div>
+
           <h1 className="landing-headline motion-reveal motion-rise motion-delay-1">
-            A tutor built for <em>sapience</em>.
+            Understand more, <em>forget less</em>
           </h1>
           <p className="landing-sub motion-reveal motion-rise motion-delay-2">
-            Reasoning, reflection, and learning that carries forward from one study session to the next.
+            Sapient learns from your coursework, lectures, deadlines, and progress to guide what you study next.
           </p>
           <div className="landing-cta-row motion-reveal motion-rise motion-delay-3">
             <button className={buttonClass("primary")} onClick={() => openModal("signup")} type="button">
@@ -225,10 +191,17 @@ export function LandingPage() {
                 </div>
               </div>
               <div className="landing-demo-side">
-                <span>Mastery</span>
-                <div className="landing-demo-meter"><i /></div>
-                <span>Next review</span>
-                <strong>Tomorrow, 9:00 AM</strong>
+                <span className="landing-demo-side-title">Upcoming deadlines</span>
+                <div className="landing-demo-deadlines">
+                  <div className="landing-demo-deadline">
+                    <span>Due in 2 days</span>
+                    <strong>Memory allocation quiz</strong>
+                  </div>
+                  <div className="landing-demo-deadline">
+                    <span>Friday</span>
+                    <strong>Systems lab report</strong>
+                  </div>
+                </div>
               </div>
             </LandingDemoVideo>
           </div>
@@ -236,11 +209,10 @@ export function LandingPage() {
 
         <section className="landing-showcase landing-showcase-tinted motion-reveal motion-rise">
           <div className="landing-showcase-copy">
-            <span className="landing-eyebrow">Retrieval-augmented</span>
-            <h2>Grounded in <em>your</em> materials.</h2>
+            <h2>Grounded in <em>your</em> materials</h2>
             <p>
-              Every answer cites the page, paragraph, or slide it came from &mdash; pulled from notes
-              and readings you upload, not just the model's training data.
+              Every answer cites the page, paragraph, or slide it came from, pulled from notes
+              and readings you upload, not generic web answers.
             </p>
           </div>
           <div className="landing-showcase-visual" aria-hidden="true">
@@ -260,11 +232,10 @@ export function LandingPage() {
 
         <section className="landing-showcase landing-showcase-reverse motion-reveal motion-rise">
           <div className="landing-showcase-copy">
-            <span className="landing-eyebrow">Bayesian Knowledge Tracing</span>
-            <h2>Mastery, <em>modeled</em>.</h2>
+            <h2>Mastery, <em>modeled</em></h2>
             <p>
-              Sapient maintains a BKT state per subject &mdash; a probability that you've mastered each
-              concept. Quiz attempts update it; the tutor uses it to decide what to revisit next.
+              Sapient tracks how well you know each concept in every subject. Every quiz answer updates
+              that picture; the tutor uses it to decide what's worth revisiting next.
             </p>
           </div>
           <div className="landing-showcase-visual" aria-hidden="true">
@@ -297,75 +268,9 @@ export function LandingPage() {
 
         <section className="landing-showcase landing-showcase-tinted motion-reveal motion-rise">
           <div className="landing-showcase-copy">
-            <span className="landing-eyebrow">SM-2 spaced repetition</span>
-            <h2>Sessions that <em>compound</em>.</h2>
+            <h2>The right video, at the right <em>moment</em></h2>
             <p>
-              Notes you save during chat enter a spaced repetition schedule. Diagrams become
-              Mermaid sources. Flashcards re-surface when you're about to forget. Smart reminders
-              cross-reference upcoming deadlines with your weakest topics.
-            </p>
-          </div>
-          <div className="landing-showcase-visual" aria-hidden="true">
-            <LandingDemoVideo title="Review schedule" variant="schedule">
-              <div className="landing-schedule-stack">
-              <div className="landing-schedule-card">
-                <span className="landing-schedule-when">Today</span>
-                <span className="landing-schedule-card-label">SQL · LEFT JOIN</span>
-                <div className="landing-schedule-bar" />
-              </div>
-              <div className="landing-schedule-card landing-schedule-card-2">
-                <span className="landing-schedule-when">+3 days</span>
-                <span className="landing-schedule-card-label">Calculus · chain rule</span>
-                <div className="landing-schedule-bar landing-schedule-bar-2" />
-              </div>
-              <div className="landing-schedule-card landing-schedule-card-3">
-                <span className="landing-schedule-when">+9 days</span>
-                <span className="landing-schedule-card-label">Bio · mitosis phases</span>
-                <div className="landing-schedule-bar landing-schedule-bar-3" />
-              </div>
-              </div>
-            </LandingDemoVideo>
-          </div>
-        </section>
-
-        <section className="landing-showcase landing-showcase-reverse motion-reveal motion-rise">
-          <div className="landing-showcase-copy">
-            <span className="landing-eyebrow">Canvas calendar · smart reminders</span>
-            <h2>Deadlines that know what you're <em>behind on</em>.</h2>
-            <p>
-              Paste your Canvas iCal link and Sapient syncs every assignment due date. The reminder
-              feed cross-references those deadlines with your BKT mastery — so when an essay is two
-              days out, the tutor surfaces the weakest concept you'll need first.
-            </p>
-          </div>
-          <div className="landing-showcase-visual" aria-hidden="true">
-            <LandingDemoVideo title="Calendar reminders" variant="calendar">
-              <div className="landing-reminder-stack">
-              <div className="landing-reminder-card landing-reminder-card-urgent">
-                <span className="landing-reminder-meta">Due in 2 days · Canvas</span>
-                <span className="landing-reminder-title">Essay: Modernism in poetry</span>
-                <span className="landing-reminder-hint">Composition mastery 0.41 — start there.</span>
-              </div>
-              <div className="landing-reminder-card landing-reminder-card-soon">
-                <span className="landing-reminder-meta">Due Fri · Calculus II</span>
-                <span className="landing-reminder-title">Problem set 6</span>
-                <span className="landing-reminder-hint">Chain rule needs review.</span>
-              </div>
-              <div className="landing-reminder-card landing-reminder-card-later">
-                <span className="landing-reminder-meta">Next week</span>
-                <span className="landing-reminder-title">Bio · cell cycle quiz</span>
-              </div>
-              </div>
-            </LandingDemoVideo>
-          </div>
-        </section>
-
-        <section className="landing-showcase landing-showcase-tinted motion-reveal motion-rise">
-          <div className="landing-showcase-copy">
-            <span className="landing-eyebrow">Resource recommendations</span>
-            <h2>The right video, at the right <em>moment</em>.</h2>
-            <p>
-              When you're stuck — or when you ask — the tutor recommends a YouTube tutorial or web
+              When you're stuck, or when you ask, the tutor recommends a YouTube tutorial or web
               article inline, with a one-line reason it'll help you right now. Every resource saves
               to a per-subject Resources tab so the list grows as you study.
             </p>
@@ -397,12 +302,11 @@ export function LandingPage() {
 
         <section className="landing-showcase landing-showcase-reverse motion-reveal motion-rise">
           <div className="landing-showcase-copy">
-            <span className="landing-eyebrow">Quizzes · tied to mastery</span>
-            <h2>Quizzes that <em>track</em> what they ask.</h2>
+            <h2>Quizzes that <em>track</em> what they ask</h2>
             <p>
               Multiple-choice and short-answer questions generated mid-chat as concept checks. Each
-              attempt updates your BKT state, so the next "what should I review?" answer is built
-              from real evidence — not guesses. Write your own questions too and they join the same
+              attempt updates your mastery score, so the next "what should I review?" answer is built
+              from real evidence, not guesses. Write your own questions too and they join the same
               pool.
             </p>
           </div>
@@ -426,35 +330,32 @@ export function LandingPage() {
 
         <section className="landing-showcase landing-showcase-tinted motion-reveal motion-rise">
           <div className="landing-showcase-copy">
-            <span className="landing-eyebrow">Bring your own model</span>
-            <h2>Switch when one isn't <em>working</em>.</h2>
+            <h2>Switch when one isn't <em>working</em></h2>
             <p>
-              Every conversation can run on Gemini 2.5 Flash, Claude Sonnet 4.6, or GPT-4o — pick
-              from the chat header, no settings page detour. New conversations default to your
-              last-used model, the same way ChatGPT and Claude.ai do it.
+              Every conversation can run on Claude, Gemini, or GPT. Pick from the chat header,
+              no settings page detour. New conversations default to your last-used provider.
             </p>
           </div>
           <div className="landing-showcase-visual" aria-hidden="true">
             <div className="landing-model-stack">
-              <div className="landing-model-pill landing-model-pill-active">Gemini 2.5 Flash</div>
-              <div className="landing-model-pill">Claude Sonnet 4.6</div>
-              <div className="landing-model-pill">GPT-4o</div>
+              <div className="landing-model-pill">Claude</div>
+              <div className="landing-model-pill landing-model-pill-active">Gemini</div>
+              <div className="landing-model-pill">GPT</div>
               <div className="landing-model-hint">Picked per conversation · last-used stays default</div>
             </div>
           </div>
         </section>
 
         <section className="landing-loop motion-reveal motion-rise">
-          <span className="landing-eyebrow">Human in the loop</span>
-          <h2>You generate, you <em>curate</em>.</h2>
+          <h2>You generate, you <em>curate</em></h2>
           <p>
-            Save any snippet, diagram, or image from chat into your notes. Author your own quizzes
-            and flashcards alongside the LLM-generated ones. The system stores what you tell it to.
+            Save any snippet, diagram, or image from chat into your notes. Write your own quizzes
+            and flashcards alongside the AI-generated ones. The system stores what you tell it to.
           </p>
         </section>
 
         <section className="landing-closing motion-reveal motion-rise">
-          <h2>Ready when you are.</h2>
+          <h2>Ready when you are</h2>
           <button className={buttonClass("primary")} onClick={() => openModal("signup")} type="button">
             Start your first study session
           </button>

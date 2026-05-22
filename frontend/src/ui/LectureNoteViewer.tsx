@@ -5,6 +5,7 @@ import { Download, X } from "lucide-react";
 import type { LectureNote } from "../types";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
+import { StructuredDiagramCard } from "./StructuredDiagramCard";
 import { buttonClass } from "./buttonClass";
 
 interface Props {
@@ -96,6 +97,14 @@ export function LectureNoteViewer({ note, onClose }: Props) {
                   <section key={`diagram-${entry.diagram.id}-${idx}`} className="lecture-viewer-sketch">
                     <div className="lecture-viewer-sketch-label">Diagram</div>
                     <DiagramCard diagram={entry.diagram} />
+                  </section>
+                );
+              }
+              if (entry.kind === "structured_diagram") {
+                return (
+                  <section key={`structured-diagram-${entry.diagram.id}-${idx}`} className="lecture-viewer-sketch">
+                    <div className="lecture-viewer-sketch-label">Diagram</div>
+                    <StructuredDiagramCard diagram={entry.diagram} />
                   </section>
                 );
               }

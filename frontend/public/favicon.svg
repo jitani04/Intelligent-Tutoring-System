@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sapient">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sapient" color="#0f2240">
   <!-- left hemisphere -->
   <path
     d="M30 17c-2.7-3.2-8.5-2.2-10 1.9-4.7.3-8.4 4.2-8.4 9 0 1.9.6 3.7 1.6 5.2-2.1 4.6 1.2 9.9 6.2 10.2 1.7 3.7 6.8 4.7 10.6 2.2V17Z"
     fill="none"
-    stroke="#000000"
+    stroke="currentColor"
     stroke-width="3.6"
     stroke-linecap="round"
     stroke-linejoin="round"
@@ -12,7 +12,7 @@
   <path
     d="M34 17c2.7-3.2 8.5-2.2 10 1.9 4.7.3 8.4 4.2 8.4 9 0 1.9-.6 3.7-1.6 5.2 2.1 4.6-1.2 9.9-6.2 10.2-1.7 3.7-6.8 4.7-10.6 2.2V17Z"
     fill="none"
-    stroke="#000000"
+    stroke="currentColor"
     stroke-width="3.6"
     stroke-linecap="round"
     stroke-linejoin="round"
@@ -21,14 +21,14 @@
   <path
     d="M24 27h8m0 0h7m-7 0v9m0 0h8m-8 0h-6"
     fill="none"
-    stroke="#000000"
+    stroke="currentColor"
     stroke-width="3"
     stroke-linecap="round"
     stroke-linejoin="round"
   />
   <!-- nodes -->
-  <circle cx="24" cy="27" r="3.2" fill="#000000"/>
-  <circle cx="39" cy="27" r="3.2" fill="#000000"/>
-  <circle cx="40" cy="36" r="3.2" fill="#000000"/>
-  <circle cx="26" cy="36" r="3.2" fill="#000000"/>
+  <circle cx="24" cy="27" r="3.2" fill="currentColor"/>
+  <circle cx="39" cy="27" r="3.2" fill="currentColor"/>
+  <circle cx="40" cy="36" r="3.2" fill="currentColor"/>
+  <circle cx="26" cy="36" r="3.2" fill="currentColor"/>
 </svg>

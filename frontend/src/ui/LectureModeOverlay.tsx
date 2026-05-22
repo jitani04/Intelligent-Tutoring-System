@@ -11,6 +11,7 @@ import { useLectureVoiceInput } from "../useLectureVoiceInput";
 import { DiagramCard } from "./DiagramCard";
 import { ImageArtifactCard } from "./ImageArtifactCard";
 import { MarkdownText } from "./MarkdownText";
+import { StructuredDiagramCard } from "./StructuredDiagramCard";
 
 interface Props {
   subject: string | null;
@@ -379,6 +380,16 @@ export function LectureModeOverlay({ subject, tutorName, tutorInitials, onClose 
                         <div className="lecture-section-label">Sketch added to the page</div>
                         <div className="lecture-sketch-card">
                           <DiagramCard diagram={entry.diagram} />
+                        </div>
+                      </section>
+                    );
+                  }
+                  if (entry.kind === "structured_diagram") {
+                    return (
+                      <section key={`structured-diagram-${entry.diagram.id}-${idx}`} className="lecture-sketch-section">
+                        <div className="lecture-section-label">Sketch added to the page</div>
+                        <div className="lecture-sketch-card">
+                          <StructuredDiagramCard diagram={entry.diagram} />
                         </div>
                       </section>
                     );

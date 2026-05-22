@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 
 import { RateLimitError, createConversation, fetchSpeech, streamChat } from "./api";
-import type { ChatStreamEvent, DiagramData, ImageData, KeyIdea, RetrievedSource } from "./types";
+import type { ChatStreamEvent, DiagramData, ImageData, KeyIdea, RetrievedSource, StructuredDiagramData } from "./types";
 
 export type TimelineEntry =
   | { kind: "key_idea"; idea: KeyIdea }
   | { kind: "live_note"; note: LiveLectureNote }
   | { kind: "diagram"; diagram: DiagramData }
+  | { kind: "structured_diagram"; diagram: StructuredDiagramData }
   | { kind: "image"; image: ImageData };
 
 export interface LiveLectureNote {
@@ -33,6 +34,8 @@ export interface LectureSession {
   currentKeyIdea: KeyIdea | null;
   diagrams: DiagramData[];
   currentDiagram: DiagramData | null;
+  structuredDiagrams: StructuredDiagramData[];
+  currentStructuredDiagram: StructuredDiagramData | null;
   images: ImageData[];
   currentImage: ImageData | null;
   timeline: TimelineEntry[];
@@ -54,6 +57,8 @@ const EMPTY: LectureSession = {
   currentKeyIdea: null,
   diagrams: [],
   currentDiagram: null,
+  structuredDiagrams: [],
+  currentStructuredDiagram: null,
   images: [],
   currentImage: null,
   timeline: [],
@@ -65,10 +70,12 @@ function applyTimelineItems(s: LectureSession, items: TimelineEntry[]): LectureS
   if (items.length === 0) return s;
   const newKeyIdeas: KeyIdea[] = [];
   const newDiagrams: DiagramData[] = [];
+  const newStructuredDiagrams: StructuredDiagramData[] = [];
   const newImages: ImageData[] = [];
   for (const item of items) {
     if (item.kind === "key_idea") newKeyIdeas.push(item.idea);
     else if (item.kind === "diagram") newDiagrams.push(item.diagram);
+    else if (item.kind === "structured_diagram") newStructuredDiagrams.push(item.diagram);
     else if (item.kind === "image") newImages.push(item.image);
   }
   const newKeyConcepts = new Set(newKeyIdeas.map((idea) => normalizeConcept(idea.concept)));
@@ -84,9 +91,11 @@ function applyTimelineItems(s: LectureSession, items: TimelineEntry[]): LectureS
     timeline: [...timeline, ...items],
     keyIdeas: newKeyIdeas.length > 0 ? [...s.keyIdeas, ...newKeyIdeas] : s.keyIdeas,
     diagrams: newDiagrams.length > 0 ? [...s.diagrams, ...newDiagrams] : s.diagrams,
+    structuredDiagrams: newStructuredDiagrams.length > 0 ? [...s.structuredDiagrams, ...newStructuredDiagrams] : s.structuredDiagrams,
     images: newImages.length > 0 ? [...s.images, ...newImages] : s.images,
     currentKeyIdea: newKeyIdeas.length > 0 ? newKeyIdeas[newKeyIdeas.length - 1] : s.currentKeyIdea,
     currentDiagram: newDiagrams.length > 0 ? newDiagrams[newDiagrams.length - 1] : s.currentDiagram,
+    currentStructuredDiagram: newStructuredDiagrams.length > 0 ? newStructuredDiagrams[newStructuredDiagrams.length - 1] : s.currentStructuredDiagram,
     currentImage: newImages.length > 0 ? newImages[newImages.length - 1] : s.currentImage,
   };
 }
@@ -472,6 +481,12 @@ export function useLectureSession(subject: string | null) {
           pending.items.push({ kind: "diagram", diagram: event.data });
         } else {
           appendItems([{ kind: "diagram", diagram: event.data }]);
+        }
+      } else if (event.event === "structured_diagram") {
+        if (speak) {
+          pending.items.push({ kind: "structured_diagram", diagram: event.data });
+        } else {
+          appendItems([{ kind: "structured_diagram", diagram: event.data }]);
         }
       } else if (event.event === "image") {
         if (speak) {

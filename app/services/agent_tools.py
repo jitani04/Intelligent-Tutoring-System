@@ -39,6 +39,19 @@ TOOL_REGISTRY: dict[str, AgentToolDefinition] = {
         input_schema=_object_schema({"source": {"type": "string"}, "title": {"type": "string"}}, ["source"]),
         output_schema=_object_schema({"diagram_id": {"type": "string"}}),
     ),
+    "create_structured_diagram": AgentToolDefinition(
+        name="create_structured_diagram",
+        description="Render a polished instructional diagram from structured data.",
+        input_schema=_object_schema(
+            {
+                "template": {"type": "string"},
+                "title": {"type": "string"},
+                "items": {"type": "array", "items": {"type": "string"}},
+            },
+            ["template", "title"],
+        ),
+        output_schema=_object_schema({"diagram_id": {"type": "string"}}),
+    ),
     "find_image": AgentToolDefinition(
         name="find_image",
         description="Find a visual reference.",
@@ -119,7 +132,14 @@ TOOL_REGISTRY: dict[str, AgentToolDefinition] = {
 
 
 def allowed_chat_tool_names() -> list[str]:
-    return ["generate_quiz", "save_key_idea", "create_diagram", "find_image", "find_resource"]
+    return [
+        "generate_quiz",
+        "save_key_idea",
+        "create_structured_diagram",
+        "create_diagram",
+        "find_image",
+        "find_resource",
+    ]
 
 
 def tool_summaries(tool_names: list[str]) -> list[dict[str, str]]:

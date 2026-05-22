@@ -156,9 +156,91 @@ AGENT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "create_structured_diagram",
+            "description": (
+                "Generate a polished instructional diagram from structured data. "
+                "PREFER THIS over create_diagram for data structures and high-clarity teaching visuals: "
+                "queues, stacks, arrays, linked lists, trees, hash tables, cycles, timelines, comparisons, "
+                "annotated processes, and diagrams that need labels, arrows, callouts, or summary boxes like "
+                "a textbook figure. The frontend renders these with consistent spacing, colors, arrows, and "
+                "large readable labels.\n\n"
+                "Use create_diagram instead only when Mermaid is the better native format: ER diagrams, "
+                "sequence diagrams, state machines, generic flowcharts, mind maps, system architecture, "
+                "class diagrams, or charts.\n\n"
+                "RULES:\n"
+                "- Keep labels short and visual. Do not write paragraph-length labels.\n"
+                "- For data structures, fill `items` with the visible values in order.\n"
+                "- Use `left_action` and `right_action` for operation buttons like DEQUEUE/ENQUEUE.\n"
+                "- Use `front_label` and `rear_label` for boundary pointers like FRONT/REAR.\n"
+                "- Use `footer_title`, `footer_text`, and `footer_order` for the one-sentence takeaway.\n"
+                "- Do NOT repeat the same content in your reply text; the diagram card is the visual explanation."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "template": {
+                        "type": "string",
+                        "enum": ["queue", "stack", "array", "linked_list", "tree", "cycle", "timeline", "comparison", "concept_map"],
+                        "description": "The visual template to render.",
+                    },
+                    "title": {"type": "string", "description": "Short title shown at the top."},
+                    "subtitle": {"type": "string", "description": "One short definition or context sentence."},
+                    "emphasis": {"type": "string", "description": "Important highlighted phrase, such as 'First In, First Out (FIFO)'."},
+                    "items": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Visible values, ordered left-to-right or top-to-bottom.",
+                    },
+                    "front_label": {"type": "string", "description": "Left/top pointer label, e.g. FRONT or TOP."},
+                    "rear_label": {"type": "string", "description": "Right/bottom pointer label, e.g. REAR."},
+                    "left_action": {"type": "string", "description": "Left-side operation label, e.g. DEQUEUE."},
+                    "right_action": {"type": "string", "description": "Right-side operation label, e.g. ENQUEUE."},
+                    "left_note": {"type": "string", "description": "Short note under the left operation."},
+                    "right_note": {"type": "string", "description": "Short note under the right operation."},
+                    "direction_label": {"type": "string", "description": "Direction arrow label."},
+                    "footer_title": {"type": "string", "description": "Takeaway heading in the bottom callout."},
+                    "footer_text": {"type": "string", "description": "One-sentence takeaway."},
+                    "footer_order": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Order sequence displayed in the takeaway callout.",
+                    },
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string"},
+                                "detail": {"type": "string"},
+                            },
+                        },
+                        "description": "Timeline, cycle, or process steps.",
+                    },
+                    "nodes": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string"},
+                                "label": {"type": "string"},
+                                "parent_id": {"type": "string"},
+                            },
+                        },
+                        "description": "Tree or concept-map nodes. Use parent_id to connect children.",
+                    },
+                },
+                "required": ["template", "title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "create_diagram",
             "description": (
                 "Generate a Mermaid diagram to illustrate a concept visually. "
+                "Do NOT use this for polished textbook-style data structure figures such as queues, stacks, "
+                "arrays, linked lists, trees, or labeled operation diagrams; use create_structured_diagram for those. "
                 "Use this whenever a concept is spatial, structural, temporal, quantitative, or relational — "
                 "flowcharts, hierarchies, process steps, sequences, state machines, timelines, "
                 "data charts, ER diagrams, or anything better shown than described. "
@@ -521,6 +603,114 @@ async def _save_quiz(
 
 
 _MERMAID_UNQUOTED_LABEL = re.compile(r'\[([^"\[\]]*[()<>{}|][^\[\]]*)\]')
+_STRUCTURED_DIAGRAM_TEMPLATES = {
+    "queue",
+    "stack",
+    "array",
+    "linked_list",
+    "tree",
+    "cycle",
+    "timeline",
+    "comparison",
+    "concept_map",
+}
+_STRUCTURED_DIAGRAM_TEXT_FIELDS = (
+    "title",
+    "subtitle",
+    "emphasis",
+    "front_label",
+    "rear_label",
+    "left_action",
+    "right_action",
+    "left_note",
+    "right_note",
+    "direction_label",
+    "footer_title",
+    "footer_text",
+)
+
+
+def _clean_short_text(value: Any, *, limit: int = 180) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:limit]
+
+
+def _clean_string_list(value: Any, *, limit: int = 12) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value[:limit]:
+        text = _clean_short_text(item, limit=80)
+        if text:
+            result.append(text)
+    return result
+
+
+def _clean_structured_steps(value: Any, *, limit: int = 8) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    result: list[dict[str, str]] = []
+    for item in value[:limit]:
+        if not isinstance(item, dict):
+            continue
+        label = _clean_short_text(item.get("label"), limit=80)
+        if not label:
+            continue
+        detail = _clean_short_text(item.get("detail"), limit=140)
+        step = {"label": label}
+        if detail:
+            step["detail"] = detail
+        result.append(step)
+    return result
+
+
+def _clean_structured_nodes(value: Any, *, limit: int = 15) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    result: list[dict[str, str]] = []
+    for item in value[:limit]:
+        if not isinstance(item, dict):
+            continue
+        label = _clean_short_text(item.get("label"), limit=80)
+        if not label:
+            continue
+        node_id = _clean_short_text(item.get("id"), limit=40) or f"node-{len(result) + 1}"
+        node = {"id": node_id, "label": label}
+        parent_id = _clean_short_text(item.get("parent_id"), limit=40)
+        if parent_id:
+            node["parent_id"] = parent_id
+        result.append(node)
+    return result
+
+
+def _structured_diagram_payload(args: dict[str, Any]) -> dict[str, Any]:
+    template = str(args.get("template") or "concept_map").strip().lower().replace("-", "_")
+    if template not in _STRUCTURED_DIAGRAM_TEMPLATES:
+        template = "concept_map"
+    data: dict[str, Any] = {
+        "id": str(uuid.uuid4())[:8],
+        "template": template,
+        "title": _clean_short_text(args.get("title"), limit=90) or "Visual explanation",
+    }
+    for field in _STRUCTURED_DIAGRAM_TEXT_FIELDS:
+        value = _clean_short_text(args.get(field))
+        if value:
+            data[field] = value
+    for field in ("items", "footer_order"):
+        values = _clean_string_list(args.get(field))
+        if values:
+            data[field] = values
+    steps = _clean_structured_steps(args.get("steps"))
+    if steps:
+        data["steps"] = steps
+    nodes = _clean_structured_nodes(args.get("nodes"))
+    if nodes:
+        data["nodes"] = nodes
+    return data
 
 
 def _quote_mermaid_node_labels(source: str) -> str:
@@ -666,6 +856,7 @@ async def stream_chat(
     quiz_ids_this_turn: list[int] = []
     resource_ids_this_turn: list[int] = []
     resource_urls_this_turn: set[str] = set()
+    message_artifacts: list[dict[str, Any]] = []
     explicit_web_query = _extract_explicit_web_search_query(user_message)
     web_search_fallback_query: str | None = None
     web_search_fallback_results: list[WebSearchResult] = []
@@ -783,8 +974,10 @@ async def stream_chat(
 
         if tool_calls_data and ai_message_chunk is not None:
             lc_tool_messages = []
+            pending_post_text_events: list[SseEvent] = []
             pending_quiz_events: list[dict[str, Any]] = []
             quiz_questions_this_turn: set[str] = set()
+            structured_diagram_keys_this_turn: set[str] = set()
             diagram_sources_this_turn: set[str] = set()
             image_queries_this_turn: set[str] = set()
             key_idea_concepts_this_turn: set[str] = set()
@@ -843,6 +1036,46 @@ async def stream_chat(
                         "options": quiz.options,
                     })
 
+                elif tc["name"] == "create_structured_diagram":
+                    yield SseEvent(event="agent_step", data={"message": "Creating a visual diagram...", "tool": "create_structured_diagram"})
+                    args = tc["args"]
+                    diagram_data = _structured_diagram_payload(args)
+                    diagram_key = "|".join(
+                        [
+                            str(diagram_data.get("template") or ""),
+                            str(diagram_data.get("title") or "").lower(),
+                            ",".join(diagram_data.get("items") or []),
+                        ]
+                    ).lower()
+                    if diagram_key in structured_diagram_keys_this_turn:
+                        lc_tool_messages.append(
+                            LCToolMessage(
+                                content=(
+                                    "An identical structured diagram was already shown in this turn. "
+                                    "Skip the duplicate. Call create_structured_diagram again only with "
+                                    "meaningfully different content."
+                                ),
+                                tool_call_id=tc["id"],
+                            )
+                        )
+                        continue
+                    structured_diagram_keys_this_turn.add(diagram_key)
+                    message_artifacts.append({"kind": "structured_diagram", "data": diagram_data})
+                    pending_post_text_events.append(
+                        SseEvent(event="structured_diagram", data=diagram_data)
+                    )
+                    lc_tool_messages.append(
+                        LCToolMessage(
+                            content=(
+                                "Structured visual diagram created and displayed to the student in a "
+                                "rendered card. STRICT RULE: do NOT describe the diagram's labels, arrows, "
+                                "items, or takeaway in your reply text — the card is visible below your "
+                                "message and speaks for itself."
+                            ),
+                            tool_call_id=tc["id"],
+                        )
+                    )
+
                 elif tc["name"] == "create_diagram":
                     yield SseEvent(event="agent_step", data={"message": "Creating a diagram...", "tool": "create_diagram"})
                     args = tc["args"]
@@ -875,18 +1108,22 @@ async def stream_chat(
                                 "Diagram created and displayed to the student in a rendered card. "
                                 "STRICT RULE: do NOT describe the diagram's nodes, edges, or layout in "
                                 "your reply text — the rendered diagram speaks for itself. Reference the "
-                                "diagram by purpose ('the diagram above shows the lifecycle') if useful, "
+                                "diagram by purpose ('the diagram below shows the lifecycle') if useful, "
                                 "but do not re-state its contents."
                             ),
                             tool_call_id=tc["id"],
                         )
                     )
                     if source:
-                        yield SseEvent(event="diagram", data={
+                        diagram_data = {
                             "id": str(uuid.uuid4())[:8],
                             "source": source,
                             "title": args.get("title"),
-                        })
+                        }
+                        message_artifacts.append({"kind": "diagram", "data": diagram_data})
+                        pending_post_text_events.append(
+                            SseEvent(event="diagram", data=diagram_data)
+                        )
 
                 elif tc["name"] == "find_image":
                     yield SseEvent(event="agent_step", data={"message": "Finding a helpful image...", "tool": "find_image"})
@@ -927,7 +1164,7 @@ async def stream_chat(
 
                     if image_result:
                         artifact_id = str(uuid.uuid4())[:8]
-                        yield SseEvent(event="image", data={
+                        image_data = {
                             "id": artifact_id,
                             "provider_id": image_result["id"],
                             "query": query,
@@ -940,12 +1177,17 @@ async def stream_chat(
                             "license_url": image_result["license_url"],
                             "source_url": image_result["source_url"],
                             "source": image_result["source"],
-                        })
+                        }
+                        message_artifacts.append({"kind": "image", "data": image_data})
+                        pending_post_text_events.append(
+                            SseEvent(event="image", data=image_data)
+                        )
                         tool_content = (
                             f"Image for '{query}' found and displayed to the student in a card with a "
                             "caption. STRICT RULE: do NOT describe what the image looks like or repeat "
-                            "the caption in your reply — the card and caption are visible. Continue "
-                            "teaching as if the student has seen the image."
+                            "the caption in your reply — the card and caption are visible below your "
+                            "message. If you reference the image's position, call it the image below. "
+                            "Continue teaching as if the student has seen the image."
                         )
                     else:
                         tool_content = (
@@ -1019,23 +1261,25 @@ async def stream_chat(
                             )
                             resource_ids_this_turn.append(saved.id)
                             resource_urls_this_turn.add(saved.url)
-                            yield SseEvent(event="resource", data={
-                                "id": saved.id,
-                                "kind": saved.kind,
-                                "source": saved.source,
-                                "title": saved.title,
-                                "url": saved.url,
-                                "snippet": saved.snippet,
-                                "thumbnail_url": saved.thumbnail_url,
-                                "topic": saved.topic,
-                                "reason": reason or None,
-                            })
+                            pending_post_text_events.append(
+                                SseEvent(event="resource", data={
+                                    "id": saved.id,
+                                    "kind": saved.kind,
+                                    "source": saved.source,
+                                    "title": saved.title,
+                                    "url": saved.url,
+                                    "snippet": saved.snippet,
+                                    "thumbnail_url": saved.thumbnail_url,
+                                    "topic": saved.topic,
+                                    "reason": reason or None,
+                                })
+                            )
                             tool_content = (
                                 f"{kind.capitalize()} resource for '{topic}' shown to the student and "
                                 "saved to their Resources tab. The card already displays the title, the "
                                 "URL, the source domain, and your one-line reason. STRICT RULE: do NOT "
                                 "re-state the title, the URL, the domain, or the reason in your reply — "
-                                "that duplicates the card. Continue teaching or pause for the student to "
+                                "that duplicates the card. The card appears below your message. Continue teaching or pause for the student to "
                                 "click through."
                             )
                         else:
@@ -1079,11 +1323,13 @@ async def stream_chat(
                             tool_call_id=tc["id"],
                         )
                     )
-                    yield SseEvent(event="key_idea", data={
-                        "id": idea.id,
-                        "concept": idea.concept,
-                        "summary": idea.summary,
-                    })
+                    pending_post_text_events.append(
+                        SseEvent(event="key_idea", data={
+                            "id": idea.id,
+                            "concept": idea.concept,
+                            "summary": idea.summary,
+                        })
+                    )
 
                 elif tc["name"] == "web_search":
                     yield SseEvent(event="agent_step", data={"message": "Searching the web...", "tool": "web_search"})
@@ -1119,23 +1365,26 @@ async def stream_chat(
                         )
                     )
                     if results:
-                        yield SseEvent(event="web_sources", data={
-                            "query": query,
-                            "sources": [
-                                {
-                                    "title": result.title,
-                                    "url": result.url,
-                                    "display_url": result.display_url,
-                                    "snippet": result.snippet,
-                                    "summary": result.summary,
-                                    "published_at": result.published_at,
-                                    "crawled_at": result.crawled_at,
-                                }
-                                for result in results
-                            ],
-                        })
+                        pending_post_text_events.append(
+                            SseEvent(event="web_sources", data={
+                                "query": query,
+                                "sources": [
+                                    {
+                                        "title": result.title,
+                                        "url": result.url,
+                                        "display_url": result.display_url,
+                                        "snippet": result.snippet,
+                                        "summary": result.summary,
+                                        "published_at": result.published_at,
+                                        "crawled_at": result.crawled_at,
+                                    }
+                                    for result in results
+                                ],
+                            })
+                        )
 
-            # Second pass: stream follow-up text, then emit quiz cards
+            # Second pass: stream follow-up text. Tool-rendered cards are
+            # flushed afterward so they do not interrupt the prose stream.
             original_lc = llm_service.to_langchain_messages(input_messages)
             second_pass = original_lc + [ai_message_chunk] + lc_tool_messages
 
@@ -1146,13 +1395,16 @@ async def stream_chat(
                 elif event.type == "completed":
                     usage = event.usage
 
-            for quiz_data in pending_quiz_events:
-                yield SseEvent(event="quiz", data=quiz_data)
-
         if not "".join(assistant_parts).strip() and web_search_fallback_query:
             fallback = _render_web_search_answer(web_search_fallback_query, web_search_fallback_results)
             assistant_parts.append(fallback)
             yield SseEvent(event="token", data={"delta": fallback})
+
+        if tool_calls_data and ai_message_chunk is not None:
+            for event in pending_post_text_events:
+                yield event
+            for quiz_data in pending_quiz_events:
+                yield SseEvent(event="quiz", data=quiz_data)
 
         assistant_content = "".join(assistant_parts).strip() or "(No response content)"
 
@@ -1160,6 +1412,7 @@ async def stream_chat(
             conversation_id=conversation_id,
             role=MessageRole.ASSISTANT,
             content=assistant_content,
+            artifacts=message_artifacts if message_artifacts else None,
         )
         session.add(assistant_msg)
         await session.commit()

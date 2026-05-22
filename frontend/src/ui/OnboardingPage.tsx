@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
@@ -13,8 +13,8 @@ const USE_CASES = [
   "Reviewing uploaded materials",
 ];
 
-const TONE_OPTIONS = ["Supportive", "Socratic", "Direct", "Encouraging", "Formal", "Casual"];
-const STYLE_OPTIONS = ["Step-by-step guide", "Socratic guide", "Concise explainer", "Concept-first", "Example-driven"];
+const TONE_OPTIONS = ["Supportive", "Direct", "Encouraging", "Casual"];
+const STYLE_OPTIONS = ["Step-by-step guide", "Socratic guide", "Concise explainer", "Example-driven"];
 
 export function OnboardingPage() {
   const navigate = useNavigate();
@@ -29,13 +29,16 @@ export function OnboardingPage() {
   const [tutorStyle, setTutorStyle] = useState("Step-by-step guide");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const initialized = useRef(false);
 
   useEffect(() => {
-    if (user?.name) setName(user.name);
-    if (user?.tutor_name) setTutorName(user.tutor_name);
-    if (user?.tutor_tone) setTutorTone(user.tutor_tone);
-    if (user?.tutor_style) setTutorStyle(user.tutor_style);
-    if (user?.use_case) {
+    if (!user || initialized.current) return;
+    initialized.current = true;
+    if (user.name) setName(user.name);
+    if (user.tutor_name) setTutorName(user.tutor_name);
+    if (user.tutor_tone) setTutorTone(user.tutor_tone);
+    if (user.tutor_style) setTutorStyle(user.tutor_style);
+    if (user.use_case) {
       const saved = user.use_case
         .split(",")
         .map((item) => item.trim())
@@ -45,7 +48,7 @@ export function OnboardingPage() {
       setSelectedUseCases(custom ? [...known, "Other"] : known);
       setCustomUseCase(custom);
     }
-  }, [user?.name, user?.use_case, user?.tutor_name, user?.tutor_tone, user?.tutor_style]);
+  }, [user]);
 
   function toggleUseCase(option: string) {
     setSelectedUseCases((current) =>

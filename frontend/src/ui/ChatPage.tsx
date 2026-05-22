@@ -6,7 +6,7 @@ import { ArrowUp, Bookmark, BookmarkCheck, FileText, FolderOpen, Pause, PencilLi
 
 import { RateLimitError, createConversation, createKeyIdea, deleteConversation, deleteFeedbackForMessage, deleteKeyIdea, getConversation, getConversationQuizzes, getCurrentUser, getKeyIdeas, listConversationResources, listMaterials, listModels, rejectPendingAgentAction, sendReviewDigest, streamChat, submitFeedback, updateConversationModel, uploadMaterial } from "../api";
 import { getPendingStudyContext } from "../studyState";
-import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, PendingAgentAction, QuizData, Resource, ResourceData, RetrievedSource, WebSource } from "../types";
+import type { AttemptResult, ChatStreamEvent, Conversation, DiagramData, FeedbackRating, ImageData, KeyIdea, KeyIdeaArtifactData, Material, Message, MessageTrace, PendingAgentAction, QuizData, Resource, ResourceData, RetrievedSource, StructuredDiagramData, WebSource } from "../types";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { buttonClass } from "./buttonClass";
 import { DiagramCard } from "./DiagramCard";
@@ -15,6 +15,7 @@ import { ResourceCard } from "./ResourceCard";
 import { LectureModeOverlay } from "./LectureModeOverlay";
 import { MarkdownText } from "./MarkdownText";
 import { QuizCard } from "./QuizCard";
+import { StructuredDiagramCard } from "./StructuredDiagramCard";
 import { useSpeech } from "../useSpeech";
 import { useMicrophone } from "../useMicrophone";
 import { useSessionTimer, formatTimer } from "../useSessionTimer";
@@ -72,6 +73,31 @@ function appendUniqueBy<T>(existing: T[], incoming: T[], getKey: (item: T) => st
     next.push(item);
   }
   return next;
+}
+
+function providerLabel(model: { id: string; label: string; provider: string }): string {
+  if (model.provider === "anthropic" || model.id.startsWith("claude-")) return "Claude";
+  if (model.provider === "google" || model.id.startsWith("gemini-")) return "Gemini";
+  if (model.provider === "openai" || model.id.startsWith("gpt-")) return "GPT";
+  return model.label;
+}
+
+function messageArtifactDiagrams(message: Message): DiagramData[] {
+  return (message.artifacts ?? [])
+    .filter((artifact): artifact is { kind: "diagram"; data: DiagramData } => artifact.kind === "diagram")
+    .map((artifact) => artifact.data);
+}
+
+function messageArtifactStructuredDiagrams(message: Message): StructuredDiagramData[] {
+  return (message.artifacts ?? [])
+    .filter((artifact): artifact is { kind: "structured_diagram"; data: StructuredDiagramData } => artifact.kind === "structured_diagram")
+    .map((artifact) => artifact.data);
+}
+
+function messageArtifactImages(message: Message): ImageData[] {
+  return (message.artifacts ?? [])
+    .filter((artifact): artifact is { kind: "image"; data: ImageData } => artifact.kind === "image")
+    .map((artifact) => artifact.data);
 }
 
 function FeedbackButtons({ message, draft, onRate }: FeedbackButtonsProps) {
@@ -355,6 +381,7 @@ export function ChatPage() {
   const [sseQuizzes, setSseQuizzes] = useState<QuizData[]>([]);
   const [sseKeyIdeas, setSseKeyIdeas] = useState<KeyIdea[]>([]);
   const [sseDiagrams, setSseDiagrams] = useState<DiagramData[]>([]);
+  const [sseStructuredDiagrams, setSseStructuredDiagrams] = useState<StructuredDiagramData[]>([]);
   const [sseImages, setSseImages] = useState<ImageData[]>([]);
   const [sseResources, setSseResources] = useState<ResourceData[]>([]);
   // Artifacts streamed during the current assistant turn, awaiting an `end`
@@ -362,14 +389,17 @@ export function ChatPage() {
   const [savedSnippetKeys, setSavedSnippetKeys] = useState<Set<string>>(new Set());
   const [savedSnippetIdeaIds, setSavedSnippetIdeaIds] = useState<Record<string, number>>({});
   const [pendingDiagrams, setPendingDiagrams] = useState<DiagramData[]>([]);
+  const [pendingStructuredDiagrams, setPendingStructuredDiagrams] = useState<StructuredDiagramData[]>([]);
   const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
   const [pendingResources, setPendingResources] = useState<ResourceData[]>([]);
   const [pendingQuizzes, setPendingQuizzes] = useState<QuizData[]>([]);
   const pendingDiagramsRef = useRef<DiagramData[]>([]);
+  const pendingStructuredDiagramsRef = useRef<StructuredDiagramData[]>([]);
   const pendingImagesRef = useRef<ImageData[]>([]);
   const pendingResourcesRef = useRef<ResourceData[]>([]);
   const pendingQuizzesRef = useRef<QuizData[]>([]);
   const [messageDiagrams, setMessageDiagrams] = useState<Record<number, DiagramData[]>>({});
+  const [messageStructuredDiagrams, setMessageStructuredDiagrams] = useState<Record<number, StructuredDiagramData[]>>({});
   const [messageImages, setMessageImages] = useState<Record<number, ImageData[]>>({});
   const [messageResources, setMessageResources] = useState<Record<number, ResourceData[]>>({});
   const [messageQuizzes, setMessageQuizzes] = useState<Record<number, QuizData[]>>({});
@@ -521,17 +551,21 @@ export function ChatPage() {
     setSseQuizzes([]);
     setSseKeyIdeas([]);
     setSseDiagrams([]);
+    setSseStructuredDiagrams([]);
     setSseImages([]);
     setSseResources([]);
     pendingDiagramsRef.current = [];
+    pendingStructuredDiagramsRef.current = [];
     pendingImagesRef.current = [];
     pendingResourcesRef.current = [];
     pendingQuizzesRef.current = [];
     setPendingDiagrams([]);
+    setPendingStructuredDiagrams([]);
     setPendingImages([]);
     setPendingResources([]);
     setPendingQuizzes([]);
     setMessageDiagrams({});
+    setMessageStructuredDiagrams({});
     setMessageImages({});
     setMessageResources({});
     setMessageQuizzes({});
@@ -553,6 +587,7 @@ export function ChatPage() {
       Object.fromEntries(Object.entries(record).filter(([id]) => Number(id) <= messageId))
     );
     setMessageDiagrams(pruneRecord);
+    setMessageStructuredDiagrams(pruneRecord);
     setMessageImages(pruneRecord);
     setMessageResources(pruneRecord);
     setMessageQuizzes(pruneRecord);
@@ -683,10 +718,12 @@ export function ChatPage() {
     setAgentActionStatus(null);
     setShowSources(false);
     pendingDiagramsRef.current = [];
+    pendingStructuredDiagramsRef.current = [];
     pendingImagesRef.current = [];
     pendingResourcesRef.current = [];
     pendingQuizzesRef.current = [];
     setPendingDiagrams([]);
+    setPendingStructuredDiagrams([]);
     setPendingImages([]);
     setPendingResources([]);
     setPendingQuizzes([]);
@@ -883,6 +920,17 @@ export function ChatPage() {
     });
   }
 
+  function handleSaveStructuredDiagram(diagram: StructuredDiagramData) {
+    const title = diagram.title?.trim() || "Saved visual diagram";
+    void saveSnippetToNotes({
+      key: `structured-diagram-${diagram.id}`,
+      concept: title,
+      summary: diagram.footer_text || diagram.subtitle || title,
+      artifactType: "diagram",
+      artifactData: { kind: "structured_diagram", diagram },
+    });
+  }
+
   function handleSaveImage(image: ImageData) {
     const caption = (image.caption || image.query || "Saved image").trim();
     const concept = caption.length > 80 ? `${caption.slice(0, 77)}…` : caption;
@@ -937,6 +985,12 @@ export function ChatPage() {
       setPendingDiagrams(pendingDiagramsRef.current);
       return;
     }
+    if (event.event === "structured_diagram") {
+      setSseStructuredDiagrams((d) => [...d, event.data]);
+      pendingStructuredDiagramsRef.current = appendUniqueBy(pendingStructuredDiagramsRef.current, [event.data], (d) => d.id);
+      setPendingStructuredDiagrams(pendingStructuredDiagramsRef.current);
+      return;
+    }
     if (event.event === "image") {
       setSseImages((images) => [...images, event.data]);
       pendingImagesRef.current = appendUniqueBy(pendingImagesRef.current, [event.data], (image) => image.id);
@@ -964,11 +1018,13 @@ export function ChatPage() {
     if (event.event === "end") {
       const assistantMessageId = event.data.assistant_message_id;
       const diagramsToAttach = pendingDiagramsRef.current;
+      const structuredDiagramsToAttach = pendingStructuredDiagramsRef.current;
       const imagesToAttach = pendingImagesRef.current;
       const resourcesToAttach = pendingResourcesRef.current;
       const quizzesToAttach = pendingQuizzesRef.current.map((q) => ({ ...q, message_id: assistantMessageId }));
 
       pendingDiagramsRef.current = [];
+      pendingStructuredDiagramsRef.current = [];
       pendingImagesRef.current = [];
       pendingResourcesRef.current = [];
       pendingQuizzesRef.current = [];
@@ -979,6 +1035,7 @@ export function ChatPage() {
         tool_trace: event.data.tool_trace ?? null,
       };
       setPendingDiagrams([]);
+      setPendingStructuredDiagrams([]);
       setPendingImages([]);
       setPendingResources([]);
       setPendingQuizzes([]);
@@ -986,6 +1043,12 @@ export function ChatPage() {
         setMessageDiagrams((existing) => ({
           ...existing,
           [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], diagramsToAttach, (d) => d.id),
+        }));
+      }
+      if (structuredDiagramsToAttach.length > 0) {
+        setMessageStructuredDiagrams((existing) => ({
+          ...existing,
+          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], structuredDiagramsToAttach, (d) => d.id),
         }));
       }
       if (imagesToAttach.length > 0) {
@@ -1243,8 +1306,8 @@ export function ChatPage() {
                 }}
               >
                 {modelsQuery.data.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
+                  <option key={m.id} value={m.id} title={m.label}>
+                    {providerLabel(m)}
                   </option>
                 ))}
               </select>
@@ -1419,8 +1482,27 @@ export function ChatPage() {
                     </div>
                   );
                 }
-                const msgDiagrams = messageDiagrams[msg.id] ?? [];
-                const msgImages = messageImages[msg.id] ?? [];
+                const liveDiagrams = messageDiagrams[msg.id] ?? [];
+                const historicalDiagrams = messageArtifactDiagrams(msg);
+                const liveDiagramIds = new Set(liveDiagrams.map((d) => d.id));
+                const msgDiagrams = [
+                  ...historicalDiagrams.filter((d) => !liveDiagramIds.has(d.id)),
+                  ...liveDiagrams,
+                ];
+                const liveStructuredDiagrams = messageStructuredDiagrams[msg.id] ?? [];
+                const historicalStructuredDiagrams = messageArtifactStructuredDiagrams(msg);
+                const liveStructuredDiagramIds = new Set(liveStructuredDiagrams.map((d) => d.id));
+                const msgStructuredDiagrams = [
+                  ...historicalStructuredDiagrams.filter((d) => !liveStructuredDiagramIds.has(d.id)),
+                  ...liveStructuredDiagrams,
+                ];
+                const liveImages = messageImages[msg.id] ?? [];
+                const historicalImages = messageArtifactImages(msg);
+                const liveImageIds = new Set(liveImages.map((image) => image.id));
+                const msgImages = [
+                  ...historicalImages.filter((image) => !liveImageIds.has(image.id)),
+                  ...liveImages,
+                ];
                 const liveResources = messageResources[msg.id] ?? [];
                 const historicalResourcesForMsg = (conversationResourcesQuery.data ?? []).filter(
                   (r) => r.message_id === msg.id,
@@ -1521,6 +1603,18 @@ export function ChatPage() {
                           <span className="msg-artifact-source">from {tutorName}</span>
                         </div>
                         <DiagramCard diagram={d} onSave={handleSaveDiagram} saved={savedSnippetKeys.has(`diagram-${d.id}`)} />
+                      </div>
+                    </div>
+                  ))}
+                  {msgStructuredDiagrams.map((d) => (
+                    <div key={`structured-diagram-${d.id}`} className="msg msg-artifact msg-artifact-diagram">
+                      <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                      <div className="msg-body">
+                        <div className="msg-sender msg-artifact-label">
+                          <span className="msg-artifact-tag">Diagram</span>
+                          <span className="msg-artifact-source">from {tutorName}</span>
+                        </div>
+                        <StructuredDiagramCard diagram={d} onSave={handleSaveStructuredDiagram} saved={savedSnippetKeys.has(`structured-diagram-${d.id}`)} />
                       </div>
                     </div>
                   ))}
@@ -1628,6 +1722,18 @@ export function ChatPage() {
                       <span className="msg-artifact-source">from {tutorName}</span>
                     </div>
                     <DiagramCard diagram={d} />
+                  </div>
+                </div>
+              ))}
+              {pendingStructuredDiagrams.map((d) => (
+                <div key={`pending-structured-diagram-${d.id}`} className="msg msg-artifact msg-artifact-diagram">
+                  <div className="msg-avatar msg-avatar-ai">{tutorInitials}</div>
+                  <div className="msg-body">
+                    <div className="msg-sender msg-artifact-label">
+                      <span className="msg-artifact-tag">Diagram</span>
+                      <span className="msg-artifact-source">from {tutorName}</span>
+                    </div>
+                    <StructuredDiagramCard diagram={d} />
                   </div>
                 </div>
               ))}

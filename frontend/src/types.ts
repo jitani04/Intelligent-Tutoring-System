@@ -5,8 +5,14 @@ export interface Message {
   conversation_id: number;
   role: MessageRole;
   content: string;
+  artifacts?: MessageArtifact[] | null;
   created_at: string;
 }
+
+export type MessageArtifact =
+  | { kind: "diagram"; data: DiagramData }
+  | { kind: "structured_diagram"; data: StructuredDiagramData }
+  | { kind: "image"; data: ImageData };
 
 export type FeedbackRating = "thumbs_up" | "thumbs_down";
 
@@ -418,6 +424,54 @@ export interface ChatDiagramEvent {
   data: DiagramData;
 }
 
+export type StructuredDiagramTemplate =
+  | "queue"
+  | "stack"
+  | "array"
+  | "linked_list"
+  | "tree"
+  | "cycle"
+  | "timeline"
+  | "comparison"
+  | "concept_map";
+
+export interface StructuredDiagramStep {
+  label: string;
+  detail?: string;
+}
+
+export interface StructuredDiagramNode {
+  id: string;
+  label: string;
+  parent_id?: string;
+}
+
+export interface StructuredDiagramData {
+  id: string;
+  template: StructuredDiagramTemplate;
+  title: string;
+  subtitle?: string;
+  emphasis?: string;
+  items?: string[];
+  front_label?: string;
+  rear_label?: string;
+  left_action?: string;
+  right_action?: string;
+  left_note?: string;
+  right_note?: string;
+  direction_label?: string;
+  footer_title?: string;
+  footer_text?: string;
+  footer_order?: string[];
+  steps?: StructuredDiagramStep[];
+  nodes?: StructuredDiagramNode[];
+}
+
+export interface ChatStructuredDiagramEvent {
+  event: "structured_diagram";
+  data: StructuredDiagramData;
+}
+
 export interface ImageData {
   id: string;
   provider_id: string;
@@ -470,13 +524,14 @@ export interface ChatResourceEvent {
   data: ResourceData;
 }
 
-export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatWebSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatConversationTitleEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatImageEvent | ChatResourceEvent | AgentStepEvent | PendingActionEvent | NextBestActionEvent;
+export type ChatStreamEvent = ChatStartEvent | ChatTokenEvent | ChatSourcesEvent | ChatWebSourcesEvent | ChatEndEvent | ChatErrorEvent | ChatConversationTitleEvent | ChatQuizEvent | ChatKeyIdeaEvent | ChatDiagramEvent | ChatStructuredDiagramEvent | ChatImageEvent | ChatResourceEvent | AgentStepEvent | PendingActionEvent | NextBestActionEvent;
 
 export type KeyIdeaArtifactType = "text" | "diagram" | "image";
 
 export type KeyIdeaArtifactData =
   | { kind: "text"; text: string; source_message_id?: number | null }
   | { kind: "diagram"; source: string; title?: string | null }
+  | { kind: "structured_diagram"; diagram: StructuredDiagramData }
   | { kind: "image"; image_url: string; thumbnail_url?: string | null; caption?: string | null };
 
 export interface KeyIdea {
@@ -495,6 +550,7 @@ export type LectureTimelineEntry =
   | { kind: "key_idea"; idea: KeyIdea }
   | { kind: "live_note"; note: { id: string; heading: string; concept: string; summary: string } }
   | { kind: "diagram"; diagram: DiagramData }
+  | { kind: "structured_diagram"; diagram: StructuredDiagramData }
   | { kind: "image"; image: ImageData };
 
 export interface LectureNoteSummary {

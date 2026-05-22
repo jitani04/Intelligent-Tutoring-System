@@ -1,14 +1,12 @@
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
-import { createConversation, generateMindMap, listProjectProfiles, setupProject, uploadMaterial } from "../api";
+import { createConversation, generateMindMap, listProjectProfiles, setupProject } from "../api";
 import { formatSubjectName } from "../subjects";
 import { buttonClass } from "./buttonClass";
 
-const MATERIAL_ACCEPT = ".pdf,.pptx,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/x-markdown";
-
-type Step = "topic" | "materials" | "method";
+type Step = "topic" | "method";
 
 interface Props {
   initialSubject?: string;
@@ -18,10 +16,8 @@ interface Props {
 export function StartSessionModal({ initialSubject, onClose }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<Step>(initialSubject ? "materials" : "topic");
+  const [step, setStep] = useState<Step>("topic");
   const [subject, setSubject] = useState(initialSubject ?? "");
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const profilesQuery = useQuery({
@@ -72,10 +68,16 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
     },
   });
 
+  const isFirstSubject = existingSubjects.length === 0 && !initialSubject;
+
   function selectSubject(nextSubject: string) {
     setSubject(nextSubject);
     setError(null);
-    setStep("materials");
+    if (isFirstSubject) {
+      setStep("method");
+    } else {
+      startMutation.mutate();
+    }
   }
 
   function handleTopicSubmit(event: FormEvent<HTMLFormElement>) {
@@ -84,38 +86,14 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
     selectSubject(subject.trim());
   }
 
-  function handleFilesChange(event: ChangeEvent<HTMLInputElement>) {
-    setSelectedFiles(Array.from(event.target.files ?? []));
-  }
+  useEffect(() => {
+    if (initialSubject) startMutation.mutate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const isFirstSubject = existingSubjects.length === 0 && !initialSubject;
+  const busy = startMutation.isPending;
 
-  async function handleMaterialsContinue() {
-    const cleanSubject = subject.trim();
-    if (!cleanSubject) {
-      setStep("topic");
-      return;
-    }
-    setError(null);
-    setUploading(true);
-    try {
-      if (selectedFiles.length > 0) {
-        await Promise.all(selectedFiles.map((file) => uploadMaterial(file, cleanSubject)));
-      }
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Failed to upload materials.");
-      return;
-    } finally {
-      setUploading(false);
-    }
-    if (isFirstSubject) {
-      setStep("method");
-    } else {
-      startMutation.mutate();
-    }
-  }
-
-  const busy = uploading || startMutation.isPending;
+  if (initialSubject) return null;
 
   return (
     <div
@@ -169,39 +147,6 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
           </>
         )}
 
-        {step === "materials" && (
-          <>
-            <h1>Upload course material</h1>
-            <p className="flow-copy">Optional. Uploads keep answers grounded in your actual material.</p>
-            <p className="flow-subcopy">{subject}</p>
-
-            <label className="upload-dropzone">
-              <span>Drop PDFs, slide decks, lecture notes, or syllabi here</span>
-              <small>Supported formats: PDF, PPTX, DOCX, TXT, and MD.</small>
-              <input multiple accept={MATERIAL_ACCEPT} onChange={handleFilesChange} type="file" />
-            </label>
-
-            {selectedFiles.length > 0 ? (
-              <div className="selection-list">
-                {selectedFiles.map((file) => (
-                  <div className="selection-item" key={`${file.name}-${file.size}`}>{file.name}</div>
-                ))}
-              </div>
-            ) : null}
-
-            {error ? <p className="error-text">{error}</p> : null}
-
-            <div className="flow-actions">
-              <button className={buttonClass("secondary")} disabled={busy} onClick={() => initialSubject ? onClose() : setStep("topic")} type="button">
-                {initialSubject ? "Cancel" : "Back"}
-              </button>
-              <button className={buttonClass("primary")} disabled={busy} onClick={() => void handleMaterialsContinue()} type="button">
-                {uploading ? "Uploading…" : startMutation.isPending ? "Creating…" : isFirstSubject ? "Continue" : "Start session"}
-              </button>
-            </div>
-          </>
-        )}
-
         {step === "method" && (
           <>
             <h1>How Sapient works</h1>
@@ -232,7 +177,7 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
             {error ? <p className="error-text">{error}</p> : null}
 
             <div className="flow-actions">
-              <button className={buttonClass("secondary")} disabled={busy} onClick={() => setStep("materials")} type="button">Back</button>
+              <button className={buttonClass("secondary")} disabled={busy} onClick={() => setStep("topic")} type="button">Back</button>
               <button className={buttonClass("primary")} disabled={busy} onClick={() => startMutation.mutate()} type="button">
                 {startMutation.isPending ? "Creating..." : "Start subject"}
               </button>

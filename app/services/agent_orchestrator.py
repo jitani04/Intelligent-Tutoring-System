@@ -127,6 +127,7 @@ class AgentOrchestrator:
         )
         yield SseEvent(event="agent_step", data={"message": self._step_for_plan(plan), "plan": asdict(plan)})
 
+        pending_action_payload: dict[str, Any] | None = None
         if plan.recommended_action == "generate_review_digest":
             yield SseEvent(event="agent_step", data={"message": "Building your review plan..."})
             pending_action = await self._create_review_digest_pending_action(
@@ -135,7 +136,7 @@ class AgentOrchestrator:
                 conversation=conversation,
                 trigger_type="manual",
             )
-            yield SseEvent(event="pending_action", data=self._pending_action_payload(pending_action))
+            pending_action_payload = self._pending_action_payload(pending_action)
 
         async for event in stream_chat(
             session=session,
@@ -156,6 +157,8 @@ class AgentOrchestrator:
         ):
             yield event
             if event.event == "end":
+                if pending_action_payload is not None:
+                    yield SseEvent(event="pending_action", data=pending_action_payload)
                 next_action = await self._next_best_action(session=session, conversation=conversation, state=state, plan=plan)
                 yield SseEvent(event="next_best_action", data=next_action.to_dict())
 
@@ -247,6 +250,7 @@ class AgentOrchestrator:
         return {
             "retrieve_then_answer": "Searching your uploaded materials...",
             "generate_quiz": "Preparing a practice question...",
+            "create_structured_diagram": "Planning a visual explanation...",
             "create_diagram": "Planning a visual explanation...",
             "find_resource": "Looking for a helpful resource...",
             "generate_review_digest": "Preparing review digest email...",

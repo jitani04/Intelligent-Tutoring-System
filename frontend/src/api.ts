@@ -1,4 +1,4 @@
-import { getToken } from "./auth";
+import { getToken, handleSessionExpired } from "./auth";
 import { sortConversationsByRecentActivity } from "./conversations";
 import type { Assignment, AssignmentInput, AssignmentUpdate, AttemptResult, AuthResult, CalendarFeed, CalendarFeedSyncResponse, ChatRequest, ChatStreamEvent, Conversation, FeedbackRequest, FeedbackResponse, Flashcard, FlashcardDueResponse, KeyIdea, KeyIdeaArtifactData, KeyIdeaArtifactType, LearningMapStatus, LectureNote, LectureNoteSummary, LectureTimelineEntry, Material, MindMap, PendingAgentAction, ProjectCoverImageOption, ProjectProfile, ProjectProgress, QuizRead, Resource, ReviewEmailPreferences, SearchResponse, SessionSummary, SmartFlashcardSessionResponse, TutorPreferences, UserProfile, WeakQuizResponse } from "./types";
 
@@ -49,8 +49,16 @@ interface ErrorBody {
   rate_limited?: boolean;
 }
 
+function handleUnauthorizedResponse(response: Response): void {
+  if (response.status === 401 && getToken()) {
+    handleSessionExpired();
+  }
+}
+
 async function parseJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
+    handleUnauthorizedResponse(response);
+
     let detail = `${response.status} ${response.statusText}`;
     let body: ErrorBody | null = null;
     try {
@@ -242,6 +250,7 @@ export async function deleteResource(resourceId: number): Promise<void> {
     headers: buildHeaders(),
   });
   if (!response.ok) {
+    handleUnauthorizedResponse(response);
     throw new Error(`Failed to delete resource: ${response.status}`);
   }
 }
@@ -271,6 +280,7 @@ export async function deleteConversation(conversationId: number): Promise<void> 
     headers: buildHeaders(),
   });
   if (!response.ok) {
+    handleUnauthorizedResponse(response);
     throw new Error(`Delete failed: ${response.status} ${response.statusText}`);
   }
 }
@@ -400,6 +410,7 @@ export async function uploadMaterial(file: File, subject?: string): Promise<Mate
     body: file,
   });
   if (!putResp.ok) {
+    handleUnauthorizedResponse(putResp);
     throw new Error(`Upload failed (${putResp.status} ${putResp.statusText}).`);
   }
 
@@ -512,6 +523,7 @@ export async function uploadProjectCoverImage(file: File): Promise<CoverImageUpl
     body: file,
   });
   if (!putResp.ok) {
+    handleUnauthorizedResponse(putResp);
     throw new Error(`Upload failed (${putResp.status} ${putResp.statusText}).`);
   }
 
@@ -844,6 +856,7 @@ export async function deleteFlashcard(cardId: number): Promise<void> {
     headers: buildHeaders(),
   });
   if (!response.ok) {
+    handleUnauthorizedResponse(response);
     throw new Error(`Delete failed: ${response.status}`);
   }
 }
@@ -856,6 +869,7 @@ export async function fetchSpeech(text: string, voice?: string, signal?: AbortSi
     signal,
   });
   if (!response.ok) {
+    handleUnauthorizedResponse(response);
     throw new Error(`TTS failed: ${response.status}`);
   }
 
@@ -988,6 +1002,7 @@ export async function streamChat(
   });
 
   if (!response.ok) {
+    handleUnauthorizedResponse(response);
     throw new Error(`Streaming request failed: ${response.status} ${response.statusText}`);
   }
 

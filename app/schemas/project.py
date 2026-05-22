@@ -46,6 +46,7 @@ class ProjectProfileRead(BaseModel):
     knowledge_state: dict[str, KnowledgeStateRead] | None = None
     next_recommended_action: dict[str, Any] | None = None
     created_at: datetime
+    updated_at: datetime
 
 
 class LearningMapProgressUpdate(BaseModel):

@@ -314,6 +314,7 @@ export interface ProjectProfile {
   learning_map_progress: Record<string, LearningMapStatus> | null;
   knowledge_state: Record<string, KnowledgeStateEntry> | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ProjectCoverImageOption {

@@ -25,6 +25,11 @@ function formatDue(value: string): string {
   return new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function projectProfileTimestamp(profile: { created_at: string; updated_at?: string | null }): number {
+  const timestamp = new Date(profile.updated_at || profile.created_at).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Date.now();
+}
+
 export function DashboardPage() {
   const { openNewSubject } = useStartSessionModal();
   const { data: user } = useQuery({
@@ -65,7 +70,7 @@ export function DashboardPage() {
       const subject = profile.subject?.trim();
       if (!subject) continue;
       const subjectKey = normalizeSubject(subject);
-      map.set(subjectKey, { subject, convs: [], lastActive: 0 });
+      map.set(subjectKey, { subject, convs: [], lastActive: projectProfileTimestamp(profile) });
     }
     for (const c of conversations) {
       const subject = c.subject?.trim();

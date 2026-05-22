@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -1191,10 +1192,23 @@ async def generate_mindmap(
         logger.warning("Mind map JSON parse failed, raw: %s", raw[:200])
         raise HTTPException(status_code=502, detail="Failed to generate mind map. Try again.")
 
+    result = await session.execute(
+        select(ProjectProfile).where(
+            ProjectProfile.user_id == user_id,
+            ProjectProfile.subject == subject,
+        )
+    )
+    profile = result.scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Subject not found.")
+
     profile.mind_map = mind_map
     try:
         await session.commit()
     except StaleDataError:
         raise HTTPException(status_code=404, detail="Subject not found.")
-    await session.refresh(profile)
+    try:
+        await session.refresh(profile)
+    except InvalidRequestError:
+        raise HTTPException(status_code=404, detail="Subject not found.")
     return await _hydrate_profile_cover_url(profile)

@@ -46,7 +46,7 @@ export function NewSubjectModal({ onClose }: Props) {
         queryClient.invalidateQueries({ queryKey: ["project-profile", cleanSubject] }),
       ]);
       onClose();
-      navigate("/dashboard");
+      navigate(`/projects/${encodeURIComponent(cleanSubject)}/setup`);
     },
     onError: (nextError) => {
       setError(nextError instanceof Error ? nextError.message : "Failed to create subject.");

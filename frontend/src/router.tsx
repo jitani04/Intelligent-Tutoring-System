@@ -1,4 +1,5 @@
 import { Navigate, createBrowserRouter, useParams } from "react-router-dom";
+import { GoogleAuthCallbackPage } from "./ui/GoogleAuthCallbackPage";
 
 import { AppLayout } from "./ui/AppLayout";
 import { CalendarPage } from "./ui/CalendarPage";
@@ -65,6 +66,7 @@ export const router = createBrowserRouter([
       { path: "/sessions", element: <Navigate replace to="/sessions/new" /> },
     ],
   },
+  { path: "/auth/google/callback", element: <GoogleAuthCallbackPage /> },
   { path: "/chat", element: <LegacyChatRedirect /> },
   { path: "/chat/:conversationId", element: <LegacyChatRedirect /> },
   { path: "*", element: <NotFoundPage /> },

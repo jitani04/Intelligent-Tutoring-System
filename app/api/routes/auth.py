@@ -1,7 +1,10 @@
 from datetime import time
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from urllib.parse import urlencode
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, status
+from fastapi.responses import RedirectResponse
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from pydantic import BaseModel, EmailStr
@@ -187,6 +190,59 @@ async def login_with_google(body: GoogleAuthRequest, db: DbDep) -> TokenResponse
     await db.refresh(user)
 
     return TokenResponse(access_token=create_access_token(user.id), user=UserResponse.from_user(user))
+
+
+@router.post("/google/redirect", dependencies=[_auth_rate_limit])
+async def google_redirect_callback(
+    db: DbDep,
+    credential: Annotated[str, Form()],
+    g_csrf_token: Annotated[str | None, Form()] = None,
+) -> RedirectResponse:
+    """Handles the Google redirect-mode POST. Google POSTs the credential here after account selection."""
+    settings = get_settings()
+    base = settings.app_base_url.rstrip("/")
+
+    if not settings.google_client_id:
+        return RedirectResponse(f"{base}/?{urlencode({'google_error': 'not_configured'})}", status_code=303)
+
+    try:
+        payload = await run_in_threadpool(
+            id_token.verify_oauth2_token,
+            credential,
+            google_requests.Request(),
+            settings.google_client_id,
+        )
+    except ValueError:
+        return RedirectResponse(f"{base}/?{urlencode({'google_error': 'invalid_credential'})}", status_code=303)
+
+    google_id = payload.get("sub")
+    email = payload.get("email")
+    email_verified = payload.get("email_verified")
+    display_name = payload.get("name")
+
+    if not google_id or not email or email_verified is not True:
+        return RedirectResponse(f"{base}/?{urlencode({'google_error': 'unverified'})}", status_code=303)
+
+    user = await db.scalar(select(User).where(User.google_id == google_id))
+    if not user:
+        user = await db.scalar(select(User).where(User.email == email))
+
+    if user:
+        user.google_id = user.google_id or google_id
+        user.name = user.name or display_name
+    else:
+        user = User(email=email, google_id=google_id, name=display_name)
+        db.add(user)
+
+    await db.commit()
+    await db.refresh(user)
+
+    token = create_access_token(user.id)
+    next_path = "/onboarding" if not user.onboarding_complete else "/dashboard"
+    return RedirectResponse(
+        f"{base}/auth/google/callback?{urlencode({'token': token, 'next': next_path})}",
+        status_code=303,
+    )
 
 
 @router.get("/me", response_model=UserResponse)

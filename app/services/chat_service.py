@@ -1211,10 +1211,14 @@ async def stream_chat(
                     resource_hit = None
                     if kind not in {"video", "article"}:
                         tool_content = (
-                            f"find_resource called with invalid kind={kind!r}; nothing displayed."
+                            f"find_resource called with invalid kind={kind!r}; nothing displayed. "
+                            "Reply to the student and ask what type of resource they'd like (video or article)."
                         )
                     elif not topic:
-                        tool_content = "find_resource called without a topic; nothing displayed."
+                        tool_content = (
+                            "find_resource called without a topic; nothing displayed. "
+                            "Reply to the student and ask which topic they'd like a resource on."
+                        )
                     else:
                         try:
                             if kind == "video" and resource_provider is not None:
@@ -1279,13 +1283,15 @@ async def stream_chat(
                                 "saved to their Resources tab. The card already displays the title, the "
                                 "URL, the source domain, and your one-line reason. STRICT RULE: do NOT "
                                 "re-state the title, the URL, the domain, or the reason in your reply — "
-                                "that duplicates the card. The card appears below your message. Continue teaching or pause for the student to "
-                                "click through."
+                                "that duplicates the card. The card appears below your message. "
+                                "You MUST write 1-2 sentences in your reply to introduce the resource or "
+                                "explain how it connects to the student's current topic — do not stay silent."
                             )
                         else:
                             tool_content = (
                                 f"No {kind} resource could be found for '{topic}'. "
-                                "Continue the explanation without an external recommendation."
+                                "Write a brief reply telling the student you couldn't find one right now "
+                                "and offer to help in another way."
                             )
 
                     lc_tool_messages.append(

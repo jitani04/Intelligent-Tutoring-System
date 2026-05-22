@@ -1,7 +1,7 @@
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { login, loginWithGoogle, register } from "../api";
 import { isAuthenticated, setToken } from "../auth";
@@ -41,16 +41,23 @@ function LandingDemoVideo({
 export function LandingPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const authenticated = isAuthenticated();
   const [mode, setMode] = useState<ModalMode | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    const googleError = searchParams.get("google_error");
+    if (googleError) return "Google sign-in failed. Please try again.";
+    return null;
+  });
   const [loading, setLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("");
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const googleAuthStatus = getGoogleAuthStatus(googleClientId);
   const busyLabel = loadingLabel || (mode === "signup" ? "Creating account…" : "Signing in…");
+
+  const googleLoginUri = `${import.meta.env.VITE_API_BASE_URL ?? `${window.location.protocol}//${window.location.hostname || "127.0.0.1"}:8000`}/auth/google/redirect`;
 
   useEffect(() => {
     const elements = Array.from(document.querySelectorAll<HTMLElement>(".motion-reveal"));
@@ -400,6 +407,8 @@ export function LandingPage() {
                   onSuccess={(response) => void handleGoogleSuccess(response)}
                   text={mode === "signup" ? "signup_with" : "signin_with"}
                   useOneTap={false}
+                  ux_mode="redirect"
+                  login_uri={googleLoginUri}
                 />
               ) : (
                 <p className="muted">{googleAuthStatus.message}</p>

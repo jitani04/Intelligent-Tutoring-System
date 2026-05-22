@@ -406,6 +406,14 @@ export function ChatPage() {
   const pendingImagesRef = useRef<ImageData[]>([]);
   const pendingResourcesRef = useRef<ResourceData[]>([]);
   const pendingQuizzesRef = useRef<QuizData[]>([]);
+  const deferredAttachRef = useRef<{
+    messageId: number;
+    diagrams: DiagramData[];
+    structuredDiagrams: StructuredDiagramData[];
+    images: ImageData[];
+    resources: ResourceData[];
+    quizzes: QuizData[];
+  } | null>(null);
   const [messageDiagrams, setMessageDiagrams] = useState<Record<number, DiagramData[]>>({});
   const [messageStructuredDiagrams, setMessageStructuredDiagrams] = useState<Record<number, StructuredDiagramData[]>>({});
   const [messageImages, setMessageImages] = useState<Record<number, ImageData[]>>({});
@@ -548,6 +556,44 @@ export function ChatPage() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, streamedText, agentSteps, pendingAgentActions]);
+
+  useEffect(() => {
+    if (!streamSmoothing.isDrained) return;
+    const deferred = deferredAttachRef.current;
+    if (!deferred) return;
+    deferredAttachRef.current = null;
+    const { messageId, diagrams, structuredDiagrams, images, resources, quizzes } = deferred;
+    if (diagrams.length > 0) {
+      setMessageDiagrams((existing) => ({
+        ...existing,
+        [messageId]: appendUniqueBy(existing[messageId] ?? [], diagrams, (d) => d.id),
+      }));
+    }
+    if (structuredDiagrams.length > 0) {
+      setMessageStructuredDiagrams((existing) => ({
+        ...existing,
+        [messageId]: appendUniqueBy(existing[messageId] ?? [], structuredDiagrams, (d) => d.id),
+      }));
+    }
+    if (images.length > 0) {
+      setMessageImages((existing) => ({
+        ...existing,
+        [messageId]: appendUniqueBy(existing[messageId] ?? [], images, (image) => image.id),
+      }));
+    }
+    if (resources.length > 0) {
+      setMessageResources((existing) => ({
+        ...existing,
+        [messageId]: appendUniqueBy(existing[messageId] ?? [], resources, (r) => r.id),
+      }));
+    }
+    if (quizzes.length > 0) {
+      setMessageQuizzes((existing) => ({
+        ...existing,
+        [messageId]: appendUniqueBy(existing[messageId] ?? [], quizzes, (q) => q.quiz_id),
+      }));
+    }
+  }, [streamSmoothing.isDrained]);
 
   useEffect(() => {
     setSources([]);
@@ -984,31 +1030,26 @@ export function ChatPage() {
     if (event.event === "quiz") {
       setSseQuizzes((q) => [...q, event.data]);
       pendingQuizzesRef.current = appendUniqueBy(pendingQuizzesRef.current, [event.data], (q) => q.quiz_id);
-      setPendingQuizzes(pendingQuizzesRef.current);
       return;
     }
     if (event.event === "diagram") {
       setSseDiagrams((d) => [...d, event.data]);
       pendingDiagramsRef.current = appendUniqueBy(pendingDiagramsRef.current, [event.data], (d) => d.id);
-      setPendingDiagrams(pendingDiagramsRef.current);
       return;
     }
     if (event.event === "structured_diagram") {
       setSseStructuredDiagrams((d) => [...d, event.data]);
       pendingStructuredDiagramsRef.current = appendUniqueBy(pendingStructuredDiagramsRef.current, [event.data], (d) => d.id);
-      setPendingStructuredDiagrams(pendingStructuredDiagramsRef.current);
       return;
     }
     if (event.event === "image") {
       setSseImages((images) => [...images, event.data]);
       pendingImagesRef.current = appendUniqueBy(pendingImagesRef.current, [event.data], (image) => image.id);
-      setPendingImages(pendingImagesRef.current);
       return;
     }
     if (event.event === "resource") {
       setSseResources((r) => [...r, event.data]);
       pendingResourcesRef.current = appendUniqueBy(pendingResourcesRef.current, [event.data], (r) => r.id);
-      setPendingResources(pendingResourcesRef.current);
       return;
     }
     if (event.event === "key_idea") {
@@ -1047,36 +1088,14 @@ export function ChatPage() {
       setPendingImages([]);
       setPendingResources([]);
       setPendingQuizzes([]);
-      if (diagramsToAttach.length > 0) {
-        setMessageDiagrams((existing) => ({
-          ...existing,
-          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], diagramsToAttach, (d) => d.id),
-        }));
-      }
-      if (structuredDiagramsToAttach.length > 0) {
-        setMessageStructuredDiagrams((existing) => ({
-          ...existing,
-          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], structuredDiagramsToAttach, (d) => d.id),
-        }));
-      }
-      if (imagesToAttach.length > 0) {
-        setMessageImages((existing) => ({
-          ...existing,
-          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], imagesToAttach, (image) => image.id),
-        }));
-      }
-      if (resourcesToAttach.length > 0) {
-        setMessageResources((existing) => ({
-          ...existing,
-          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], resourcesToAttach, (r) => r.id),
-        }));
-      }
-      if (quizzesToAttach.length > 0) {
-        setMessageQuizzes((existing) => ({
-          ...existing,
-          [assistantMessageId]: appendUniqueBy(existing[assistantMessageId] ?? [], quizzesToAttach, (q) => q.quiz_id),
-        }));
-      }
+      deferredAttachRef.current = {
+        messageId: assistantMessageId,
+        diagrams: diagramsToAttach,
+        structuredDiagrams: structuredDiagramsToAttach,
+        images: imagesToAttach,
+        resources: resourcesToAttach,
+        quizzes: quizzesToAttach,
+      };
       streamSmoothing.finish();
       if (conversationId !== null) {
         void queryClient.invalidateQueries({ queryKey: ["conversation-resources", conversationId] });

@@ -14,6 +14,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export interface StreamSmoothing {
   /** The currently-visible text. Updates ~60fps while there's pending buffer. */
   text: string;
+  /** True once finish() has been called and the buffer has fully drained. */
+  isDrained: boolean;
   /** Append a raw delta from the stream. Safe to call many times per frame. */
   push: (delta: string) => void;
   /** Signal that the upstream stream is done. The buffer will drain, then settle. */
@@ -36,10 +38,11 @@ interface Options {
 }
 
 export function useStreamSmoothing(options: Options = {}): StreamSmoothing {
-  const minPerFrame = options.charsPerFrame ?? 2;
-  const catchUpFactor = options.catchUpFactor ?? 30;
+  const minPerFrame = options.charsPerFrame ?? 1;
+  const catchUpFactor = options.catchUpFactor ?? 60;
 
   const [text, setText] = useState("");
+  const [isDrained, setIsDrained] = useState(true);
   const bufferRef = useRef("");
   const finishedRef = useRef(false);
   const rafRef = useRef<number | null>(null);
@@ -49,6 +52,7 @@ export function useStreamSmoothing(options: Options = {}): StreamSmoothing {
     if (buf.length === 0) {
       if (finishedRef.current) {
         rafRef.current = null;
+        setIsDrained(true);
         return;
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -72,6 +76,7 @@ export function useStreamSmoothing(options: Options = {}): StreamSmoothing {
       if (!delta) return;
       bufferRef.current += delta;
       finishedRef.current = false;
+      setIsDrained(false);
       ensureLoopRunning();
     },
     [ensureLoopRunning],
@@ -97,6 +102,7 @@ export function useStreamSmoothing(options: Options = {}): StreamSmoothing {
     bufferRef.current = "";
     finishedRef.current = false;
     setText("");
+    setIsDrained(true);
   }, []);
 
   useEffect(() => {
@@ -105,5 +111,5 @@ export function useStreamSmoothing(options: Options = {}): StreamSmoothing {
     };
   }, []);
 
-  return { text, push, finish, flush, reset };
+  return { text, isDrained, push, finish, flush, reset };
 }

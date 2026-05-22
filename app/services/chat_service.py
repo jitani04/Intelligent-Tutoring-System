@@ -576,6 +576,143 @@ def _strip_tool_markup(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 
+def _summarize_tool_call_for_recovery(tool_call: dict[str, Any]) -> str | None:
+    args = tool_call.get("args")
+    if not isinstance(args, dict):
+        args = {}
+    name = str(tool_call.get("name") or "").strip()
+
+    if name == "save_key_idea":
+        concept = str(args.get("concept") or "").strip()
+        return f"saved key idea: {concept}" if concept else "saved a key idea"
+    if name == "generate_quiz":
+        concept = str(args.get("concept") or "").strip()
+        return f"created quiz card: {concept}" if concept else "created a quiz card"
+    if name in {"create_diagram", "create_structured_diagram"}:
+        title = str(args.get("title") or "").strip()
+        return f"created diagram card: {title}" if title else "created a diagram card"
+    if name == "find_image":
+        query = str(args.get("query") or "").strip()
+        return f"found image card: {query}" if query else "found an image card"
+    if name == "find_resource":
+        topic = str(args.get("topic") or "").strip()
+        kind = str(args.get("kind") or "resource").strip()
+        return f"found {kind} resource card: {topic}" if topic else f"found a {kind} resource card"
+    if name == "web_search":
+        query = str(args.get("query") or "").strip()
+        return f"searched web: {query}" if query else "searched the web"
+    return name or None
+
+
+def _topic_hint_for_empty_response(
+    *,
+    user_message: str,
+    subject: str | None,
+    tool_calls_data: list[dict[str, Any]],
+) -> str:
+    for tool_call in tool_calls_data:
+        args = tool_call.get("args")
+        if not isinstance(args, dict):
+            continue
+        for key in ("concept", "topic", "title", "query"):
+            value = str(args.get(key) or "").strip()
+            if value:
+                return value
+
+    if subject and subject.strip():
+        return subject.strip()
+
+    clean = " ".join(user_message.split()).strip()
+    vague_intro = re.fullmatch(
+        r"(give me|can you give me|please give me)?\s*(an?\s+)?intro(duction)?\s+(to|on)\s+(this|the)\s+topic\.?",
+        clean,
+        flags=re.IGNORECASE,
+    )
+    if clean and not vague_intro:
+        return clean[:80].rstrip(" .,:;-")
+    return "this topic"
+
+
+def _empty_tool_response_recovery_prompt(
+    *,
+    user_message: str,
+    subject: str | None,
+    tool_calls_data: list[dict[str, Any]],
+) -> str:
+    tool_summaries = [
+        summary for tool_call in tool_calls_data
+        if (summary := _summarize_tool_call_for_recovery(tool_call))
+    ]
+    tool_context = "\n".join(f"- {summary}" for summary in tool_summaries) or "- no visible tool output"
+    topic_hint = _topic_hint_for_empty_response(
+        user_message=user_message,
+        subject=subject,
+        tool_calls_data=tool_calls_data,
+    )
+    return (
+        "Your previous turn produced tool calls but no visible student-facing text. "
+        "Write the missing response now as plain tutoring prose.\n\n"
+        f"Student request: {user_message}\n"
+        f"Subject/topic hint: {topic_hint}\n"
+        f"Previous tool work already handled:\n{tool_context}\n\n"
+        "Rules:\n"
+        "- Do not call tools, mention tool calls, or mention this recovery instruction.\n"
+        "- If a card was created, refer to it briefly without repeating all card content.\n"
+        "- If the student asked for an intro, give a concise beginner-friendly introduction, then ask one check-for-understanding question.\n"
+        "- Keep it direct and useful; avoid filler."
+    )
+
+
+async def _generate_empty_tool_response_recovery(
+    *,
+    llm_service: LLMService,
+    input_messages: list[dict[str, Any]],
+    user_message: str,
+    subject: str | None,
+    tool_calls_data: list[dict[str, Any]],
+) -> tuple[str, dict[str, Any] | None]:
+    parts: list[str] = []
+    usage: dict[str, Any] | None = None
+    recovery_messages = [
+        dict(message) for message in input_messages
+    ] + [
+        {
+            "role": "user",
+            "content": _empty_tool_response_recovery_prompt(
+                user_message=user_message,
+                subject=subject,
+                tool_calls_data=tool_calls_data,
+            ),
+        }
+    ]
+
+    async for event in llm_service.stream_response(input_messages=recovery_messages):
+        if event.type == "token" and event.delta:
+            parts.append(event.delta)
+        elif event.type == "completed":
+            usage = event.usage
+
+    return _strip_tool_markup("".join(parts)), usage
+
+
+def _deterministic_empty_response_fallback(
+    *,
+    user_message: str,
+    subject: str | None,
+    tool_calls_data: list[dict[str, Any]],
+) -> str:
+    topic_hint = _topic_hint_for_empty_response(
+        user_message=user_message,
+        subject=subject,
+        tool_calls_data=tool_calls_data,
+    )
+    return (
+        f"Let's start with {topic_hint}. At a high level, focus first on the core idea, "
+        "why it matters, and one simple example before adding details.\n\n"
+        "Tell me what part feels least clear, and I can break that piece down next."
+    )
+
+
 async def _save_quiz(
     *,
     session: AsyncSession,
@@ -1406,13 +1543,48 @@ async def stream_chat(
             assistant_parts.append(fallback)
             yield SseEvent(event="token", data={"delta": fallback})
 
+        if not _strip_tool_markup("".join(assistant_parts)) and tool_calls_data:
+            try:
+                recovered_text, recovered_usage = await _generate_empty_tool_response_recovery(
+                    llm_service=llm_service,
+                    input_messages=input_messages,
+                    user_message=user_message,
+                    subject=subject,
+                    tool_calls_data=tool_calls_data,
+                )
+                if recovered_usage is not None:
+                    usage = recovered_usage
+            except Exception as exc:  # noqa: BLE001 - recovery should not hide completed tool work.
+                logger.warning(
+                    "Empty assistant response recovery failed",
+                    extra={"conversation_id": conversation_id, "user_id": user_id, "error": str(exc)},
+                )
+                recovered_text = ""
+
+            recovered_text = _strip_tool_markup(recovered_text)
+            if not recovered_text:
+                recovered_text = _deterministic_empty_response_fallback(
+                    user_message=user_message,
+                    subject=subject,
+                    tool_calls_data=tool_calls_data,
+                )
+            assistant_parts.append(recovered_text)
+            yield SseEvent(event="token", data={"delta": recovered_text})
+
         if tool_calls_data and ai_message_chunk is not None:
             for event in pending_post_text_events:
                 yield event
             for quiz_data in pending_quiz_events:
                 yield SseEvent(event="quiz", data=quiz_data)
 
-        assistant_content = "".join(assistant_parts).strip() or "(No response content)"
+        assistant_content = _strip_tool_markup("".join(assistant_parts))
+        if not assistant_content:
+            assistant_content = _deterministic_empty_response_fallback(
+                user_message=user_message,
+                subject=subject,
+                tool_calls_data=tool_calls_data,
+            )
+            yield SseEvent(event="token", data={"delta": assistant_content})
 
         assistant_msg = Message(
             conversation_id=conversation_id,

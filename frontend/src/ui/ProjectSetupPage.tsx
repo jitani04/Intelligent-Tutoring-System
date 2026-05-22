@@ -208,7 +208,6 @@ export function ProjectSetupPage() {
     <div className="flow-page">
       <div className="flow-card setup-card">
         <div className="setup-agent-bubble">
-          <div className="setup-agent-avatar">KP</div>
           <div className="setup-agent-text">
             <p>
               Before we dive into <strong>{decoded}</strong>, I'd love to understand where you're

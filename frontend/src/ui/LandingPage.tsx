@@ -1,7 +1,7 @@
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { login, loginWithGoogle, register } from "../api";
 import { isAuthenticated, setToken } from "../auth";
@@ -371,7 +371,9 @@ export function LandingPage() {
       </main>
 
       <footer className="landing-footer">
-        Sapient 2026
+        <span>Sapient 2026</span>
+        <Link to="/privacy">Privacy</Link>
+        <Link to="/terms">Terms</Link>
       </footer>
 
       {mode !== null && (
@@ -463,6 +465,12 @@ export function LandingPage() {
                   {mode === "signup" ? "Sign in" : "Create an account"}
                 </button>
               </p>
+              {mode === "signup" ? (
+                <p className="auth-legal-note">
+                  By creating an account, you agree to the <Link to="/terms">Terms</Link> and acknowledge the{" "}
+                  <Link to="/privacy">Privacy Policy</Link>.
+                </p>
+              ) : null}
             </form>
           </div>
         </div>

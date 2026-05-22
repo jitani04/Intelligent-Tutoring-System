@@ -10,6 +10,7 @@ import { HistoryPage } from "./ui/HistoryPage";
 import { NotesPage } from "./ui/NotesPage";
 import { SearchPage } from "./ui/SearchPage";
 import { LandingPage } from "./ui/LandingPage";
+import { LegalPage } from "./ui/LegalPage";
 import { MaterialDetailPage } from "./ui/MaterialDetailPage";
 import { MaterialsPage } from "./ui/MaterialsPage";
 import { NotFoundPage } from "./ui/NotFoundPage";
@@ -33,6 +34,8 @@ export const router = createBrowserRouter([
     path: "/",
     element: <LandingPage />,
   },
+  { path: "/privacy", element: <LegalPage kind="privacy" /> },
+  { path: "/terms", element: <LegalPage kind="terms" /> },
   {
     element: <RequireAuth />,
     children: [

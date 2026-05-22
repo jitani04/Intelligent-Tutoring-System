@@ -6,6 +6,12 @@ The production domain is `sapient-ats.com`; **ATS** stands for **Agentic Tutorin
 
 The application is organized by **subject**. Each subject can have its own goals, level, cover image, learning map, uploaded materials, study sessions, flashcards, and weak-area review flow.
 
+## Legal
+
+- [License](LICENSE.md)
+- [Privacy Policy](PRIVACY.md)
+- [Terms and Conditions](TERMS.md)
+
 ## Stack
 
 | Layer | Technology |

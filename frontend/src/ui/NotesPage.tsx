@@ -5,6 +5,8 @@ import { Download, StickyNote } from "lucide-react";
 import { deleteKeyIdea, listAllKeyIdeas, promoteKeyIdea } from "../api";
 import type { KeyIdea } from "../types";
 import { NoteCard } from "./NoteCard";
+import Loading from "./Loading";
+import ErrorMessage from "./ErrorMessage";
 
 function downloadNotesAsPdf(notes: KeyIdea[], subject: string | null) {
   const title = subject ? `${subject} — Notes` : "All Notes";
@@ -51,7 +53,7 @@ export function NotesPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [promotingId, setPromotingId] = useState<number | null>(null);
 
-  const { data: allNotes = [], isLoading } = useQuery({
+  const { data: allNotes = [], isLoading, isError } = useQuery({
     queryKey: ["key-ideas-all"],
     queryFn: () => listAllKeyIdeas(),
     staleTime: 30_000,
@@ -153,7 +155,8 @@ export function NotesPage() {
         )}
       </div>
 
-      {isLoading && <p className="muted" style={{ marginTop: "2rem" }}>Loading notes…</p>}
+      {isLoading && <Loading title="Loading notes…" />}
+      {isError && <ErrorMessage message={"Failed to load notes."} />}
 
       {!isLoading && filtered.length === 0 && (
         <div className="empty-state" style={{ marginTop: "2rem" }}>

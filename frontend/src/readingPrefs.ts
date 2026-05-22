@@ -40,9 +40,9 @@ const LETTER_SPACING_VALUES: Record<LetterSpacing, string> = {
 };
 
 const CONTENT_WIDTH_VALUES: Record<ContentWidth, string> = {
-  narrow: "600px",
-  medium: "800px",
-  wide: "1080px",
+  narrow: "min(600px, 96vw)",
+  medium: "min(800px, 96vw)",
+  wide: "min(1080px, 96vw)",
 };
 
 export function getStoredFontSize(): FontSize {

@@ -51,6 +51,19 @@ export function ArtifactsPanel({ conversationId, keyIdeas, onClose, onIdeaDelete
             <ul className="key-idea-list">
               {keyIdeas.map((idea) => (
                 <li key={idea.id} className="key-idea-bullet">
+                  {idea.artifact_type === "image" && idea.artifact_data?.kind === "image" && (
+                    <a
+                      className="key-idea-image-thumb"
+                      href={idea.artifact_data.image_url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <img
+                        alt={idea.artifact_data.caption ?? idea.concept}
+                        src={idea.artifact_data.thumbnail_url ?? idea.artifact_data.image_url}
+                      />
+                    </a>
+                  )}
                   <div className="key-idea-bullet-text">
                     <span className="key-idea-concept">{idea.concept}</span>
                     {idea.summary && idea.summary !== idea.concept ? (

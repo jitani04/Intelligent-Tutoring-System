@@ -826,6 +826,16 @@ export async function reviewFlashcard(cardId: number, quality: number): Promise<
   return parseJson(response);
 }
 
+export async function deleteFlashcard(cardId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/flashcards/${cardId}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(`Delete failed: ${response.status}`);
+  }
+}
+
 export async function fetchSpeech(text: string, voice?: string, signal?: AbortSignal): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/tts`, {
     method: "POST",

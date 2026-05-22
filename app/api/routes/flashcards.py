@@ -94,6 +94,15 @@ async def get_due_flashcards(
     )
 
 
+@router.delete("/flashcards/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_flashcard(card_id: int, user_id: UserDep, session: DbDep) -> None:
+    card = await session.get(KeyIdea, card_id)
+    if not card or card.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flashcard not found.")
+    await session.delete(card)
+    await session.commit()
+
+
 @router.post("/flashcards/{card_id}/review", response_model=FlashcardRead)
 async def review_flashcard(
     card_id: int,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { FileQuestion } from "lucide-react";
@@ -55,6 +55,9 @@ export function MaterialDetailPage() {
   const queryClient = useQueryClient();
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [blobPreviewUrl, setBlobPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewFetchError, setPreviewFetchError] = useState<string | null>(null);
   const { materialId, subject } = useParams<{ materialId: string; subject: string }>();
   const decodedSubject = decodeURIComponent(subject ?? "");
   const parsedMaterialId = Number(materialId);
@@ -87,7 +90,10 @@ export function MaterialDetailPage() {
 
   const previewMime = previewQuery.data?.mime_type ?? material?.mime_type ?? "";
   const isTextPreview = isMarkdownMime(previewMime) || isPlainTextMime(previewMime);
-  const needsExtractedText = isReady && !isTextPreview && !isIframePreviewable(previewMime);
+  const previewFilename = previewQuery.data?.filename ?? material.filename ?? "";
+  const inferredPdf = previewMime.toLowerCase() === "" && previewFilename.toLowerCase().endsWith(".pdf");
+  const effectiveIframePreviewable = isIframePreviewable(previewMime) || inferredPdf;
+  const needsExtractedText = isReady && !isTextPreview && !effectiveIframePreviewable;
   const extractedTextQuery = useQuery({
     queryKey: ["material-extracted-text", parsedMaterialId],
     enabled: needsExtractedText,
@@ -104,6 +110,45 @@ export function MaterialDetailPage() {
       return resp.text();
     },
   });
+
+  useEffect(() => {
+    let revoked = false;
+    async function fetchBlobPreview() {
+      if (!effectiveIframePreviewable || !previewQuery.data?.url) {
+        setPreviewLoading(false);
+        setPreviewFetchError(null);
+        if (blobPreviewUrl) {
+          URL.revokeObjectURL(blobPreviewUrl);
+          setBlobPreviewUrl(null);
+        }
+        return;
+      }
+      setPreviewLoading(true);
+      setPreviewFetchError(null);
+      try {
+        const resp = await fetch(previewQuery.data.url);
+        if (!resp.ok) throw new Error(`Could not fetch preview (${resp.status}).`);
+        const blob = await resp.blob();
+        if (revoked) return;
+        const url = URL.createObjectURL(blob);
+        if (blobPreviewUrl) URL.revokeObjectURL(blobPreviewUrl);
+        setBlobPreviewUrl(url);
+      } catch (err) {
+        setPreviewFetchError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setPreviewLoading(false);
+      }
+    }
+    void fetchBlobPreview();
+    return () => {
+      revoked = true;
+      if (blobPreviewUrl) {
+        URL.revokeObjectURL(blobPreviewUrl);
+        setBlobPreviewUrl(null);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewQuery.data?.url, effectiveIframePreviewable]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteMaterial(id),
@@ -208,13 +253,19 @@ export function MaterialDetailPage() {
                     </pre>
                   )}
                 </div>
-              ) : isIframePreviewable(previewMime) ? (
-                <iframe
-                  key={previewQuery.data.url}
-                  src={previewQuery.data.url}
-                  title={`Preview of ${material.filename}`}
-                  style={{ width: "100%", height: "70vh", border: "1px solid var(--border, #e2e2e2)", borderRadius: "8px", background: "#fff" }}
-                />
+              ) : effectiveIframePreviewable ? (
+                previewLoading ? (
+                  <p className="muted">Loading preview…</p>
+                ) : previewFetchError ? (
+                  <p className="error-text">Could not load preview. {previewFetchError}</p>
+                ) : (
+                  <iframe
+                    key={blobPreviewUrl ?? previewQuery.data.url}
+                    src={blobPreviewUrl ?? previewQuery.data.url}
+                    title={`Preview of ${material.filename}`}
+                    style={{ width: "100%", height: "70vh", border: "1px solid var(--border, #e2e2e2)", borderRadius: "8px", background: "#fff" }}
+                  />
+                )
               ) : (
                 <div className="material-extracted-preview">
                   {extractedTextQuery.isLoading ? (
@@ -240,7 +291,18 @@ export function MaterialDetailPage() {
                 </div>
               )}
               <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-                <a className={buttonClass("secondary")} href={previewQuery.data.url} target="_blank" rel="noreferrer">
+                <a
+                  className={buttonClass("secondary")}
+                  href={blobPreviewUrl ?? previewQuery.data.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => {
+                    // If we have a blob URL use it directly; otherwise let the link open the signed URL
+                    if (blobPreviewUrl) return;
+                    // If the signed URL would force a download, prevent navigation and open a blob fallback if available
+                    return;
+                  }}
+                >
                   Open in new tab
                 </a>
                 <button

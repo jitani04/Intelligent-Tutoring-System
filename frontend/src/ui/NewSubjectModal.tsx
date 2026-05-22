@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { listProjectProfiles, setupProject } from "../api";
 import { buttonClass } from "./buttonClass";
+import ErrorMessage from "./ErrorMessage";
 
 interface Props {
   onClose: () => void;
@@ -42,7 +43,7 @@ export function NewSubjectModal({ onClose }: Props) {
     onSuccess: async (cleanSubject) => {
       await queryClient.invalidateQueries({ queryKey: ["project-profiles"] });
       onClose();
-      navigate(`/projects/${encodeURIComponent(cleanSubject)}`);
+      navigate(`/projects/${encodeURIComponent(cleanSubject)}/setup`);
     },
     onError: (nextError) => {
       setError(nextError instanceof Error ? nextError.message : "Failed to create subject.");
@@ -95,7 +96,7 @@ export function NewSubjectModal({ onClose }: Props) {
               value={subject}
             />
           </label>
-          {error && <div className="flow-error">{error}</div>}
+          <ErrorMessage message={error} />
           <div className="flow-actions">
             <button className={buttonClass("secondary")} disabled={busy} onClick={onClose} type="button">
               Cancel

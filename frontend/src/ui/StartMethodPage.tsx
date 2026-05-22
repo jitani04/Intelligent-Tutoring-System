@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createConversation, generateMindMap, setupProject } from "../api";
 import { clearPendingStudyContext, getPendingStudyContext } from "../studyState";
 import { buttonClass } from "./buttonClass";
+import ErrorMessage from "./ErrorMessage";
 
 export function StartMethodPage() {
   const navigate = useNavigate();
@@ -64,7 +65,7 @@ export function StartMethodPage() {
           <span>{pendingContext.subject}</span>
         </div>
 
-        {error && <p className="error-text">{error}</p>}
+        <ErrorMessage message={error} />
 
         <div className="flow-actions">
           <Link className={buttonClass("secondary")} to="/start/materials">

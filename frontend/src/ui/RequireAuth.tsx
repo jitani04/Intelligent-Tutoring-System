@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import Loading from "./Loading";
 
 import { getCurrentUser } from "../api";
 import { clearToken, isAuthenticated } from "../auth";
@@ -27,14 +28,7 @@ export function RequireAuth() {
   }
 
   if (userQuery.isLoading) {
-    return (
-      <div className="flow-page">
-        <div className="flow-card">
-          <div className="flow-step">Loading</div>
-          <p className="flow-copy">Checking your account...</p>
-        </div>
-      </div>
-    );
+    return <Loading title="Checking your account..." />;
   }
 
   if (userQuery.isError) {

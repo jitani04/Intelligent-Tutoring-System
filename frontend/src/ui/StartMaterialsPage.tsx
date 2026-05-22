@@ -2,6 +2,7 @@ import { ChangeEvent, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { uploadMaterial } from "../api";
+import ErrorMessage from "./ErrorMessage";
 import { getPendingStudyContext } from "../studyState";
 import { buttonClass } from "./buttonClass";
 
@@ -76,7 +77,7 @@ export function StartMaterialsPage() {
           </div>
         ) : null}
 
-        {error ? <p className="error-text">{error}</p> : null}
+        {error ? <ErrorMessage message={error} /> : null}
 
         <div className="flow-actions">
           <Link className={buttonClass("secondary")} to="/start/topic">

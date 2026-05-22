@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
-import { createConversation, getSmartFlashcardSession, reviewFlashcard } from "../api";
+import { CheckCircle2, ChevronLeft, ChevronRight, Trash2, Shuffle } from "lucide-react";
+import { createConversation, deleteFlashcard, getSmartFlashcardSession, reviewFlashcard } from "../api";
 import type { Flashcard } from "../types";
 import { buttonClass } from "./buttonClass";
+import Loading from "./Loading";
+import ErrorMessage from "./ErrorMessage";
 
 const RATINGS: { label: string; quality: number; className: string; hint: string }[] = [
   { label: "Forgot",  quality: 1, className: "flash-btn-again", hint: "Show this again soon" },
@@ -55,8 +57,11 @@ export function FlashcardsView({ subject }: { subject: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [sessionDone, setSessionDone] = useState<{ reviewed: number } | null>(null);
   const [reviewed, setReviewed] = useState(0);
+  const [deletedIds, setDeletedIds] = useState<Set<number>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [order, setOrder] = useState<number[]>([]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["flashcards-due", decodedSubject],
     queryFn: () => getSmartFlashcardSession(decodedSubject),
     enabled: Boolean(decodedSubject),
@@ -72,9 +77,19 @@ export function FlashcardsView({ subject }: { subject: string }) {
     },
   });
 
-  const cards: Flashcard[] = data?.cards ?? [];
+  const cards: Flashcard[] = (data?.cards ?? []).filter((c) => !deletedIds.has(c.id));
   const total = cards.length;
-  const current = cards[index] ?? null;
+  useEffect(() => {
+    setOrder((prev) => {
+      // reset order when total changes; keep previous order if lengths match
+      if (prev.length === total && total > 0) return prev;
+      return [...Array(total).keys()];
+    });
+    setIndex(0);
+    setFlipped(false);
+  }, [total]);
+
+  const current = (order.length > 0 && cards[order[index]] ) ?? null;
   const currentFront = current ? flashcardFront(current) : "";
   const currentBack = current ? flashcardBack(current) : "";
 
@@ -86,11 +101,11 @@ export function FlashcardsView({ subject }: { subject: string }) {
       const nextReviewed = reviewed + 1;
       setReviewed(nextReviewed);
 
-      if (index + 1 >= total) {
+      if (index + 1 >= order.length) {
         setSessionDone({ reviewed: nextReviewed });
         void queryClient.invalidateQueries({ queryKey: ["flashcards-due", decodedSubject] });
       } else {
-        setIndex((i) => i + 1);
+          setIndex((i) => Math.min(order.length - 1, i + 1));
         setFlipped(false);
       }
     } finally {
@@ -103,11 +118,49 @@ export function FlashcardsView({ subject }: { subject: string }) {
     setFlipped(false);
     setReviewed(0);
     setSessionDone(null);
+    setDeletedIds(new Set());
+    setOrder((_) => [...Array(cards.length).keys()]);
     void queryClient.invalidateQueries({ queryKey: ["flashcards-due", decodedSubject] });
   }
 
+  function shuffleDeck() {
+    if (total <= 1) return;
+    const shuffled = [...Array(total).keys()];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setOrder(shuffled);
+    setIndex(0);
+    setFlipped(false);
+  }
+
+  async function handleDelete() {
+    if (!current || submitting) return;
+    setSubmitting(true);
+    try {
+      await deleteFlashcard(current.id);
+      const newTotal = total - 1;
+      setDeletedIds((prev) => new Set([...prev, current.id]));
+      setConfirmDelete(false);
+      setFlipped(false);
+      if (newTotal === 0) {
+        setSessionDone({ reviewed });
+      } else if (index >= newTotal) {
+        setIndex(newTotal - 1);
+      }
+      void queryClient.invalidateQueries({ queryKey: ["flashcards-due", decodedSubject] });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (isLoading) {
-    return <p className="muted" style={{ marginTop: "1.5rem" }}>Loading your cards…</p>;
+    return <Loading title="Loading flashcards…" subtitle="Fetching due cards" />;
+  }
+
+  if (isError) {
+    return <ErrorMessage message={"Failed to load flashcards."} />;
   }
 
   if (sessionDone || total === 0) {
@@ -228,17 +281,61 @@ export function FlashcardsView({ subject }: { subject: string }) {
         </button>
         <div className="flash-counter">{index + 1} / {total}</div>
         <button
+          aria-label="Shuffle cards"
+          className="flash-nav-btn"
+          disabled={submitting || total <= 1}
+          onClick={() => shuffleDeck()}
+          title="Shuffle deck"
+          type="button"
+        >
+          <Shuffle size={16} strokeWidth={2} />
+        </button>
+        <button
           aria-label="Next card"
           className="flash-nav-btn"
-          disabled={index >= total - 1 || submitting}
+          disabled={index >= order.length - 1 || submitting}
           onClick={() => {
-            setIndex((i) => Math.min(total - 1, i + 1));
+            setIndex((i) => Math.min(order.length - 1, i + 1));
             setFlipped(false);
           }}
           type="button"
         >
           <ChevronRight size={18} strokeWidth={2} />
         </button>
+      </div>
+
+      <div className="flash-delete-row">
+        {confirmDelete ? (
+          <>
+            <span className="flash-delete-label">Remove this card?</span>
+            <button
+              className="flash-delete-confirm"
+              disabled={submitting}
+              onClick={() => void handleDelete()}
+              type="button"
+            >
+              Remove
+            </button>
+            <button
+              className="flash-delete-cancel"
+              onClick={() => setConfirmDelete(false)}
+              type="button"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            className="flash-delete-trigger"
+            disabled={submitting}
+            onClick={() => setConfirmDelete(true)}
+            title="Delete this card"
+            type="button"
+          >
+            <Trash2 size={13} strokeWidth={1.8} />
+            Delete card
+          </button>
+        )}
       </div>
     </>
   );

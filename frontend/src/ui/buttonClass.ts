@@ -10,7 +10,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
   primary:
     "button-primary bg-[var(--accent-dark)] text-white shadow-[0_2px_8px_rgba(115,147,179,0.22)] hover:not-disabled:bg-[var(--accent)]",
   secondary:
-    "button-secondary border border-[var(--panel-border)] bg-white text-[var(--text-main)] shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:not-disabled:border-[var(--accent)] hover:not-disabled:text-[var(--accent)]",
+    "button-secondary border border-[var(--panel-border)] bg-white text-[var(--accent-dark)] shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:not-disabled:border-[var(--accent)] hover:not-disabled:text-[var(--accent-dark)]",
   ghost:
     "button-ghost border border-transparent bg-transparent text-[var(--text-soft)] shadow-none hover:not-disabled:bg-[var(--accent-dim)] hover:not-disabled:text-[var(--accent)] hover:not-disabled:translate-y-0",
   danger:

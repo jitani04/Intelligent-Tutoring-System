@@ -47,11 +47,8 @@ export function StartSessionModal({ initialSubject, onClose }: Props) {
       if (!cleanSubject) throw new Error("Choose a subject first.");
       await setupProject(cleanSubject, null, null, null);
       const conversation = await createConversation(cleanSubject);
-      try {
-        await generateMindMap(cleanSubject);
-      } catch {
-        // The subject page retries map generation when needed.
-      }
+      // Fire-and-forget — subject page retries map generation when needed.
+      generateMindMap(cleanSubject).catch(() => {});
       return { conversation, cleanSubject };
     },
     onSuccess: async ({ conversation, cleanSubject }) => {

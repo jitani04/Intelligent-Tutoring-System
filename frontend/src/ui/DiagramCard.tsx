@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import mermaid from "mermaid";
 import type { DiagramData } from "../types";
+import ErrorMessage from "./ErrorMessage";
 
 mermaid.initialize({
   startOnLoad: false,
@@ -47,7 +48,7 @@ function MermaidSvg({ source, idPrefix }: { source: string; idPrefix: string }) 
   if (error) {
     return (
       <div>
-        <div>Couldn't render diagram</div>
+        <ErrorMessage message={error} />
         <pre>{source}</pre>
       </div>
     );

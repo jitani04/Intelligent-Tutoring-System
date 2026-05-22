@@ -8,6 +8,8 @@ import { normalizeSubject } from "../subjects";
 import type { Conversation } from "../types";
 import { useStartSessionModal } from "./StartSessionModalContext";
 import { buttonClass } from "./buttonClass";
+import Loading from "./Loading";
+import ErrorMessage from "./ErrorMessage";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
@@ -70,8 +72,8 @@ export function HistoryPage() {
         </div>
       </div>
 
-      {isLoading ? <p className="muted">Loading…</p> : null}
-      {isError ? <p className="error-text">Failed to load study sessions.</p> : null}
+      {isLoading ? <Loading title="Loading history…" /> : null}
+      {isError ? <ErrorMessage message={"Failed to load study sessions."} /> : null}
 
       {groups.length === 0 && !isLoading ? (
         <div className="empty-state">

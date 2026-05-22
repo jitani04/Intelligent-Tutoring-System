@@ -131,27 +131,29 @@ export function DashboardPage() {
   const projectProfileBySubject = new Map(projectProfiles.map((profile) => [normalizeSubject(profile.subject), profile]));
 
   const projects = (() => {
-    const map = new Map<string, { convs: Conversation[]; lastActive: number }>();
-    for (const c of conversations) {
-      const subject = c.subject?.trim();
-      // Only conversations explicitly tied to a subject become a "subject" tile.
-      // Skip subject-less chats so they don't materialize a phantom "General".
+    const map = new Map<string, { subject: string; convs: Conversation[]; lastActive: number }>();
+    // Seed from project profiles so subjects with no conversations still appear.
+    for (const profile of projectProfiles) {
+      const subject = profile.subject?.trim();
       if (!subject) continue;
       const subjectKey = normalizeSubject(subject);
-      const existing = map.get(subjectKey) ?? { convs: [], lastActive: conversationLastActivityTime(c) };
+      map.set(subjectKey, { subject, convs: [], lastActive: 0 });
+    }
+    for (const c of conversations) {
+      const subject = c.subject?.trim();
+      if (!subject) continue;
+      const subjectKey = normalizeSubject(subject);
+      const existing = map.get(subjectKey) ?? { subject, convs: [], lastActive: conversationLastActivityTime(c) };
       existing.convs.push(c);
       existing.lastActive = Math.max(existing.lastActive, conversationLastActivityTime(c));
       map.set(subjectKey, existing);
     }
-    return Array.from(map.entries()).map(([subjectKey, { convs, lastActive }]) => {
-      const subject = convs.find((conversation) => conversation.subject?.trim())?.subject?.trim() ?? "";
-      return {
-        subject,
-        lastActive,
-        theme: subjectTheme(subject),
-        coverImageUrl: projectProfileBySubject.get(subjectKey)?.cover_image_url ?? null,
-      };
-    }).sort((a, b) => b.lastActive - a.lastActive);
+    return Array.from(map.values()).map(({ subject, lastActive }) => ({
+      subject,
+      lastActive,
+      theme: subjectTheme(subject),
+      coverImageUrl: projectProfileBySubject.get(normalizeSubject(subject))?.cover_image_url ?? null,
+    })).sort((a, b) => b.lastActive - a.lastActive);
   })();
 
   const displayName = user?.name?.trim() || user?.email.split("@")[0] || "there";

@@ -82,6 +82,13 @@ function providerLabel(model: { id: string; label: string; provider: string }): 
   return model.label;
 }
 
+function providerKey(model: { id: string; provider: string }): string {
+  if (model.provider === "anthropic" || model.id.startsWith("claude-")) return "claude";
+  if (model.provider === "google" || model.id.startsWith("gemini-")) return "gemini";
+  if (model.provider === "openai" || model.id.startsWith("gpt-")) return "gpt";
+  return "other";
+}
+
 function messageArtifactDiagrams(message: Message): DiagramData[] {
   return (message.artifacts ?? [])
     .filter((artifact): artifact is { kind: "diagram"; data: DiagramData } => artifact.kind === "diagram")
@@ -1286,32 +1293,44 @@ export function ChatPage() {
         <div className="thread-topbar">
           <div className="thread-topbar-info">
             <div className="thread-topbar-title">{title}</div>
-            <div className="thread-topbar-sub">{subtitle}</div>
+            {context?.subject ? (
+              <Link
+                className="thread-topbar-sub thread-topbar-sub-link"
+                to={`/projects/${encodeURIComponent(context.subject)}`}
+              >
+                {subtitle}
+              </Link>
+            ) : (
+              <div className="thread-topbar-sub">{subtitle}</div>
+            )}
           </div>
           <div className="thread-topbar-actions">
-            {modelsQuery.data && modelsQuery.data.length > 0 && (
-              <select
-                className="model-picker"
-                aria-label="Chat model"
-                title="Model used for this conversation"
-                value={
-                  conversation?.model && modelsQuery.data.some((model) => model.id === conversation.model)
-                    ? conversation.model
-                    : modelsQuery.data[0]?.id ?? ""
-                }
-                disabled={!conversationId || modelMutation.isPending}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value) modelMutation.mutate(value);
-                }}
-              >
-                {modelsQuery.data.map((m) => (
-                  <option key={m.id} value={m.id} title={m.label}>
-                    {providerLabel(m)}
-                  </option>
-                ))}
-              </select>
-            )}
+            {modelsQuery.data && modelsQuery.data.length > 0 && (() => {
+              const currentId = conversation?.model && modelsQuery.data.some((m) => m.id === conversation.model)
+                ? conversation.model
+                : modelsQuery.data[0]?.id ?? "";
+              const currentModel = modelsQuery.data.find((m) => m.id === currentId) ?? modelsQuery.data[0];
+              return (
+                <select
+                  className="model-picker"
+                  data-provider={currentModel ? providerKey(currentModel) : "other"}
+                  aria-label="Chat model"
+                  title="Model used for this conversation"
+                  value={currentId}
+                  disabled={!conversationId || modelMutation.isPending}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value) modelMutation.mutate(value);
+                  }}
+                >
+                  {modelsQuery.data.map((m) => (
+                    <option key={m.id} value={m.id} title={m.label}>
+                      {providerLabel(m)}
+                    </option>
+                  ))}
+                </select>
+              );
+            })()}
             {pomodoroEnabled && (
               <div className="focus-timer" role="group" aria-label="Focus timer">
                 <span
@@ -1721,7 +1740,7 @@ export function ChatPage() {
                       <span className="msg-artifact-tag">Diagram</span>
                       <span className="msg-artifact-source">from {tutorName}</span>
                     </div>
-                    <DiagramCard diagram={d} />
+                    <DiagramCard diagram={d} onSave={handleSaveDiagram} saved={savedSnippetKeys.has(`diagram-${d.id}`)} />
                   </div>
                 </div>
               ))}
@@ -1733,7 +1752,7 @@ export function ChatPage() {
                       <span className="msg-artifact-tag">Diagram</span>
                       <span className="msg-artifact-source">from {tutorName}</span>
                     </div>
-                    <StructuredDiagramCard diagram={d} />
+                    <StructuredDiagramCard diagram={d} onSave={handleSaveStructuredDiagram} saved={savedSnippetKeys.has(`structured-diagram-${d.id}`)} />
                   </div>
                 </div>
               ))}

@@ -5,6 +5,8 @@ import { FileText, Upload } from "lucide-react";
 
 import { deleteMaterial, listMaterials, uploadMaterial } from "../api";
 import { buttonClass } from "./buttonClass";
+import Loading from "./Loading";
+import ErrorMessage from "./ErrorMessage";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
@@ -69,14 +71,14 @@ export function MaterialsView({ subject }: { subject: string }) {
           <div className="upload-zone-sub">PDF, PPTX, DOCX, TXT, MD · max 100 MB each</div>
           <input type="file" multiple accept={MATERIAL_ACCEPT} style={{ display: "none" }} onChange={handleFiles} />
         </label>
-        {uploadError ? <p className="error-text" style={{ marginTop: "0.5rem" }}>{uploadError}</p> : null}
+        {uploadError ? <ErrorMessage message={uploadError} /> : null}
       </div>
 
       <div className="content-card">
         <div className="content-card-title">All materials</div>
 
-        {materialsQuery.isLoading ? <p className="muted">Loading…</p> : null}
-        {materialsQuery.isError ? <p className="error-text">Failed to load materials.</p> : null}
+        {materialsQuery.isLoading ? <Loading title="Loading materials…" /> : null}
+        {materialsQuery.isError ? <ErrorMessage message={"Failed to load materials."} /> : null}
 
         <div className="material-list">
           {uploadingNames.map((name) => (

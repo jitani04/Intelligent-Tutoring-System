@@ -6,6 +6,8 @@ import { listProjectProfiles } from "../api";
 import { formatSubjectName } from "../subjects";
 import { getPendingStudyContext, setPendingStudyContext } from "../studyState";
 import { buttonClass } from "./buttonClass";
+import Loading from "./Loading";
+import ErrorMessage from "./ErrorMessage";
 
 export function StartTopicPage() {
   const navigate = useNavigate();
@@ -33,6 +35,14 @@ export function StartTopicPage() {
     }
     return unique.sort((a, b) => a.localeCompare(b));
   }, [profilesQuery.data]);
+
+  if (profilesQuery.isLoading) {
+    return <Loading title="Loading subjects…" subtitle="Checking your existing subjects" />;
+  }
+
+  if (profilesQuery.isError) {
+    return <ErrorMessage message={"Failed to load subjects."} />;
+  }
 
   function startWithSubject(value: string) {
     const next = value.trim();
